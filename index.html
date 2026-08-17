@@ -689,7 +689,27 @@ const ASLI = {
 const BATAS_HARI = 60;                 // simpan paling banyak 60 hari bursa
 let kodeTambahan = [];                 // emiten yang belum ada di data bawaan
 let catatanImpor = [];                 // log hasil impor terakhir
-let daftarHari = [];                   // isi penyimpanan, terbaru dulu
+let daftarHari = [];                   // data harian tersimpan, terbaru dulu
+let daftarMilik = [];                  // data kepemilikan tersimpan, terbaru dulu
+
+/* metrik tambahan dari berkas kepemilikan ≥1% */
+const METRIK_MILIK = [
+  ["Pemegang ≥1% (jumlah)", ""],
+  ["Porsi pemegang ≥1% (%)", "pct"],
+  ["Pemegang ≥5% (jumlah)", ""],
+  ["Porsi pemegang ≥5% (%)", "pct"],
+  ["Porsi asing dari ≥1% (%)", "pct"],
+  ["Saham di luar pemegang ≥5% (%)", "pct"],
+  ["Pemegang terbesar (%)", "pct"],
+];
+METRIK_MILIK.forEach(([m, f]) => {
+  if (DATA.metrik.indexOf(m) < 0) {
+    DATA.metrik.push(m);
+    if (f) DATA.fmt[m] = f;
+    DATA.scr.forEach(b => b.push(null));
+    ASLI.scr.forEach(b => b.push(null));
+  }
+});
 
 const iM = {}; DATA.metrik.forEach((m, i) => iM[m] = 4 + i);
 const ambilM = (b, m) => { const i = iM[m]; const v = i === undefined ? null : b[i];
@@ -701,32 +721,34 @@ const isiM = (b, m, v) => { const i = iM[m]; if (i !== undefined)
 function dbBuka() {
   return new Promise((res, rej) => {
     if (!window.indexedDB) return rej(new Error("Penyimpanan tidak tersedia di peramban ini"));
-    const q = indexedDB.open("titenData", 1);
-    q.onupgradeneeded = () => { if (!q.result.objectStoreNames.contains("hari"))
-      q.result.createObjectStore("hari", {keyPath: "tgl"}); };
+    const q = indexedDB.open("titenData", 2);
+    q.onupgradeneeded = () => {
+      if (!q.result.objectStoreNames.contains("hari")) q.result.createObjectStore("hari", {keyPath: "tgl"});
+      if (!q.result.objectStoreNames.contains("milik")) q.result.createObjectStore("milik", {keyPath: "tgl"});
+    };
     q.onsuccess = () => res(q.result);
     q.onerror = () => rej(q.error || new Error("Penyimpanan gagal dibuka"));
   });
 }
-function dbJalan(mode, fn) {
+function dbJalan(lumbung, mode, fn) {
   return dbBuka().then(db => new Promise((res, rej) => {
-    const tx = db.transaction("hari", mode);
-    const req = fn(tx.objectStore("hari"));
+    const tx = db.transaction(lumbung, mode);
+    const req = fn(tx.objectStore(lumbung));
     tx.oncomplete = () => res(req && req.result);
     tx.onerror = () => rej(tx.error);
     tx.onabort = () => rej(tx.error);
   }));
 }
-const dbSemua  = ()    => dbJalan("readonly",  s => s.getAll());
-const dbSimpan = (rec) => dbJalan("readwrite", s => s.put(rec));
-const dbHapus  = (tgl) => dbJalan("readwrite", s => s.delete(tgl));
-const dbKosong = ()    => dbJalan("readwrite", s => s.clear());
+const dbSemua  = (l = "hari")    => dbJalan(l, "readonly",  s => s.getAll());
+const dbSimpan = (rec, l = "hari") => dbJalan(l, "readwrite", s => s.put(rec));
+const dbHapus  = (tgl, l = "hari") => dbJalan(l, "readwrite", s => s.delete(tgl));
+const dbKosong = (l = "hari")    => dbJalan(l, "readwrite", s => s.clear());
 
 /* ---------- pembacaan file Ringkasan Saham ---------- */
 const normal = s => String(s === null || s === undefined ? "" : s).toLowerCase().replace(/[^a-z0-9]/g, "");
 const ALIAS = {
-  kode:  ["kodesaham", "stockcode", "kode", "code"],
-  nama:  ["namaperusahaan", "companyname", "nama", "name"],
+  kode:  ["kodesaham", "stockcode", "sharecode", "kode", "code"],
+  nama:  ["namaperusahaan", "companyname", "issuername", "nama", "name"],
   prev:  ["sebelumnya", "previous", "previousprice", "prevclosingprice", "hargasebelumnya"],
   close: ["penutupan", "closingprice", "close", "last", "lastprice", "hargapenutupan"],
   vol:   ["volume", "volumesaham"],
@@ -735,6 +757,15 @@ const ALIAS = {
   fb:    ["foreignbuy", "foreignbuying", "asingbeli"],
   ls:    ["listedshares", "listedshare", "jumlahsaham"],
   tgl:   ["tanggalperdaganganterakhir", "lasttradingdate", "tradingdate", "tanggal", "date"],
+};
+const ALIAS_MILIK = {
+  kode:    ["sharecode", "kodesaham", "kode"],
+  nama:    ["issuername", "namaperusahaan", "namaemiten"],
+  pemilik: ["investorname", "namainvestor", "namapemegangsaham"],
+  la:      ["localforeign", "lokalasing", "statusinvestor"],
+  persen:  ["percentage", "persentase", "persen"],
+  lembar:  ["totalholdingshares", "jumlahsaham", "totalsaham"],
+  tgl:     ["date", "tanggal", "periode"],
 };
 function angka(v) {
   if (typeof v === "number") return isFinite(v) ? v : null;
@@ -751,9 +782,9 @@ const duaAngka = n => (n < 10 ? "0" : "") + n;
 const keTgl = d => d.getFullYear() + "-" + duaAngka(d.getMonth() + 1) + "-" + duaAngka(d.getDate());
 function tglSah(s) { return /^20\d{2}-\d{2}-\d{2}$/.test(s || "") ? s : null; }
 function tglDariNamaFile(nm) {
-  let m = String(nm).match(/(20\d{2})[-_. ]?(0\d|1[0-2])[-_. ]?([0-2]\d|3[01])/);
+  let m = String(nm).match(/(20\d{2})[-_. ]?(0[1-9]|1[0-2])[-_. ]?(0[1-9]|[12]\d|3[01])/);
   if (m) return `${m[1]}-${m[2]}-${m[3]}`;
-  m = String(nm).match(/([0-2]\d|3[01])[-_. ](0\d|1[0-2])[-_. ](20\d{2})/);
+  m = String(nm).match(/(0[1-9]|[12]\d|3[01])[-_. ](0[1-9]|1[0-2])[-_. ](20\d{2})/);
   if (m) return `${m[3]}-${m[2]}-${m[1]}`;
   return null;
 }
@@ -768,9 +799,54 @@ function tglDariSel(v) {
   return null;
 }
 
+/* berkas kepemilikan ≥1% dari IDX → ringkasan per emiten */
+function bacaKepemilikan(namaFile, wb) {
+  for (const sn of wb.SheetNames) {
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[sn], {header: 1, raw: true, defval: null});
+    let kepala = -1, peta = null;
+    for (let i = 0; i < Math.min(rows.length, 30); i++) {
+      const sel = (rows[i] || []).map(normal);
+      const cari = f => { for (const a of ALIAS_MILIK[f]) { const j = sel.indexOf(a); if (j >= 0) return j; } return -1; };
+      const p = {}; Object.keys(ALIAS_MILIK).forEach(f => p[f] = cari(f));
+      if (p.kode >= 0 && p.persen >= 0 && p.pemilik >= 0) { kepala = i; peta = p; break; }
+    }
+    if (kepala < 0) continue;
+
+    const agg = {}; const tglSel = []; const namaEmiten = {};
+    for (let i = kepala + 1; i < rows.length; i++) {
+      const r = rows[i] || [];
+      const kode = String(r[peta.kode] === null || r[peta.kode] === undefined ? "" : r[peta.kode])
+                     .trim().toUpperCase();
+      if (!/^[A-Z]{4,5}$/.test(kode)) continue;
+      const ps = angka(r[peta.persen]);
+      if (ps === null) continue;
+      const a = agg[kode] || (agg[kode] = {n1: 0, p1: 0, n5: 0, p5: 0, pa: 0, top: 0});
+      a.n1++; a.p1 += ps;
+      if (ps >= 5) { a.n5++; a.p5 += ps; }
+      if (peta.la >= 0 && String(r[peta.la] || "").trim().toUpperCase().charAt(0) === "F") a.pa += ps;
+      if (ps > a.top) a.top = ps;
+      if (peta.nama >= 0 && !namaEmiten[kode]) namaEmiten[kode] = String(r[peta.nama] || "").trim();
+      if (peta.tgl >= 0) { const t = tglDariSel(r[peta.tgl]); if (t) tglSel.push(t); }
+    }
+    const jml = Object.keys(agg).length;
+    if (!jml) continue;
+
+    let tgl = null;
+    if (tglSel.length) {
+      const hitung = {}; tglSel.forEach(t => hitung[t] = (hitung[t] || 0) + 1);
+      tgl = Object.keys(hitung).sort((a, b) => hitung[b] - hitung[a])[0];
+    }
+    if (!tgl) tgl = tglDariNamaFile(namaFile);
+    return {jenis: "milik", jml: jml, tgl: tglSah(tgl), agg: agg, nama: namaEmiten};
+  }
+  return null;
+}
+
 /* mengubah satu file menjadi {tgl, baris:{KODE:{c,p,v,n,fs,fb,ls,nm}}} */
 function bacaFile(namaFile, buffer) {
   const wb = XLSX.read(buffer, {type: "array", cellDates: true, raw: false});
+  const milik = bacaKepemilikan(namaFile, wb);
+  if (milik) return milik;
   let terbaik = null;
   wb.SheetNames.forEach(sn => {
     const rows = XLSX.utils.sheet_to_json(wb.Sheets[sn], {header: 1, raw: true, defval: null});
@@ -809,7 +885,7 @@ function bacaFile(namaFile, buffer) {
         const hitung = {}; tglSel.forEach(t => hitung[t] = (hitung[t] || 0) + 1);
         tgl = Object.keys(hitung).sort((a, b) => hitung[b] - hitung[a])[0];
       }
-      terbaik = {jml: jml, baris: baris, tgl: tglSah(tgl), sheet: sn};
+      terbaik = {jenis: "harian", jml: jml, baris: baris, tgl: tglSah(tgl), sheet: sn};
     }
   });
   return terbaik;
@@ -930,6 +1006,24 @@ function gabungkan(rekaman) {
   DATA.tgl = tgl5; DATA.tglVol = semuaTgl; DATA.hrg = hrg; DATA.vol = vol; DATA.dibuat = t0;
 }
 
+/* data kepemilikan bulanan terbaru → metrik tambahan */
+function terapkanKepemilikan() {
+  if (!daftarMilik.length) return;
+  const m = daftarMilik[0];
+  Object.keys(m.agg).forEach(k => {
+    const a = m.agg[k];
+    const row = barisScr[k] || (m.nama && m.nama[k] ? barisBaru(k, m.nama[k]) : null);
+    if (!row) return;
+    isiM(row, "Pemegang ≥1% (jumlah)", a.n1);
+    isiM(row, "Porsi pemegang ≥1% (%)", a.p1 / 100);
+    isiM(row, "Pemegang ≥5% (jumlah)", a.n5);
+    isiM(row, "Porsi pemegang ≥5% (%)", a.p5 / 100);
+    isiM(row, "Porsi asing dari ≥1% (%)", a.pa / 100);
+    isiM(row, "Saham di luar pemegang ≥5% (%)", Math.max(0, 100 - a.p5) / 100);
+    isiM(row, "Pemegang terbesar (%)", a.top / 100);
+  });
+}
+
 function gambarUlang() {
   $("#tglData").textContent = "Data " + tglID(DATA.dibuat) + " " + DATA.dibuat.slice(0, 4);
   halWatchlist(); halScreener(); halVolume(); halData();
@@ -937,10 +1031,13 @@ function gambarUlang() {
 
 async function muatDanTerapkan() {
   try {
-    const rec = await dbSemua();
+    const rec = await dbSemua("hari");
     daftarHari = (rec || []).slice().sort((a, b) => a.tgl < b.tgl ? 1 : -1);
+    const mil = await dbSemua("milik");
+    daftarMilik = (mil || []).slice().sort((a, b) => a.tgl < b.tgl ? 1 : -1);
     gabungkan(daftarHari);
-  } catch (e) { daftarHari = []; }
+    terapkanKepemilikan();
+  } catch (e) { daftarHari = []; daftarMilik = []; }
 }
 
 /* ---------- proses impor ---------- */
@@ -962,13 +1059,19 @@ async function imporBerkas(files) {
         if (!tgl) { catatanImpor.push({ok: false, teks: f.name + " — tanggal tidak dikenali, file dilewati."});
           continue; }
       }
-      const jml = Object.keys(hasil.baris).length;
-      const sudahAda = daftarHari.some(h => h.tgl === tgl);
-      await dbSimpan({tgl: tgl, berkas: f.name, jumlah: jml, waktu: Date.now(), baris: hasil.baris});
+      const milik = hasil.jenis === "milik";
+      const jml = hasil.jml;
+      const sudahAda = (milik ? daftarMilik : daftarHari).some(h => h.tgl === tgl);
+      if (milik)
+        await dbSimpan({tgl: tgl, berkas: f.name, jumlah: jml, waktu: Date.now(),
+                        agg: hasil.agg, nama: hasil.nama}, "milik");
+      else
+        await dbSimpan({tgl: tgl, berkas: f.name, jumlah: jml, waktu: Date.now(), baris: hasil.baris});
       catatanImpor.push({ok: true, peringatan: jml < 100,
-        teks: tglID(tgl) + " " + tgl.slice(0, 4) + " — " + jml.toLocaleString("id-ID") + " emiten" +
-              (sudahAda ? " (menimpa data tanggal yang sama)" : "") +
-              (jml < 100 ? " · jumlah emiten sedikit, periksa lagi filenya" : "")});
+        teks: (milik ? "Kepemilikan ≥1% per " : "") + tglID(tgl) + " " + tgl.slice(0, 4) + " — " +
+              jml.toLocaleString("id-ID") + " emiten" +
+              (sudahAda ? " (menimpa tanggal yang sama)" : "") +
+              (jml < 100 ? " · jumlah emiten sedikit, periksa lagi berkasnya" : "")});
     } catch (e) {
       catatanImpor.push({ok: false, teks: f.name + " — gagal dibaca: " + (e.message || e)});
     }
@@ -988,6 +1091,9 @@ function berkasCadangan() {
         const v = h.baris[k][x]; return v === undefined ? null : v; }));
       return {tgl: h.tgl, berkas: h.berkas || "", jumlah: h.jumlah || 0, waktu: h.waktu || 0, baris: b};
     }),
+    milik: daftarMilik.map(m => ({tgl: m.tgl, berkas: m.berkas || "", jumlah: m.jumlah || 0,
+                                  waktu: m.waktu || 0, agg: m.agg, nama: m.nama || {}})),
+    watchlist: [...FAVORIT],
   };
 }
 function simpanCadangan() {
@@ -1017,8 +1123,20 @@ async function muatCadangan(file) {
                       waktu: h.waktu || Date.now(), baris: baris});
       masuk++;
     }
-    catatanImpor.push(masuk
-      ? {ok: true, teks: masuk + " tanggal dipulihkan dari cadangan"}
+    let masukMilik = 0;
+    for (const m of (obj.milik || [])) {
+      if (!tglSah(m.tgl) || !m.agg) continue;
+      await dbSimpan({tgl: m.tgl, berkas: m.berkas || file.name, jumlah: m.jumlah || 0,
+                      waktu: m.waktu || Date.now(), agg: m.agg, nama: m.nama || {}}, "milik");
+      masukMilik++;
+    }
+    if (Array.isArray(obj.watchlist) && obj.watchlist.length &&
+        confirm("Pulihkan juga daftar watchlist dari cadangan (" + obj.watchlist.length + " emiten)?")) {
+      FAVORIT = new Set(obj.watchlist); simpanFav();
+    }
+    if (masukMilik) catatanImpor.push({ok: true, teks: masukMilik + " berkas kepemilikan dipulihkan"});
+    catatanImpor.push(masuk || masukMilik
+      ? {ok: true, teks: masuk + " tanggal harian dipulihkan dari cadangan"}
       : {ok: false, teks: file.name + " — tidak ada tanggal yang bisa dibaca di berkas ini"});
   } catch (e) {
     catatanImpor.push({ok: false, teks: file.name + " — bukan berkas cadangan TITEN: " + (e.message || e)});
@@ -1102,6 +1220,39 @@ function halData() {
   }
   w.appendChild(q);
 
+  const mp = el("div", "panel");
+  mp.appendChild(el("h2", null, "Kepemilikan ≥1%"));
+  if (!daftarMilik.length) {
+    const kos = el("div", "bantu");
+    kos.innerHTML = "Belum ada. Berkas pengumuman kepemilikan saham ≥1% dari IDX (bulanan) " +
+      "bisa dipilih lewat tombol yang sama di atas. Dari berkas itu app menghitung porsi pemegang " +
+      "≥1% dan ≥5%, porsi asing, pemegang terbesar, dan sisa saham di luar pemegang ≥5%.";
+    mp.appendChild(kos);
+  } else {
+    const tb = el("div", "tbl-bungkus"); const t = el("table");
+    t.innerHTML = "<thead><tr><th>Per tanggal</th><th>Emiten</th><th>Hapus</th></tr></thead>";
+    const tbody = el("tbody");
+    daftarMilik.forEach(m => {
+      const tr = el("tr");
+      tr.appendChild(el("td", null, tglID(m.tgl) + " " + m.tgl.slice(0, 4)));
+      tr.appendChild(el("td", null, (m.jumlah || 0).toLocaleString("id-ID")));
+      const cd = el("td", "bintang-sel");
+      const bt = el("button", "kecil bahaya", "✕");
+      bt.onclick = async () => {
+        if (!confirm("Hapus data kepemilikan " + tglID(m.tgl) + "?")) return;
+        await dbHapus(m.tgl, "milik"); catatanImpor = []; await muatDanTerapkan(); gambarUlang();
+      };
+      cd.appendChild(bt); tr.appendChild(cd);
+      tbody.appendChild(tr);
+    });
+    t.appendChild(tbody); tb.appendChild(t); mp.appendChild(tb);
+    const ket = el("div", "bantu");
+    ket.innerHTML = "Yang dipakai app adalah tanggal terbaru. Metrik hasilnya bisa dipakai di SCREENER: " +
+      "porsi pemegang ≥1% dan ≥5%, porsi asing, pemegang terbesar, saham di luar pemegang ≥5%.";
+    mp.appendChild(ket);
+  }
+  w.appendChild(mp);
+
   const c = el("div", "panel");
   c.appendChild(el("h2", null, "Cadangan"));
   const cb = el("div", "bantu");
@@ -1109,9 +1260,10 @@ function halData() {
     "Simpan ke iCloud Drive, lalu muat di HP lain supaya tidak perlu impor ulang file harian satu per satu.";
   c.appendChild(cb);
   const simpan = el("button", "tambah", "Simpan cadangan");
-  simpan.disabled = !daftarHari.length;
-  if (!daftarHari.length) simpan.style.opacity = ".5";
-  simpan.onclick = () => { if (daftarHari.length) simpanCadangan(); };
+  const adaIsi = daftarHari.length || daftarMilik.length;
+  simpan.disabled = !adaIsi;
+  if (!adaIsi) simpan.style.opacity = ".5";
+  simpan.onclick = () => { if (adaIsi) simpanCadangan(); };
   c.appendChild(simpan);
   const muat = el("button", "tambah lawan", "Muat cadangan");
   const inpC = el("input"); inpC.type = "file"; inpC.accept = ".json,application/json";
