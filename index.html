@@ -977,6 +977,56 @@ async function imporBerkas(files) {
   gambarUlang();
 }
 
+/* ---------- cadangan: satu berkas berisi semua tanggal yang sudah diimpor ---------- */
+const KUNCI = ["c", "p", "v", "n", "fs", "fb", "ls", "nm"];
+function berkasCadangan() {
+  return {
+    app: "TITEN VEKTOR", versi: 1, dibuat: new Date().toISOString().slice(0, 10),
+    hari: daftarHari.map(h => {
+      const b = {};
+      Object.keys(h.baris).forEach(k => b[k] = KUNCI.map(x => {
+        const v = h.baris[k][x]; return v === undefined ? null : v; }));
+      return {tgl: h.tgl, berkas: h.berkas || "", jumlah: h.jumlah || 0, waktu: h.waktu || 0, baris: b};
+    }),
+  };
+}
+function simpanCadangan() {
+  const isi = JSON.stringify(berkasCadangan());
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([isi], {type: "application/json"}));
+  a.download = "titen-cadangan-" + DATA.dibuat + ".json";
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 3000);
+}
+async function muatCadangan(file) {
+  catatanImpor = [];
+  try {
+    const obj = JSON.parse(await file.text());
+    if (!obj || !Array.isArray(obj.hari)) throw new Error("isi berkas tidak dikenali");
+    let masuk = 0;
+    for (const h of obj.hari) {
+      if (!tglSah(h.tgl) || !h.baris) continue;
+      const baris = {};
+      Object.keys(h.baris).forEach(k => {
+        const r = h.baris[k];
+        if (Array.isArray(r)) { const o = {}; KUNCI.forEach((x, i) => o[x] = r[i] === undefined ? null : r[i]);
+          baris[k] = o; }
+        else baris[k] = r;
+      });
+      await dbSimpan({tgl: h.tgl, berkas: h.berkas || file.name, jumlah: h.jumlah || Object.keys(baris).length,
+                      waktu: h.waktu || Date.now(), baris: baris});
+      masuk++;
+    }
+    catatanImpor.push(masuk
+      ? {ok: true, teks: masuk + " tanggal dipulihkan dari cadangan"}
+      : {ok: false, teks: file.name + " — tidak ada tanggal yang bisa dibaca di berkas ini"});
+  } catch (e) {
+    catatanImpor.push({ok: false, teks: file.name + " — bukan berkas cadangan TITEN: " + (e.message || e)});
+  }
+  await muatDanTerapkan();
+  gambarUlang();
+}
+
 /* ---------- halaman DATA ---------- */
 function halData() {
   const w = $("#hal-data"); if (!w) return;
@@ -1051,6 +1101,31 @@ function halData() {
     q.appendChild(hapus);
   }
   w.appendChild(q);
+
+  const c = el("div", "panel");
+  c.appendChild(el("h2", null, "Cadangan"));
+  const cb = el("div", "bantu");
+  cb.innerHTML = "Satu berkas berisi semua tanggal yang sudah kamu masukkan. " +
+    "Simpan ke iCloud Drive, lalu muat di HP lain supaya tidak perlu impor ulang file harian satu per satu.";
+  c.appendChild(cb);
+  const simpan = el("button", "tambah", "Simpan cadangan");
+  simpan.disabled = !daftarHari.length;
+  if (!daftarHari.length) simpan.style.opacity = ".5";
+  simpan.onclick = () => { if (daftarHari.length) simpanCadangan(); };
+  c.appendChild(simpan);
+  const muat = el("button", "tambah lawan", "Muat cadangan");
+  const inpC = el("input"); inpC.type = "file"; inpC.accept = ".json,application/json";
+  inpC.style.display = "none";
+  muat.onclick = () => inpC.click();
+  inpC.onchange = async () => {
+    const f = inpC.files[0]; inpC.value = "";
+    if (!f) return;
+    if (!confirm("Muat cadangan " + f.name + "? Tanggal yang sama akan ditimpa.")) return;
+    muat.disabled = true; muat.textContent = "Memuat…";
+    await muatCadangan(f);
+  };
+  c.appendChild(muat); c.appendChild(inpC);
+  w.appendChild(c);
 
   const r = el("div", "panel");
   r.appendChild(el("h2", null, "Yang ikut berubah dan yang tidak"));
