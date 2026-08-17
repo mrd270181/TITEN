@@ -691,6 +691,8 @@ let kodeTambahan = [];                 // emiten yang belum ada di data bawaan
 let catatanImpor = [];                 // log hasil impor terakhir
 let daftarHari = [];                   // data harian tersimpan, terbaru dulu
 let daftarMilik = [];                  // data kepemilikan tersimpan, terbaru dulu
+let daftarFunda = [];                  // Financial Data and Ratio tersimpan, terbaru dulu
+let daftarFF = [];                     // pengumuman free float tersimpan, terbaru dulu
 
 /* metrik tambahan dari berkas kepemilikan ≥1% */
 const METRIK_MILIK = [
@@ -721,10 +723,13 @@ const isiM = (b, m, v) => { const i = iM[m]; if (i !== undefined)
 function dbBuka() {
   return new Promise((res, rej) => {
     if (!window.indexedDB) return rej(new Error("Penyimpanan tidak tersedia di peramban ini"));
-    const q = indexedDB.open("titenData", 2);
+    const q = indexedDB.open("titenData", 4);
     q.onupgradeneeded = () => {
       if (!q.result.objectStoreNames.contains("hari")) q.result.createObjectStore("hari", {keyPath: "tgl"});
       if (!q.result.objectStoreNames.contains("milik")) q.result.createObjectStore("milik", {keyPath: "tgl"});
+      if (!q.result.objectStoreNames.contains("funda")) q.result.createObjectStore("funda", {keyPath: "tgl"});
+      if (!q.result.objectStoreNames.contains("ff")) q.result.createObjectStore("ff", {keyPath: "tgl"});
+      if (!q.result.objectStoreNames.contains("lk")) q.result.createObjectStore("lk", {keyPath: "id"});
     };
     q.onsuccess = () => res(q.result);
     q.onerror = () => rej(q.error || new Error("Penyimpanan gagal dibuka"));
@@ -767,6 +772,50 @@ const ALIAS_MILIK = {
   lembar:  ["totalholdingshares", "jumlahsaham", "totalsaham"],
   tgl:     ["date", "tanggal", "periode"],
 };
+const ALIAS_FUNDA = {
+  kode:      ["code", "kodesaham", "kode"],
+  nama:      ["stockname", "namaperusahaan", "namaemiten"],
+  sektor:    ["sector", "sektor"],
+  syariah:   ["sharia", "syariah"],
+  aset:      ["assetsbidr", "assets", "asetbidr", "aset"],
+  ekuitas:   ["equitybidr", "equity", "ekuitas"],
+  penjualan: ["salesbidr", "sales", "penjualan"],
+  laba:      ["profitfortheperiod", "labaperiodeberjalan", "labaperiode"],
+  eps:       ["epsidr", "eps"],
+  bv:        ["bookvalueidr", "bookvalue", "nilaibuku"],
+  per:       ["peratiox", "peratio", "per"],
+  pbv:       ["pricetobvx", "pricetobv", "pbv"],
+  der:       ["deratiox", "deratio", "der"],
+  roa:       ["roa", "roapersen"],
+  roe:       ["roe", "roepersen"],
+  npm:       ["npm", "npmpersen"],
+  fs:        ["fsdate", "tanggallaporan"],
+};
+const BULAN_NAMA = {jan:1, feb:2, mar:3, apr:4, mei:5, may:5, jun:6, jul:7, agu:8, aug:8,
+                    sep:9, okt:10, oct:10, nov:11, des:12, dec:12};
+function tglDariTeks(teks) {
+  const t = String(teks || "").toLowerCase();
+  const BLN = "jan|feb|mar|apr|mei|may|jun|jul|agu|aug|sep|okt|oct|nov|des|dec";
+  const temuan = [];
+  let m;
+  const rHari = new RegExp("(\\d{1,2})[ \\-_]?(" + BLN + ")[a-z]*[ \\-_]?(20\\d{2})", "g");
+  while ((m = rHari.exec(t)) !== null)
+    temuan.push(`${m[3]}-${duaAngka(BULAN_NAMA[m[2]])}-${duaAngka(+m[1])}`);
+  if (!temuan.length) {
+    const rBulan = new RegExp("(" + BLN + ")[a-z]*[ \\-_]?(20\\d{2})", "g");
+    while ((m = rBulan.exec(t)) !== null)
+      temuan.push(`${m[2]}-${duaAngka(BULAN_NAMA[m[1]])}-01`);
+  }
+  if (!temuan.length) return null;
+  return temuan.sort()[temuan.length - 1];      // periode terkini, bukan periode acuan
+}
+/* menggabungkan dua baris kepala (berkas IDX sering memakai kepala bertingkat) */
+function kepalaGabung(rows, i) {
+  const a = rows[i] || [], b = rows[i + 1] || [];
+  const n = Math.max(a.length, b.length), h = [];
+  for (let j = 0; j < n; j++) h.push(normal(b[j]) || normal(a[j]));
+  return h;
+}
 function angka(v) {
   if (typeof v === "number") return isFinite(v) ? v : null;
   if (v === null || v === undefined || v === "") return null;
@@ -780,6 +829,8 @@ function angka(v) {
 }
 const duaAngka = n => (n < 10 ? "0" : "") + n;
 const keTgl = d => d.getFullYear() + "-" + duaAngka(d.getMonth() + 1) + "-" + duaAngka(d.getDate());
+const bulanID = s => { const [y, m] = s.split("-");
+  return ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"][+m-1] + " " + y; };
 function tglSah(s) { return /^20\d{2}-\d{2}-\d{2}$/.test(s || "") ? s : null; }
 function tglDariNamaFile(nm) {
   let m = String(nm).match(/(20\d{2})[-_. ]?(0[1-9]|1[0-2])[-_. ]?(0[1-9]|[12]\d|3[01])/);
@@ -795,7 +846,12 @@ function tglDariSel(v) {
   const s = String(v || "").trim();
   let m = s.match(/^(20\d{2})-(\d{2})-(\d{2})/); if (m) return `${m[1]}-${m[2]}-${m[3]}`;
   m = s.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](20\d{2})/);
-  if (m) return `${m[3]}-${duaAngka(+m[2])}-${duaAngka(+m[1])}`;
+  if (m) {
+    let hari = +m[1], bulan = +m[2];
+    if (hari > 12 && bulan <= 12) { /* hari/bulan/tahun */ }
+    else if (bulan > 12 && hari <= 12) { hari = +m[2]; bulan = +m[1]; }
+    return `${m[3]}-${duaAngka(bulan)}-${duaAngka(hari)}`;
+  }
   return null;
 }
 
@@ -842,11 +898,101 @@ function bacaKepemilikan(namaFile, wb) {
   return null;
 }
 
+
+/* Financial Data and Ratio (IDX, bulanan) → data laporan keuangan per emiten */
+function bacaFunda(namaFile, wb) {
+  for (const sn of wb.SheetNames) {
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[sn], {header: 1, raw: true, defval: null});
+    let kepala = -1, peta = null;
+    for (let i = 0; i < Math.min(rows.length, 25); i++) {
+      const h = kepalaGabung(rows, i);
+      const cari = f => { for (const a of ALIAS_FUNDA[f]) { const j = h.indexOf(a); if (j >= 0) return j; } return -1; };
+      const p = {}; Object.keys(ALIAS_FUNDA).forEach(f => p[f] = cari(f));
+      if (p.kode >= 0 && p.eps >= 0 && p.roe >= 0) { kepala = i; peta = p; break; }
+    }
+    if (kepala < 0) continue;
+
+    const baris = {}; const fsSel = [];
+    for (let i = kepala + 1; i < rows.length; i++) {
+      const r = rows[i] || [];
+      const kode = String(r[peta.kode] === null || r[peta.kode] === undefined ? "" : r[peta.kode])
+                     .trim().toUpperCase();
+      if (!/^[A-Z]{4,5}$/.test(kode)) continue;
+      const amb = f => peta[f] >= 0 ? angka(r[peta[f]]) : null;
+      const eps = amb("eps"), roe = amb("roe");
+      if (eps === null && roe === null) continue;
+      baris[kode] = {
+        nm: peta.nama >= 0 ? String(r[peta.nama] || "").trim() : "",
+        sk: peta.sektor >= 0 ? String(r[peta.sektor] || "").trim() : "",
+        sy: peta.syariah >= 0 ? String(r[peta.syariah] || "").trim() : "",
+        aset: amb("aset"), ekuitas: amb("ekuitas"), penjualan: amb("penjualan"), laba: amb("laba"),
+        eps: eps, bv: amb("bv"), der: amb("der"), roa: amb("roa"), roe: roe, npm: amb("npm"),
+      };
+      if (peta.fs >= 0) { const t = tglDariSel(r[peta.fs]); if (t) fsSel.push(t); }
+    }
+    const jml = Object.keys(baris).length;
+    if (!jml) continue;
+    let fs = null;
+    if (fsSel.length) { const c = {}; fsSel.forEach(t => c[t] = (c[t] || 0) + 1);
+      fs = Object.keys(c).sort((a, b) => c[b] - c[a])[0]; }
+    const tgl = tglSah(tglDariNamaFile(namaFile)) || tglDariTeks(namaFile) ||
+                tglDariTeks(rows.slice(0, kepala).map(r => (r || []).join(" ")).join(" "));
+    return {jenis: "funda", jml: jml, tgl: tglSah(tgl), fs: fs, baris: baris};
+  }
+  return null;
+}
+
+/* Pengumuman free float IDX → % free float dan jumlah pemegang saham terkini */
+function bacaFreeFloat(namaFile, wb) {
+  for (const sn of wb.SheetNames) {
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[sn], {header: 1, raw: true, defval: null});
+    let kepala = -1, kKode = -1, kFF = -1, kJPS = -1, judul = "";
+    for (let i = 0; i < Math.min(rows.length, 30); i++) {
+      const h = kepalaGabung(rows, i);
+      const kode = h.indexOf("kode") >= 0 ? h.indexOf("kode") : h.indexOf("kodesaham");
+      if (kode < 0) continue;
+      let ff = -1, jps = -1;
+      h.forEach((x, j) => {                       // kolom paling kanan = data terkini
+        if (x.indexOf("sahamfreefloat") >= 0) ff = j;
+        if (x.indexOf("jumlahpemegangsaham") >= 0) jps = j;
+      });
+      if (ff < 0 && jps < 0) continue;
+      kepala = i; kKode = kode; kFF = ff; kJPS = jps;
+      judul = (rows[i] || []).concat(rows[i + 1] || []).join(" ");
+      break;
+    }
+    if (kepala < 0) continue;
+
+    const baris = {};
+    for (let i = kepala + 1; i < rows.length; i++) {
+      const r = rows[i] || [];
+      const kode = String(r[kKode] === null || r[kKode] === undefined ? "" : r[kKode]).trim().toUpperCase();
+      if (!/^[A-Z]{4,5}$/.test(kode)) continue;
+      let ff = kFF >= 0 ? angka(r[kFF]) : null;
+      if (ff !== null && ff > 1) ff = ff / 100;     // berkas lama memakai satuan persen
+      const jps = kJPS >= 0 ? angka(r[kJPS]) : null;
+      if (ff === null && jps === null) continue;
+      baris[kode] = {ff: ff, jps: jps};
+    }
+    const jml = Object.keys(baris).length;
+    if (!jml) continue;
+    const tgl = tglDariTeks(judul) || tglDariTeks(namaFile) || tglSah(tglDariNamaFile(namaFile));
+    return {jenis: "ff", jml: jml, tgl: tglSah(tgl), baris: baris};
+  }
+  return null;
+}
+
 /* mengubah satu file menjadi {tgl, baris:{KODE:{c,p,v,n,fs,fb,ls,nm}}} */
 function bacaFile(namaFile, buffer) {
   const wb = XLSX.read(buffer, {type: "array", cellDates: true, raw: false});
+  const lk = bacaLK(namaFile, wb);
+  if (lk) return lk;
   const milik = bacaKepemilikan(namaFile, wb);
   if (milik) return milik;
+  const funda = bacaFunda(namaFile, wb);
+  if (funda) return funda;
+  const ff = bacaFreeFloat(namaFile, wb);
+  if (ff) return ff;
   let terbaik = null;
   wb.SheetNames.forEach(sn => {
     const rows = XLSX.utils.sheet_to_json(wb.Sheets[sn], {header: 1, raw: true, defval: null});
@@ -1006,6 +1152,234 @@ function gabungkan(rekaman) {
   DATA.tgl = tgl5; DATA.tglVol = semuaTgl; DATA.hrg = hrg; DATA.vol = vol; DATA.dibuat = t0;
 }
 
+/* Financial Data and Ratio terbaru → metrik laporan keuangan */
+function terapkanFunda() {
+  if (!daftarFunda.length) return;
+  const f = daftarFunda[0];
+  Object.keys(f.baris).forEach(k => {
+    const b = f.baris[k];
+    const row = barisScr[k] || barisBaru(k, b.nm);
+    if (b.nm) { row[1] = b.nm; DATA.nama[k] = b.nm; }
+    if (b.sk) row[2] = b.sk;
+    if (b.sy) row[3] = b.sy;
+    isiM(row, "Aset (Rp miliar)", b.aset);
+    isiM(row, "Ekuitas (Rp miliar)", b.ekuitas);
+    isiM(row, "Penjualan (Rp miliar)", b.penjualan);
+    isiM(row, "Laba periode (Rp miliar)", b.laba);
+    isiM(row, "EPS (Rp)", b.eps);
+    isiM(row, "Book Value (Rp)", b.bv);
+    isiM(row, "DER (x)", b.der);
+    isiM(row, "ROA (%)", b.roa);
+    isiM(row, "ROE (%)", b.roe);
+    isiM(row, "NPM (%)", b.npm);
+    /* PER dan PBV dihitung ulang dari harga terbaru supaya sejalan dengan laba dan nilai buku */
+    const harga = ambilM(row, "Harga penutupan");
+    isiM(row, "PER (x)", harga && b.eps && b.eps > 0 ? harga / b.eps : null);
+    isiM(row, "PBV (x)", harga && b.bv && b.bv > 0 ? harga / b.bv : null);
+  });
+}
+
+/* pengumuman free float terbaru → free float dan jumlah pemegang saham */
+function terapkanFF() {
+  if (!daftarFF.length) return;
+  const f = daftarFF[0];
+  Object.keys(f.baris).forEach(k => {
+    const b = f.baris[k]; const row = barisScr[k];
+    if (!row) return;
+    if (b.ff !== null) {
+      isiM(row, "Free float (%)", b.ff);
+      const lembar = ambilM(row, "Jumlah saham (lembar)");
+      if (lembar) isiM(row, "Saham free float (lembar)", b.ff * lembar);
+    }
+    if (b.jps !== null) isiM(row, "Jumlah pemegang saham", b.jps);
+  });
+}
+
+
+/* ---------- laporan keuangan (LK) per emiten ---------- */
+const METRIK_LK = [
+  ["Kas dan setara kas (Rp miliar)", "num"],
+  ["Pertumbuhan pendapatan YoY (%)", "pct"],
+  ["Pertumbuhan laba YoY (%)", "pct"],
+];
+METRIK_LK.forEach(([m, f]) => {
+  if (DATA.metrik.indexOf(m) < 0) {
+    DATA.metrik.push(m);
+    if (f) DATA.fmt[m] = f;
+    DATA.scr.forEach(b => b.push(null));
+    ASLI.scr.forEach(b => b.push(null));
+  }
+});
+METRIK_LK.forEach(([m]) => { if (iM[m] === undefined) iM[m] = 4 + DATA.metrik.indexOf(m); });
+
+let daftarLK = [];
+const KURS_BAWAAN = 16300;
+let kursTersimpan = null;
+function kursUSD() {
+  if (kursTersimpan === null) {
+    let v = "";
+    try { v = localStorage.getItem("titen-kurs") || ""; } catch (e) { v = ""; }
+    const n = parseFloat(v);
+    kursTersimpan = isFinite(n) && n > 0 ? n : KURS_BAWAAN;
+  }
+  return kursTersimpan;
+}
+function simpanKurs(n) {
+  kursTersimpan = n;
+  try { localStorage.setItem("titen-kurs", String(n)); } catch (e) {}
+}
+
+/* pos yang dihitung sebagai utang berbunga */
+const POLA_UTANG = [
+  /^utang bank jangka (pendek|panjang)/,
+  /^pinjaman jangka (pendek|panjang)/,
+  /^pinjaman bank/,
+  /^wesel bayar/,
+  /^utang obligasi/,
+  /^obligasi (konversi|subordinasi|wajib)/,
+  /^sukuk/,
+  /^medium term/,
+  /^liabilitas sewa pembiayaan/,
+  /^utang sewa pembiayaan/,
+  /^liabilitas jangka panjang yang jatuh tempo dalam satu tahun atas (utang bank|pinjaman|liabilitas sewa|utang sewa|utang obligasi|sukuk|wesel)/,
+  /^liabilitas jangka panjang atas (utang bank|pinjaman|liabilitas sewa|utang sewa|utang obligasi|sukuk|wesel)/,
+];
+const bersih = s => String(s === null || s === undefined ? "" : s).replace(/\s+/g, " ").trim();
+
+function bacaLK(namaFile, wb) {
+  if (wb.SheetNames.indexOf("1000000") < 0) return null;
+  const info = XLSX.utils.sheet_to_json(wb.Sheets["1000000"], {header: 1, raw: true, defval: null});
+  const cari = awal => {
+    for (const r of info) {
+      const n = bersih(r && r[0]).toLowerCase();
+      if (n.indexOf(awal) === 0) return r[1];
+    }
+    return null;
+  };
+  const kode = bersih(cari("kode entitas")).toUpperCase();
+  if (!/^[A-Z]{4,5}$/.test(kode)) return null;
+
+  const mata = bersih(cari("mata uang pelaporan")).toUpperCase();
+  const usd = mata.indexOf("USD") >= 0 || mata.indexOf("DOLLAR") >= 0;
+  const bul = bersih(cari("pembulatan")).toLowerCase();
+  const faktor = bul.indexOf("jutaan") >= 0 || bul.indexOf("million") >= 0 ? 1e6
+               : bul.indexOf("ribuan") >= 0 || bul.indexOf("thousand") >= 0 ? 1e3 : 1;
+  const akhir = tglDariSel(cari("tanggal akhir periode berjalan"));
+  const periode = bersih(cari("periode penyampaian"));
+  const kuartal = /kuartal i\b|first/i.test(periode) ? 1 : /kuartal ii\b|second/i.test(periode) ? 2
+                : /kuartal iii\b|third/i.test(periode) ? 3 : 4;
+
+  /* semua sheet yang berisi angka */
+  const isi = {};
+  wb.SheetNames.forEach(sn => {
+    if (!/^\d/.test(sn)) return;
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[sn], {header: 1, raw: true, defval: null});
+    let ada = 0;
+    rows.forEach(r => { if (r && angka(r[1]) !== null) ada++; });
+    if (ada > 3) isi[sn] = rows;
+  });
+  const sheetAwal = (...awal) => Object.keys(isi).filter(s => awal.some(a => s.indexOf(a) === 0 && s.slice(-2) !== "PY"));
+
+  const bank = sheetAwal("42", "43").length > 0;
+  const neraca = (bank ? sheetAwal("42") : sheetAwal("121", "122"))[0];
+  const labaRugi = (bank ? sheetAwal("43") : sheetAwal("131", "132"))[0];
+  if (!neraca && !labaRugi) return null;
+
+  const ambilBaris = (sn, cocok) => {
+    const rows = isi[sn] || [];
+    for (const r of rows) {
+      if (!r) continue;
+      const n = bersih(r[0]).toLowerCase();
+      if (n && cocok(n)) return {kini: angka(r[1]), lalu: angka(r[2])};
+    }
+    return {kini: null, lalu: null};
+  };
+  const pos = (sn, ...label) => ambilBaris(sn, n => label.some(l => n === l));
+
+  /* neraca */
+  const kas = pos(neraca, "kas dan setara kas", "kas dan bank", "kas");
+  const aset = pos(neraca, "jumlah aset");
+  const liab = pos(neraca, "jumlah liabilitas");
+  const ekuitas = pos(neraca, "jumlah ekuitas");
+  let utang = null;
+  if (!bank && neraca) {
+    let t = 0, ketemu = 0;
+    (isi[neraca] || []).forEach(r => {
+      if (!r) return;
+      const n = bersih(r[0]).toLowerCase(); const v = angka(r[1]);
+      if (v === null || !n) return;
+      if (POLA_UTANG.some(p => p.test(n))) { t += v; ketemu++; }
+    });
+    if (ketemu) utang = t;
+  }
+
+  /* laba rugi */
+  const pendapatan = bank
+    ? pos(labaRugi, "pendapatan bunga", "jumlah pendapatan bunga")
+    : pos(labaRugi, "penjualan dan pendapatan usaha", "jumlah pendapatan", "pendapatan");
+  const bruto = pos(labaRugi, "jumlah laba bruto");
+  const bebanJual = pos(labaRugi, "beban penjualan");
+  const bebanAdm = pos(labaRugi, "beban umum dan administrasi");
+  const laba = pos(labaRugi, "jumlah laba (rugi)");
+  const ebt = pos(labaRugi, "jumlah laba (rugi) sebelum pajak penghasilan");
+
+  /* penyusutan: hanya sebagian emiten mencantumkannya */
+  let da = null;
+  for (const sn of Object.keys(isi)) {
+    const c = ambilBaris(sn, n => n === "beban penyusutan dan amortisasi" ||
+                                  n === "penyusutan dan amortisasi");
+    if (c.kini !== null) { da = c.kini; break; }
+  }
+
+  const skala = faktor * (usd ? kursUSD() : 1) / 1e9;      // → Rp miliar
+  const rp = v => v === null || v === undefined ? null : v * skala;
+  const labaUsaha = (bruto.kini !== null && bebanJual.kini !== null && bebanAdm.kini !== null)
+    ? bruto.kini - bebanJual.kini - bebanAdm.kini : null;
+
+  const d = {
+    kode: kode, akhir: akhir, kuartal: kuartal, bank: bank, usd: usd,
+    kas: rp(kas.kini), aset: rp(aset.kini), liab: rp(liab.kini), ekuitas: rp(ekuitas.kini),
+    utang: rp(utang),
+    pendapatan: rp(pendapatan.kini), pendapatanLalu: rp(pendapatan.lalu),
+    laba: rp(laba.kini), labaLalu: rp(laba.lalu), ebt: rp(ebt.kini),
+    ebitda: (labaUsaha !== null && da !== null) ? rp(labaUsaha + da) : null,
+  };
+  if (d.aset === null && d.pendapatan === null && d.laba === null) return null;
+  return {jenis: "lk", jml: 1, tgl: akhir, kode: kode, data: d};
+}
+
+function terapkanLK() {
+  if (!daftarLK.length) return;
+  const baru = {};
+  daftarLK.forEach(r => {
+    const a = baru[r.kode];
+    if (!a || (r.tgl || "") > (a.tgl || "")) baru[r.kode] = r;
+  });
+  Object.keys(baru).forEach(k => {
+    const d = baru[k].data; const row = barisScr[k];
+    if (!row) return;
+    isiM(row, "Kas dan setara kas (Rp miliar)", d.kas);
+    if (d.utang !== null) {
+      isiM(row, "Utang berbunga (Rp miliar)", d.utang);
+      const bersihUtang = d.kas !== null ? d.utang - d.kas : null;
+      isiM(row, "Utang bersih (Rp miliar)", bersihUtang);
+      if (bersihUtang !== null && d.ekuitas) isiM(row, "Net DER (x)", bersihUtang / d.ekuitas);
+    }
+    if (d.pendapatan !== null && d.pendapatanLalu)
+      isiM(row, "Pertumbuhan pendapatan YoY (%)", (d.pendapatan - d.pendapatanLalu) / Math.abs(d.pendapatanLalu));
+    if (d.laba !== null && d.labaLalu)
+      isiM(row, "Pertumbuhan laba YoY (%)", (d.laba - d.labaLalu) / Math.abs(d.labaLalu));
+    if (d.ebitda !== null) {
+      isiM(row, "EBITDA YTD (Rp miliar)", d.ebitda);
+      if (d.pendapatan) isiM(row, "Margin EBITDA (%)", d.ebitda / d.pendapatan);
+      const mcap = ambilM(row, "Kapitalisasi pasar (Rp miliar)");
+      const utangBersih = ambilM(row, "Utang bersih (Rp miliar)") || 0;
+      const setahun = d.ebitda * (4 / (d.kuartal || 4));
+      if (mcap && setahun > 0) isiM(row, "EV/EBITDA (x)", (mcap + utangBersih) / setahun);
+    }
+  });
+}
+
 /* data kepemilikan bulanan terbaru → metrik tambahan */
 function terapkanKepemilikan() {
   if (!daftarMilik.length) return;
@@ -1033,11 +1407,17 @@ async function muatDanTerapkan() {
   try {
     const rec = await dbSemua("hari");
     daftarHari = (rec || []).slice().sort((a, b) => a.tgl < b.tgl ? 1 : -1);
-    const mil = await dbSemua("milik");
-    daftarMilik = (mil || []).slice().sort((a, b) => a.tgl < b.tgl ? 1 : -1);
+    const urut = (x) => (x || []).slice().sort((a, b) => a.tgl < b.tgl ? 1 : -1);
+    daftarMilik = urut(await dbSemua("milik"));
+    daftarFunda = urut(await dbSemua("funda"));
+    daftarFF = urut(await dbSemua("ff"));
+    daftarLK = (await dbSemua("lk")) || [];
     gabungkan(daftarHari);
+    terapkanFunda();
     terapkanKepemilikan();
-  } catch (e) { daftarHari = []; daftarMilik = []; }
+    terapkanFF();
+    terapkanLK();
+  } catch (e) { daftarHari = []; daftarMilik = []; daftarFunda = []; daftarFF = []; daftarLK = []; }
 }
 
 /* ---------- proses impor ---------- */
@@ -1059,17 +1439,32 @@ async function imporBerkas(files) {
         if (!tgl) { catatanImpor.push({ok: false, teks: f.name + " — tanggal tidak dikenali, file dilewati."});
           continue; }
       }
-      const milik = hasil.jenis === "milik";
+      if (hasil.jenis === "lk") {
+        const idLK = hasil.kode + "@" + tgl;
+        const adaLK = daftarLK.some(r => r.id === idLK);
+        await dbSimpan({id: idLK, kode: hasil.kode, tgl: tgl, berkas: f.name,
+                        waktu: Date.now(), data: hasil.data}, "lk");
+        catatanImpor.push({ok: true, teks: "LK " + hasil.kode + " per " + tglID(tgl) + " " +
+          tgl.slice(0, 4) + (hasil.data.utang === null ? " · utang berbunga tidak ditemukan" : "") +
+          (hasil.data.ebitda === null ? " · EBITDA tidak tersedia" : "") +
+          (hasil.data.usd ? " · dikurs dari USD" : "") + (adaLK ? " (diperbarui)" : "")});
+        continue;
+      }
+      const jenis = hasil.jenis || "harian";
       const jml = hasil.jml;
-      const sudahAda = (milik ? daftarMilik : daftarHari).some(h => h.tgl === tgl);
-      if (milik)
-        await dbSimpan({tgl: tgl, berkas: f.name, jumlah: jml, waktu: Date.now(),
-                        agg: hasil.agg, nama: hasil.nama}, "milik");
-      else
-        await dbSimpan({tgl: tgl, berkas: f.name, jumlah: jml, waktu: Date.now(), baris: hasil.baris});
+      const lumbung = {harian: "hari", milik: "milik", funda: "funda", ff: "ff"}[jenis];
+      const daftar = {harian: daftarHari, milik: daftarMilik, funda: daftarFunda, ff: daftarFF}[jenis];
+      const label = {harian: "", milik: "Kepemilikan ≥1% per ", funda: "Laporan keuangan ",
+                     ff: "Free float per "}[jenis];
+      const sudahAda = daftar.some(h => h.tgl === tgl);
+      const rec = {tgl: tgl, berkas: f.name, jumlah: jml, waktu: Date.now(), jenis: jenis};
+      if (jenis === "milik") { rec.agg = hasil.agg; rec.nama = hasil.nama; }
+      else { rec.baris = hasil.baris; if (hasil.fs) rec.fs = hasil.fs; }
+      await dbSimpan(rec, lumbung);
       catatanImpor.push({ok: true, peringatan: jml < 100,
-        teks: (milik ? "Kepemilikan ≥1% per " : "") + tglID(tgl) + " " + tgl.slice(0, 4) + " — " +
+        teks: label + (jenis === "funda" ? bulanID(tgl) : tglID(tgl) + " " + tgl.slice(0, 4)) + " — " +
               jml.toLocaleString("id-ID") + " emiten" +
+              (hasil.fs ? " · posisi laporan " + tglID(hasil.fs) + " " + hasil.fs.slice(0, 4) : "") +
               (sudahAda ? " (menimpa tanggal yang sama)" : "") +
               (jml < 100 ? " · jumlah emiten sedikit, periksa lagi berkasnya" : "")});
     } catch (e) {
@@ -1093,6 +1488,12 @@ function berkasCadangan() {
     }),
     milik: daftarMilik.map(m => ({tgl: m.tgl, berkas: m.berkas || "", jumlah: m.jumlah || 0,
                                   waktu: m.waktu || 0, agg: m.agg, nama: m.nama || {}})),
+    funda: daftarFunda.map(m => ({tgl: m.tgl, berkas: m.berkas || "", jumlah: m.jumlah || 0,
+                                  waktu: m.waktu || 0, fs: m.fs || null, baris: m.baris})),
+    ff: daftarFF.map(m => ({tgl: m.tgl, berkas: m.berkas || "", jumlah: m.jumlah || 0,
+                            waktu: m.waktu || 0, baris: m.baris})),
+    lk: daftarLK.map(r => ({id: r.id, kode: r.kode, tgl: r.tgl, berkas: r.berkas || "",
+                            waktu: r.waktu || 0, data: r.data})),
     watchlist: [...FAVORIT],
   };
 }
@@ -1134,8 +1535,25 @@ async function muatCadangan(file) {
         confirm("Pulihkan juga daftar watchlist dari cadangan (" + obj.watchlist.length + " emiten)?")) {
       FAVORIT = new Set(obj.watchlist); simpanFav();
     }
-    if (masukMilik) catatanImpor.push({ok: true, teks: masukMilik + " berkas kepemilikan dipulihkan"});
-    catatanImpor.push(masuk || masukMilik
+    let masukBulan = masukMilik;
+    for (const [kunci, lumbung] of [["funda", "funda"], ["ff", "ff"]]) {
+      for (const m of (obj[kunci] || [])) {
+        if (!tglSah(m.tgl) || !m.baris) continue;
+        await dbSimpan({tgl: m.tgl, berkas: m.berkas || file.name, jumlah: m.jumlah || 0,
+                        waktu: m.waktu || Date.now(), fs: m.fs || null, baris: m.baris}, lumbung);
+        masukBulan++;
+      }
+    }
+    let masukLK = 0;
+    for (const r of (obj.lk || [])) {
+      if (!r.id || !r.data) continue;
+      await dbSimpan({id: r.id, kode: r.kode, tgl: r.tgl, berkas: r.berkas || file.name,
+                      waktu: r.waktu || Date.now(), data: r.data}, "lk");
+      masukLK++;
+    }
+    if (masukBulan) catatanImpor.push({ok: true, teks: masukBulan + " berkas bulanan dipulihkan"});
+    if (masukLK) catatanImpor.push({ok: true, teks: masukLK + " laporan keuangan dipulihkan"});
+    catatanImpor.push(masuk || masukBulan
       ? {ok: true, teks: masuk + " tanggal harian dipulihkan dari cadangan"}
       : {ok: false, teks: file.name + " — tidak ada tanggal yang bisa dibaca di berkas ini"});
   } catch (e) {
@@ -1221,37 +1639,86 @@ function halData() {
   w.appendChild(q);
 
   const mp = el("div", "panel");
-  mp.appendChild(el("h2", null, "Kepemilikan ≥1%"));
-  if (!daftarMilik.length) {
+  mp.appendChild(el("h2", null, "Berkas bulanan"));
+  const bulanan = [
+    ["milik", "Kepemilikan ≥1%", daftarMilik],
+    ["funda", "Laporan keuangan", daftarFunda],
+    ["ff", "Free float", daftarFF],
+  ];
+  const adaBulanan = bulanan.some(([, , d]) => d.length);
+  if (!adaBulanan) {
     const kos = el("div", "bantu");
-    kos.innerHTML = "Belum ada. Berkas pengumuman kepemilikan saham ≥1% dari IDX (bulanan) " +
-      "bisa dipilih lewat tombol yang sama di atas. Dari berkas itu app menghitung porsi pemegang " +
-      "≥1% dan ≥5%, porsi asing, pemegang terbesar, dan sisa saham di luar pemegang ≥5%.";
+    kos.innerHTML = "Belum ada. Lewat tombol yang sama di atas, app juga menerima tiga berkas bulanan IDX: " +
+      "<b>kepemilikan saham ≥1%</b>, <b>Financial Data and Ratio</b>, dan <b>pengumuman free float</b>. " +
+      "Jenisnya dikenali sendiri dari isi berkas.";
     mp.appendChild(kos);
   } else {
     const tb = el("div", "tbl-bungkus"); const t = el("table");
-    t.innerHTML = "<thead><tr><th>Per tanggal</th><th>Emiten</th><th>Hapus</th></tr></thead>";
+    t.innerHTML = "<thead><tr><th>Jenis</th><th>Per tanggal</th><th>Emiten</th><th>Hapus</th></tr></thead>";
     const tbody = el("tbody");
-    daftarMilik.forEach(m => {
+    bulanan.forEach(([lumbung, judul, daftar]) => daftar.forEach(m => {
       const tr = el("tr");
-      tr.appendChild(el("td", null, tglID(m.tgl) + " " + m.tgl.slice(0, 4)));
+      tr.appendChild(el("td", "sek", judul));
+      tr.appendChild(el("td", null, lumbung === "funda"
+        ? bulanID(m.tgl) + (m.fs ? " · lap. " + tglID(m.fs) : "")
+        : tglID(m.tgl) + " " + m.tgl.slice(0, 4)));
       tr.appendChild(el("td", null, (m.jumlah || 0).toLocaleString("id-ID")));
       const cd = el("td", "bintang-sel");
       const bt = el("button", "kecil bahaya", "✕");
       bt.onclick = async () => {
-        if (!confirm("Hapus data kepemilikan " + tglID(m.tgl) + "?")) return;
-        await dbHapus(m.tgl, "milik"); catatanImpor = []; await muatDanTerapkan(); gambarUlang();
+        if (!confirm("Hapus " + judul.toLowerCase() + " " + tglID(m.tgl) + "?")) return;
+        await dbHapus(m.tgl, lumbung); catatanImpor = []; await muatDanTerapkan(); gambarUlang();
       };
       cd.appendChild(bt); tr.appendChild(cd);
       tbody.appendChild(tr);
-    });
+    }));
     t.appendChild(tbody); tb.appendChild(t); mp.appendChild(tb);
     const ket = el("div", "bantu");
-    ket.innerHTML = "Yang dipakai app adalah tanggal terbaru. Metrik hasilnya bisa dipakai di SCREENER: " +
-      "porsi pemegang ≥1% dan ≥5%, porsi asing, pemegang terbesar, saham di luar pemegang ≥5%.";
+    ket.innerHTML = "Yang dipakai app adalah tanggal terbaru dari tiap jenis. " +
+      "Dari berkas kepemilikan lahir metrik pemegang ≥1% dan ≥5%, porsi asing, dan pemegang terbesar — " +
+      "semuanya bisa dipakai sebagai kriteria di SCREENER.";
     mp.appendChild(ket);
   }
   w.appendChild(mp);
+
+  const lp = el("div", "panel");
+  lp.appendChild(el("h2", null, "Laporan keuangan per emiten"));
+  const emitenLK = {};
+  daftarLK.forEach(r => { const a = emitenLK[r.kode];
+    if (!a || r.tgl > a.tgl) emitenLK[r.kode] = r; });
+  const kodeLK = Object.keys(emitenLK).sort();
+  const lb = el("div", "bantu");
+  lb.innerHTML = kodeLK.length
+    ? "<b>" + kodeLK.length + " emiten</b> sudah punya LK: " + kodeLK.join(", ") + ".<br>" +
+      "Dipakai untuk utang berbunga, utang bersih, Net DER, kas, pertumbuhan pendapatan dan laba " +
+      "dibanding periode sama tahun lalu, serta EBITDA bila emitennya mencantumkan penyusutan."
+    : "Belum ada. Berkas LK dari IDX (FinancialStatement-...xlsx) bisa dipilih lewat tombol yang sama " +
+      "di atas, boleh banyak emiten sekaligus. Bank memakai format berbeda: aset, laba, dan " +
+      "pertumbuhannya tetap terbaca, tetapi utang berbunga tidak dihitung.";
+  lp.appendChild(lb);
+
+  const kursBaris = el("div", "bantu");
+  kursBaris.innerHTML = "Kurs USD untuk emiten yang melapor dalam dolar:";
+  lp.appendChild(kursBaris);
+  const kursInp = el("input"); kursInp.type = "number"; kursInp.value = kursUSD();
+  kursInp.className = "cari"; kursInp.step = "1"; kursInp.min = "1";
+  kursInp.onchange = async () => {
+    const n = parseFloat(kursInp.value);
+    if (!isFinite(n) || n <= 0) { kursInp.value = kursUSD(); return; }
+    simpanKurs(n);
+    catatanImpor = []; await muatDanTerapkan(); gambarUlang();
+  };
+  lp.appendChild(kursInp);
+
+  if (kodeLK.length) {
+    const hapusLK = el("button", "tambah lawan", "Hapus semua LK");
+    hapusLK.onclick = async () => {
+      if (!confirm("Hapus seluruh laporan keuangan yang sudah dimasukkan?")) return;
+      await dbKosong("lk"); catatanImpor = []; await muatDanTerapkan(); gambarUlang();
+    };
+    lp.appendChild(hapusLK);
+  }
+  w.appendChild(lp);
 
   const c = el("div", "panel");
   c.appendChild(el("h2", null, "Cadangan"));
@@ -1260,7 +1727,8 @@ function halData() {
     "Simpan ke iCloud Drive, lalu muat di HP lain supaya tidak perlu impor ulang file harian satu per satu.";
   c.appendChild(cb);
   const simpan = el("button", "tambah", "Simpan cadangan");
-  const adaIsi = daftarHari.length || daftarMilik.length;
+  const adaIsi = daftarHari.length || daftarMilik.length || daftarFunda.length ||
+                 daftarFF.length || daftarLK.length;
   simpan.disabled = !adaIsi;
   if (!adaIsi) simpan.style.opacity = ".5";
   simpan.onclick = () => { if (adaIsi) simpanCadangan(); };
@@ -1283,12 +1751,14 @@ function halData() {
   r.appendChild(el("h2", null, "Yang ikut berubah dan yang tidak"));
   const isi = el("div", "bantu");
   isi.innerHTML =
-    "Ikut berubah: harga, tren 5 hari, volume, nilai transaksi, net foreign, kapitalisasi pasar, " +
-    "PER, PBV, dan EV/EBITDA.<br>" +
-    "Tetap per " + tglID(ASLI.dibuat) + " " + ASLI.dibuat.slice(0, 4) +
-    ": data laporan keuangan (ROE, DER, EPS, laba, penjualan, free float, jumlah pemegang saham), " +
-    "karena tidak ada di file Ringkasan Saham.<br>" +
-    "Data tersimpan di HP ini saja, sampai " + BATAS_HARI + " hari bursa terakhir.";
+    "Ringkasan Saham memperbarui harga, tren 5 hari, volume, nilai transaksi, net foreign, " +
+    "kapitalisasi pasar, dan EV/EBITDA.<br>" +
+    "Financial Data and Ratio memperbarui ROE, ROA, NPM, DER, EPS, nilai buku, aset, ekuitas, " +
+    "penjualan, dan laba — PER serta PBV dihitung ulang dari harga terbaru.<br>" +
+    "Pengumuman free float memperbarui free float dan jumlah pemegang saham.<br>" +
+    "Laporan keuangan per emiten memperbarui utang berbunga, utang bersih, Net DER, kas, " +
+    "pertumbuhan YoY, dan EBITDA bila tersedia.<br>" +
+    "Semua tersimpan di HP ini saja, sampai " + BATAS_HARI + " hari bursa terakhir.";
   r.appendChild(isi);
   w.appendChild(r);
 }
