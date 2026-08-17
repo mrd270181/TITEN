@@ -143,6 +143,18 @@ tr.klik:active{background:var(--merek-muda)}
 .garis{width:100%;height:90px;display:block}
 .garis-tgl{display:flex;justify-content:space-between;font-size:9.5px;color:var(--ink-3);
   padding:2px 8px 0}
+.bantu{font-size:10.5px;color:var(--ink-3);margin-top:6px;line-height:1.4}
+.alat{margin-top:7px}
+.kecil{padding:7px 6px;border:1px solid var(--garis);background:var(--surface-1);
+  color:var(--ink-2);border-radius:8px;font-size:11.5px;font-weight:600;
+  font-family:inherit;cursor:pointer}
+.kecil.bahaya{color:var(--turun);border-color:var(--turun-bg);background:var(--turun-bg)}
+.bintang-sel{text-align:center;padding:0 4px}
+.bintang{background:none;border:0;font-size:19px;line-height:1;padding:6px 8px;
+  color:var(--ink-3);cursor:pointer;font-family:inherit}
+.bintang.isi{color:#eda100}
+.tambah.lawan{background:var(--surface-2);color:var(--ink-2)}
+.tambah+.tambah{margin-top:6px}
 </style>
 </head>
 <body>
@@ -236,7 +248,19 @@ function sparkline(nilai) {
 }
 
 /* ================= WATCHLIST ================= */
-const FAVORIT = new Set(DATA.watch.map(x => x.k));
+const BAWAAN = DATA.watch.map(x => x.k);        // 22 emiten bawaan dari workbook
+let FAVORIT;                                     // watchlist milik pengguna
+try {
+  const simpan = localStorage.getItem("titenWatchlist");
+  FAVORIT = simpan ? new Set(JSON.parse(simpan)) : new Set(BAWAAN);
+} catch (e) { FAVORIT = new Set(BAWAAN); }
+function simpanFav() {
+  try { localStorage.setItem("titenWatchlist", JSON.stringify([...FAVORIT])); } catch (e) {}
+}
+function ubahFav(k) {
+  if (FAVORIT.has(k)) FAVORIT.delete(k); else FAVORIT.add(k);
+  simpanFav();
+}
 let modeWL = "favorit";          // "favorit" | "semua"
 let pilihWL = null;              // emiten yang sedang dibuka rinciannya
 
@@ -255,7 +279,7 @@ function halWatchlist() {
   const p = el("div", "panel");
   const tg = el("div", "tab2");
   const tFav = el("button", modeWL === "favorit" ? "aktif" : "",
-                  "Watchlist saya (" + DATA.watch.length + ")");
+                  "Watchlist saya (" + FAVORIT.size + ")");
   const tAll = el("button", modeWL === "semua" ? "aktif" : "",
                   "Semua emiten (" + DATA.scr.length + ")");
   tFav.onclick = () => { modeWL = "favorit"; halWatchlist(); };
@@ -265,6 +289,21 @@ function halWatchlist() {
   cari.placeholder = "Cari kode atau nama emiten…";
   cari.autocapitalize = "characters";
   p.appendChild(cari);
+  const bantu = el("div", "bantu");
+  bantu.innerHTML = modeWL === "favorit"
+    ? "Ketuk bintang untuk mengeluarkan emiten dari watchlist."
+    : "Ketuk bintang untuk memasukkan emiten ke watchlist.";
+  p.appendChild(bantu);
+  if (modeWL === "favorit") {
+    const alat = el("div", "baris alat");
+    const reset = el("button", "kecil", "Kembalikan 22 bawaan");
+    reset.onclick = () => { if (confirm("Kembalikan watchlist ke 22 emiten bawaan?")) {
+      FAVORIT = new Set(BAWAAN); simpanFav(); halWatchlist(); } };
+    const kosong = el("button", "kecil bahaya", "Kosongkan semua");
+    kosong.onclick = () => { if (confirm("Kosongkan seluruh watchlist?")) {
+      FAVORIT = new Set(); simpanFav(); halWatchlist(); } };
+    alat.appendChild(reset); alat.appendChild(kosong); p.appendChild(alat);
+  }
   w.appendChild(p);
 
   const rinci = el("div"); rinci.id = "rinciWL"; w.appendChild(rinci);
@@ -272,13 +311,15 @@ function halWatchlist() {
   const bungkus = el("div", "panel");
   const tb = el("div", "tbl-bungkus"); const t = el("table");
   t.innerHTML = `<thead><tr><th>Emiten</th><th>Tren 5h</th><th>Harga</th><th>% Ubah</th>
-    <th>Volume</th><th>Net Foreign</th></tr></thead>`;
+    <th>Volume</th><th>Net Foreign</th><th>★</th></tr></thead>`;
   const tbody = el("tbody"); t.appendChild(tbody); tb.appendChild(t); bungkus.appendChild(tb);
   w.appendChild(bungkus);
 
   function daftar(q) {
     q = (q || "").trim().toLowerCase();
-    let kode = modeWL === "favorit" ? DATA.watch.map(x => x.k) : DATA.scr.map(b => b[0]);
+    let kode = modeWL === "favorit"
+      ? DATA.scr.map(b => b[0]).filter(k => FAVORIT.has(k))
+      : DATA.scr.map(b => b[0]);
     if (q) kode = kode.filter(k =>
       k.toLowerCase().includes(q) || (DATA.nama[k] || "").toLowerCase().includes(q));
     return kode;
@@ -288,8 +329,11 @@ function halWatchlist() {
     tbody.innerHTML = "";
     const kode = daftar(q);
     if (!kode.length) {
-      const tr = el("tr"); const td = el("td", "kosong", "Tidak ada emiten yang cocok");
-      td.colSpan = 6; tr.appendChild(td); tbody.appendChild(tr); return;
+      const tr = el("tr");
+      const td = el("td", "kosong", modeWL === "favorit" && !q
+        ? "Watchlist masih kosong. Buka tab Semua emiten, lalu ketuk bintang pada emiten yang ingin dipantau."
+        : "Tidak ada emiten yang cocok");
+      td.colSpan = 7; tr.appendChild(td); tbody.appendChild(tr); return;
     }
     kode.slice(0, 400).forEach(k => {
       const h = DATA.hrg[k] || [];
@@ -308,12 +352,19 @@ function halWatchlist() {
       tr.appendChild(el("td", null, ringkas(metrik(k, "Volume hari ini"))));
       const n = metrik(k, "Net foreign hari ini"); const an = arah(n);
       tr.appendChild(el("td", an.k, an.t + ringkas(Math.abs(n === null ? NaN : n))));
+      const cb = el("td", "bintang-sel");
+      const bt = el("button", "bintang" + (FAVORIT.has(k) ? " isi" : ""),
+                    FAVORIT.has(k) ? "★" : "☆");
+      bt.title = FAVORIT.has(k) ? "Keluarkan dari watchlist" : "Masukkan ke watchlist";
+      bt.setAttribute("aria-label", bt.title);
+      bt.onclick = ev => { ev.stopPropagation(); ubahFav(k); halWatchlist(); };
+      cb.appendChild(bt); tr.appendChild(cb);
       tbody.appendChild(tr);
     });
     if (kode.length > 400) {
       const tr = el("tr"); const td = el("td", "kosong",
         `Ditampilkan 400 teratas dari ${kode.length}. Ketik kode di kotak pencarian.`);
-      td.colSpan = 6; tr.appendChild(td); tbody.appendChild(tr);
+      td.colSpan = 7; tr.appendChild(td); tbody.appendChild(tr);
     }
   }
 
@@ -370,6 +421,12 @@ function halWatchlist() {
       b2.appendChild(tr);
     });
     t2.appendChild(b2); tb2.appendChild(t2); d.appendChild(tb2);
+
+    const fav = el("button", "tambah" + (FAVORIT.has(k) ? " lawan" : ""));
+    fav.textContent = FAVORIT.has(k)
+      ? "★ Keluarkan dari watchlist" : "☆ Masukkan ke watchlist";
+    fav.onclick = () => { ubahFav(k); halWatchlist(); };
+    d.appendChild(fav);
 
     const cv = el("button", "tambah");
     cv.textContent = "Lihat volume & net foreign 18 hari →";
