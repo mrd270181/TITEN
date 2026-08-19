@@ -162,9 +162,11 @@ tr.klik:active{background:var(--merek-muda)}
 .sub-tab button.aktif{background:var(--hijau);color:#fff;border-color:var(--hijau)}
 table.kalender{width:100%;border-collapse:collapse;table-layout:fixed;margin-top:8px}
 table.kalender th{font-size:10.5px;color:var(--ink-2);padding:4px 0}
-table.kalender td{border:1px solid var(--garis);height:52px;vertical-align:top;padding:3px;border-radius:4px}
+table.kalender td{border:1px solid var(--garis);height:74px;vertical-align:top;padding:3px 2px;border-radius:4px}
 .kal-tgl{font-size:10px;color:var(--ink-2)}
-.kal-nilai{font-size:11.5px;font-weight:700;margin-top:2px;word-break:break-all}
+.kal-nilai{font-size:11px;font-weight:700;margin-top:2px;line-height:1.15;word-break:break-all}
+.kal-sub{font-size:9px;font-weight:600;line-height:1.2;margin-top:1px;color:var(--ink-2);word-break:break-all}
+.kal-avg{font-size:9px;font-weight:700;line-height:1.2;margin-top:1px;color:var(--ink-1);word-break:break-all}
 .grafik{margin-top:8px;color:var(--ink)}
 .grafik svg{display:block}
 td.num{text-align:right;font-variant-numeric:tabular-nums}
@@ -2098,6 +2100,45 @@ function panelTransaksi(w) {
 }
 
 /* ---------- sub-halaman: kalender + grafik ---------- */
+/* 42.400.000.000 -> "42,4 B" */
+function nilaiSingkat(v) {
+  const a = Math.abs(v);
+  const potong = (x, s) => (v / x).toFixed(1).replace(".", ",") + s;
+  if (a >= 1e12) return potong(1e12, " T");
+  if (a >= 1e9) return potong(1e9, " B");
+  if (a >= 1e6) return potong(1e6, " M");
+  if (a >= 1e3) return potong(1e3, " K");
+  return String(Math.round(v));
+}
+/* 500050 -> "500,1K" ; 850 -> "850" */
+function lotSingkat(v) {
+  const a = Math.abs(v);
+  if (a >= 1e6) return (v / 1e6).toFixed(2).replace(".", ",") + "Jt";
+  if (a >= 1e4) return (v / 1e3).toFixed(1).replace(".", ",") + "K";
+  return v.toLocaleString("id-ID");
+}
+
+/* net lot, net nilai (rupiah, 1 lot = 100 lembar) dan harga rata-rata per tanggal */
+function ringkasHarian(emiten, broker, pasar) {
+  const hasil = {};
+  const papanDipakai = pasar === "ALL MARKET" ? PAPAN : [pasar === "REGULER" ? "REG" : pasar];
+  const trx = semuaTrx();
+  papanDipakai.forEach(p => (trx[p] || []).forEach(r => {
+    if (r.em !== emiten || (broker && r.br !== broker)) return;
+    const a = hasil[r.tgl] || (hasil[r.tgl] = {lot: 0, nilai: 0, lotKotor: 0, nilaiKotor: 0});
+    const nb = r.beli * r.avgB * 100, nj = r.jual * r.avgJ * 100;
+    a.lot += r.beli - r.jual;
+    a.nilai += nb - nj;
+    a.lotKotor += r.beli + r.jual;
+    a.nilaiKotor += nb + nj;
+  }));
+  Object.keys(hasil).forEach(t => {
+    const a = hasil[t];
+    a.avg = a.lotKotor ? a.nilaiKotor / (a.lotKotor * 100) : null;
+  });
+  return hasil;
+}
+
 function netHarian(emiten, broker, pasar) {
   const hasil = {};
   const papanDipakai = pasar === "ALL MARKET" ? PAPAN : [pasar === "REGULER" ? "REG" : pasar];
@@ -2114,16 +2155,22 @@ function panelKalender(w) {
   p.appendChild(el("h2", null, "Kalender broker"));
 
   const alat = el("div", "alat");
-  const selBr = el("select", "cari");
-  const o0 = el("option", null, "SEMUA BROKER"); o0.value = "";
-  selBr.appendChild(o0);
-  BRK.br.forEach(k => {
-    const o = el("option", null, k + " — " + namaBroker(k)); o.value = k;
-    if (k === pilih.kalBroker) o.selected = true;
-    selBr.appendChild(o);
+  const dlBr = el("datalist"); dlBr.id = "daftarBrokerKal";
+  BRK.br.slice().sort().forEach(k => {
+    const o = el("option"); o.value = k; o.label = namaBroker(k); dlBr.appendChild(o);
   });
-  selBr.onchange = () => { pilih.kalBroker = selBr.value; halBroker(); };
-  alat.appendChild(selBr);
+  alat.appendChild(dlBr);
+  const inpBr = el("input", "cari");
+  inpBr.setAttribute("list", "daftarBrokerKal");
+  inpBr.setAttribute("autocapitalize", "characters");
+  inpBr.placeholder = "Ketik kode broker — kosong = semua";
+  inpBr.value = pilih.kalBroker;
+  inpBr.onchange = () => {
+    const v = inpBr.value.trim().toUpperCase();
+    if (!v || BRK.br.includes(v)) { pilih.kalBroker = v; halBroker(); }
+    else { inpBr.value = pilih.kalBroker; }
+  };
+  alat.appendChild(inpBr);
 
   const bulanAda = [...new Set(tanggalTersedia().map(t => t.slice(0, 7)))];
   const selBl = el("select", "cari");
@@ -2136,7 +2183,7 @@ function panelKalender(w) {
   alat.appendChild(selBl);
   p.appendChild(alat);
 
-  const net = netHarian(pilih.emiten, pilih.kalBroker, pilih.pasar);
+  const ring = ringkasHarian(pilih.emiten, pilih.kalBroker, pilih.pasar);
   const [th, bl] = pilih.kalBulan.split("-").map(Number);
   const awal = new Date(th, bl - 1, 1);
   const hariAwal = (awal.getDay() + 6) % 7;                 // Senin = 0
@@ -2151,14 +2198,21 @@ function panelKalender(w) {
   for (let i = 0; i < hariAwal; i++) tr.appendChild(el("td", null, ""));
   for (let d = 1; d <= jml; d++) {
     const kunci = `${th}-${String(bl).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-    const v = net[kunci];
+    const a = ring[kunci];
     const td = el("td");
     const atas = el("div", "kal-tgl", String(d));
     td.appendChild(atas);
-    if (v !== undefined) {
-      const isi = el("div", "kal-nilai", v.toLocaleString("id-ID"));
+    if (a !== undefined) {
+      const v = a.lot;
+      const isi = el("div", "kal-nilai", (v > 0 ? "▲ " : v < 0 ? "▼ " : "") + lotSingkat(Math.abs(v)));
       isi.style.color = v > 0 ? "var(--naik)" : v < 0 ? "var(--turun)" : "var(--ink-2)";
+      isi.title = v.toLocaleString("id-ID") + " lot";
       td.appendChild(isi);
+      const nil = el("div", "kal-sub", nilaiSingkat(Math.abs(a.nilai)));
+      nil.title = "Rp " + Math.round(a.nilai).toLocaleString("id-ID");
+      td.appendChild(nil);
+      if (a.avg !== null)
+        td.appendChild(el("div", "kal-avg", "@" + Math.round(a.avg).toLocaleString("id-ID")));
       td.style.background = v > 0 ? "rgba(22,163,74,.14)" : v < 0 ? "rgba(220,38,38,.14)" : "";
     }
     tr.appendChild(td);
@@ -2167,8 +2221,10 @@ function panelKalender(w) {
   if (tr.children.length) tbody.appendChild(tr);
   tabel.appendChild(tbody);
   p.appendChild(tabel);
-  p.appendChild(el("div", "bantu", "Hijau = net beli, merah = net jual. " +
-    (pilih.kalBroker ? "Broker " + pilih.kalBroker : "Semua broker") + " · " + pilih.pasar));
+  p.appendChild(el("div", "bantu", "Baris sel: net lot · nilai transaksi · harga rata-rata. " +
+    "Hijau = net beli, merah = net jual. " +
+    (pilih.kalBroker ? pilih.kalBroker + " — " + namaBroker(pilih.kalBroker) : "Semua broker") +
+    " · " + pilih.pasar));
   w.appendChild(p);
 
   /* grafik lima broker */
@@ -2176,17 +2232,23 @@ function panelKalender(w) {
   g.appendChild(el("h2", null, "Grafik net lot harian — sampai 5 broker"));
   const alatG = el("div", "alat");
   const semuaKode = [...new Set(Object.keys(kumpulkan(pilih.emiten, "ALL MARKET", "", "")))].sort();
+  const dlG = el("datalist"); dlG.id = "daftarBrokerGrafik";
+  semuaKode.forEach(k => {
+    const o = el("option"); o.value = k; o.label = namaBroker(k); dlG.appendChild(o);
+  });
+  alatG.appendChild(dlG);
   pilih.grafik.forEach((kode, n) => {
-    const s = el("select", "cari");
-    const kosong = el("option", null, "–"); kosong.value = "";
-    s.appendChild(kosong);
-    semuaKode.forEach(k => {
-      const o = el("option", null, k); o.value = k;
-      if (k === kode) o.selected = true;
-      s.appendChild(o);
-    });
+    const s = el("input", "cari");
+    s.setAttribute("list", "daftarBrokerGrafik");
+    s.setAttribute("autocapitalize", "characters");
+    s.placeholder = "Broker " + (n + 1);
+    s.value = kode || "";
     s.style.borderBottom = "3px solid " + WARNA_BROKER[n];
-    s.onchange = () => { pilih.grafik[n] = s.value; halBroker(); };
+    s.onchange = () => {
+      const v = s.value.trim().toUpperCase();
+      if (!v || semuaKode.includes(v)) { pilih.grafik[n] = v; halBroker(); }
+      else { s.value = pilih.grafik[n] || ""; }
+    };
     alatG.appendChild(s);
   });
   g.appendChild(alatG);
