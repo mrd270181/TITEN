@@ -711,7 +711,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-08-22-1";
+const VERSI_APP = "2026-08-22-3";
 let batangVersiTampil = false;
 
 function batangVersi() {
@@ -1928,6 +1928,7 @@ const BRK = JSON.parse(document.getElementById("dataBroker").textContent);
 const PAPAN = ["REG", "NEGO", "TUNAI"];
 const NAMA_PAPAN = {REG: "REGULER", NEGO: "NEGO", TUNAI: "TUNAI"};
 const WARNA_BROKER = ["#1f77b4", "#d62728", "#2ca02c", "#e8890c", "#7b3fa0"];
+const WARNA_PIE = ["#1f77b4", "#d62728", "#2ca02c", "#e8890c", "#7b3fa0", "#0d9488", "#b45309", "#9ca3af"];
 
 /* indeks cepat */
 const brIdx = {}; BRK.br.forEach((k, i) => brIdx[k] = i);
@@ -2343,6 +2344,34 @@ function panelKalender(w) {
   g.appendChild(gambarGrafik(tgl, seri, pilih.grafik));
   g.appendChild(el("div", "bantu", "Naik = broker itu net beli pada tanggal tersebut."));
   w.appendChild(g);
+
+  /* pie: 7 broker pemegang terbesar — emiten, pasar, dan rentang tanggal sama dengan grafik */
+  const pieP = el("div", "panel");
+  pieP.appendChild(el("h2", null, "7 broker pemegang terbesar — " + pilih.emiten));
+  const saldoPie = saldoAwal(pilih.emiten, pilih.pasar);
+  const tambahPie = kumpulkan(pilih.emiten, pilih.pasar, pilih.dari, pilih.sampai);
+  const semuaPie = [...new Set([...Object.keys(saldoPie), ...Object.keys(tambahPie)])]
+    .map(k => ({
+      kode: k, nama: namaBroker(k),
+      lot: (saldoPie[k] ? saldoPie[k].net : 0) +
+           (tambahPie[k] ? tambahPie[k].beli - tambahPie[k].jual : 0)}))
+    .filter(x => x.lot > 0)
+    .sort((a, b) => b.lot - a.lot);
+  if (!semuaPie.length) {
+    pieP.appendChild(el("div", "bantu", "Belum ada broker berposisi positif untuk pilihan ini."));
+  } else {
+    const atas7 = semuaPie.slice(0, 7);
+    pieP.appendChild(gambarPie(atas7));
+    const totalPie = semuaPie.reduce((a, b) => a + b.lot, 0);
+    const porsi7 = atas7.reduce((a, b) => a + b.lot, 0);
+    pieP.appendChild(el("div", "bantu",
+      "Posisi = saldo awal per " + tglID(BRK.cutoff) + " " + BRK.cutoff.slice(0, 4) +
+      " ditambah net lot dalam rentang tanggal — sama seperti tabel Posisi. " +
+      "Persentase dihitung antar tujuh broker ini saja; bersama-sama mereka memegang " +
+      porsi7.toLocaleString("id-ID") + " lot dari " + totalPie.toLocaleString("id-ID") +
+      " lot yang tercatat (" + Math.round(porsi7 / totalPie * 100) + "%) · " + pilih.pasar + "."));
+  }
+  w.appendChild(pieP);
 }
 
 function gambarGrafik(tgl, seri, kode) {
@@ -2376,6 +2405,44 @@ function gambarGrafik(tgl, seri, kode) {
     ket.appendChild(tag);
   });
   bungkus.appendChild(ket);
+  return bungkus;
+}
+
+function gambarPie(data) {
+  const L = 320, T = 280, cx = 160, cy = 140, r = 112;
+  const total = data.reduce((a, b) => a + b.lot, 0) || 1;
+  const bagian = [];
+  let sudut = -Math.PI / 2;
+  data.forEach((d, n) => {
+    const porsi = d.lot / total;
+    const warna = WARNA_PIE[n] || WARNA_PIE[WARNA_PIE.length - 1];
+    if (porsi >= 0.9999) {
+      bagian.push(`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${warna}"/>`);
+    } else {
+      const akhir = sudut + porsi * 2 * Math.PI;
+      const besar = porsi > 0.5 ? 1 : 0;
+      const x1 = cx + r * Math.cos(sudut), y1 = cy + r * Math.sin(sudut);
+      const x2 = cx + r * Math.cos(akhir), y2 = cy + r * Math.sin(akhir);
+      bagian.push(`<path d="M${cx},${cy} L${x1.toFixed(1)},${y1.toFixed(1)} ` +
+                  `A${r},${r} 0 ${besar},1 ${x2.toFixed(1)},${y2.toFixed(1)} Z" fill="${warna}"/>`);
+      if (porsi > 0.05) {
+        const tengah = (sudut + akhir) / 2, rr = r * 0.66;
+        bagian.push(`<text x="${(cx + rr * Math.cos(tengah)).toFixed(1)}" ` +
+                    `y="${(cy + rr * Math.sin(tengah) + 4).toFixed(1)}" text-anchor="middle" ` +
+                    `font-size="13" font-weight="600" fill="#fff">${Math.round(porsi * 100)}%</text>`);
+      }
+      sudut = akhir;
+    }
+  });
+  const bungkus = el("div", "grafik");
+  bungkus.innerHTML = `<svg viewBox="0 0 ${L} ${T}" width="100%" role="img">${bagian.join("")}</svg>`;
+  data.forEach((d, n) => {
+    const baris = el("div", "bantu",
+      "■ " + d.kode + (d.kode === "Lainnya" ? "" : " — " + d.nama) + " · " +
+      d.lot.toLocaleString("id-ID") + " lot · " + (d.lot / total * 100).toFixed(1) + "%");
+    baris.style.color = WARNA_PIE[n] || WARNA_PIE[WARNA_PIE.length - 1];
+    bungkus.appendChild(baris);
+  });
   return bungkus;
 }
 
