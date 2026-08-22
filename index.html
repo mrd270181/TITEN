@@ -711,7 +711,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-08-22-3";
+const VERSI_APP = "2026-08-22-4";
 let batangVersiTampil = false;
 
 function batangVersi() {
@@ -2425,11 +2425,15 @@ function gambarPie(data) {
       const x2 = cx + r * Math.cos(akhir), y2 = cy + r * Math.sin(akhir);
       bagian.push(`<path d="M${cx},${cy} L${x1.toFixed(1)},${y1.toFixed(1)} ` +
                   `A${r},${r} 0 ${besar},1 ${x2.toFixed(1)},${y2.toFixed(1)} Z" fill="${warna}"/>`);
-      if (porsi > 0.05) {
-        const tengah = (sudut + akhir) / 2, rr = r * 0.66;
-        bagian.push(`<text x="${(cx + rr * Math.cos(tengah)).toFixed(1)}" ` +
-                    `y="${(cy + rr * Math.sin(tengah) + 4).toFixed(1)}" text-anchor="middle" ` +
-                    `font-size="13" font-weight="600" fill="#fff">${Math.round(porsi * 100)}%</text>`);
+      if (porsi > 0.04) {
+        const tengah = (sudut + akhir) / 2, rr = r * 0.64;
+        const tx = (cx + rr * Math.cos(tengah)).toFixed(1);
+        const ty = cy + rr * Math.sin(tengah);
+        bagian.push(`<text x="${tx}" y="${(ty - 3).toFixed(1)}" text-anchor="middle" ` +
+                    `font-size="14" font-weight="700" fill="#fff">${d.kode}</text>`);
+        bagian.push(`<text x="${tx}" y="${(ty + 13).toFixed(1)}" text-anchor="middle" ` +
+                    `font-size="12" font-weight="600" fill="#fff" ` +
+                    `opacity=".92">${(porsi * 100).toFixed(1)}%</text>`);
       }
       sudut = akhir;
     }
