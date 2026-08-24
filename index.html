@@ -685,7 +685,7 @@ function halVolume() {
 /* ================= navigasi & tema ================= */
 document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
   document.querySelectorAll("nav button").forEach(x => x.classList.toggle("aktif", x === b));
-  ["watchlist", "screener", "volume", "broker", "data"].forEach(h =>
+  ["watchlist", "screener", "volume", "broker", "cari", "data"].forEach(h =>
     $("#hal-" + h).hidden = (h !== b.dataset.hal));
   window.scrollTo(0, 0);
 });
@@ -715,7 +715,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-08-23-4";
+const VERSI_APP = "2026-08-24-1";
 let batangVersiTampil = false;
 
 function batangVersi() {
