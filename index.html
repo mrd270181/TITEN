@@ -200,6 +200,7 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
   <section id="hal-screener" hidden></section>
   <section id="hal-volume" hidden></section>
   <section id="hal-broker" hidden></section>
+  <section id="hal-cari" hidden></section>
   <section id="hal-data" hidden></section>
   <footer>
     Sumber: Ringkasan Saham &amp; laporan keuangan XBRL Bursa Efek Indonesia.<br>
@@ -221,6 +222,9 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
   <button data-hal="broker">
     <svg viewBox="0 0 24 24"><path d="M4 19h16"/><path d="M7 19V9"/><path d="M12 19V5"/><path d="M17 19v-6"/></svg>
     BROKER</button>
+  <button data-hal="cari">
+    <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+    CARI</button>
   <button data-hal="data">
     <svg viewBox="0 0 24 24"><path d="M12 3v11"/><path d="M8 11l4 4 4-4"/><path d="M4 20h16"/></svg>
     PERBARUI</button>
@@ -711,7 +715,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-08-22-4";
+const VERSI_APP = "2026-08-23-4";
 let batangVersiTampil = false;
 
 function batangVersi() {
@@ -1489,7 +1493,7 @@ function terapkanKepemilikan() {
 
 function gambarUlang() {
   $("#tglData").textContent = "Data " + tglID(DATA.dibuat) + " " + DATA.dibuat.slice(0, 4);
-  halWatchlist(); halScreener(); halVolume(); halBroker(); halData();
+  halWatchlist(); halScreener(); halVolume(); halBroker(); halCari(); halData();
 }
 
 async function muatDanTerapkan() {
@@ -2581,6 +2585,336 @@ async function muatBroker() {
   } catch (e) { trxImpor = {REG: [], NEGO: [], TUNAI: []}; }
 }
 
+
+/* ===== CARI EMITEN ===== */
+let LK = null;                 /* isi data/lk.json, diambil sekali */
+let MILIK = null;              /* isi data/milik.json — pemegang saham >=1% */
+let PROFIL = null;             /* isi data/profil.json — profil perusahaan dari IDX */
+let lkGagal = false;
+let cariTeks = "", cariKode = "", cariSub = "keystats", cariLap = "lr", cariPeriode = "FY";
+
+const POS_LR = [["pendapatan", "Pendapatan"], ["beban_pokok", "Beban Pokok Penjualan"],
+  ["laba_kotor", "Laba Kotor"], ["beban_penjualan", "Beban Penjualan"],
+  ["beban_umum", "Beban Umum & Administrasi"], ["laba_sebelum_pajak", "Laba Sebelum Pajak"],
+  ["pajak", "Beban Pajak"], ["laba_bersih", "Laba Bersih"],
+  ["laba_induk", "Laba Bersih (pemilik induk)"]];
+const POS_NERACA = [["kas", "Kas dan Setara Kas"], ["piutang_usaha", "Piutang Usaha"],
+  ["persediaan", "Persediaan"], ["aset_lancar", "Jumlah Aset Lancar"],
+  ["aset", "Jumlah Aset"], ["utang_usaha", "Utang Usaha"],
+  ["liabilitas_pendek", "Liabilitas Jangka Pendek"], ["liabilitas_panjang", "Liabilitas Jangka Panjang"],
+  ["liabilitas", "Jumlah Liabilitas"], ["ekuitas_induk", "Ekuitas (pemilik induk)"],
+  ["ekuitas", "Jumlah Ekuitas"]];
+const POS_AK = [["ak_operasi", "Arus Kas dari Aktivitas Operasi"],
+  ["ak_investasi", "Arus Kas dari Aktivitas Investasi"],
+  ["ak_pendanaan", "Arus Kas dari Aktivitas Pendanaan"],
+  ["ak_bersih", "Kenaikan (Penurunan) Bersih Kas"], ["kas_akhir", "Kas Akhir Periode"]];
+
+async function muatLK() {
+  if (LK || lkGagal) return;
+  try {
+    const r = await fetch(GUDANG + "lk.json", {cache: "no-cache"});
+    if (!r.ok) throw new Error(r.status);
+    LK = await r.json();
+  } catch (e) { lkGagal = true; }
+  try {
+    const r2 = await fetch(GUDANG + "milik.json", {cache: "no-cache"});
+    if (r2.ok) MILIK = await r2.json();
+  } catch (e) { MILIK = null; }
+  try {
+    const r3 = await fetch(GUDANG + "profil.json", {cache: "no-cache"});
+    if (r3.ok) PROFIL = await r3.json();
+  } catch (e) { PROFIL = null; }
+}
+
+/* gabungkan potongan periode (neraca & laba rugi terpisah) jadi satu per tanggal */
+function periodeLK(kode) {
+  const isi = (LK && LK.data && LK.data[kode]) || [];
+  const peta = {};
+  isi.forEach(p => {
+    const k = p.akhir;
+    if (!peta[k]) peta[k] = {akhir: p.akhir, jenis: p.jenis, mata_uang: p.mata_uang, pos: {}};
+    Object.keys(p.pos).forEach(n => peta[k].pos[n] = p.pos[n]);
+  });
+  return Object.values(peta).sort((a, b) => a.akhir < b.akhir ? 1 : -1);
+}
+
+function rupiah(nilai, mata) {
+  if (nilai === undefined || nilai === null) return "-";
+  const n = mata === "USD" ? nilai * kursUSD() : nilai;
+  const m = n / 1e9;
+  const teks = Math.abs(m) >= 100 ? Math.round(m).toLocaleString("id-ID")
+                                  : m.toFixed(1).replace(".", ",");
+  return (m < 0 ? "(" + teks.replace("-", "") + ")" : teks) + " M";
+}
+
+function tabelLK(periode, daftarPos) {
+  const t = el("table"), th = el("tr");
+  th.appendChild(el("th", null, ""));
+  periode.forEach(p => th.appendChild(el("th", null, p.akhir.slice(0, 4))));
+  t.appendChild(th);
+  daftarPos.forEach(([kunci, label]) => {
+    if (!periode.some(p => p.pos[kunci] !== undefined)) return;
+    const tr = el("tr");
+    tr.appendChild(el("td", null, label));
+    periode.forEach(p => {
+      const td = el("td", null, rupiah(p.pos[kunci], p.mata_uang));
+      td.style.textAlign = "right";
+      tr.appendChild(td);
+    });
+    t.appendChild(tr);
+  });
+  return t;
+}
+
+function panelKeystats(kode, periode) {
+  const p = el("div", "panel");
+  p.appendChild(el("h2", null, "Keystats"));
+  if (!periode.length) {
+    p.appendChild(el("div", "bantu", "Laporan keuangan " + kode + " belum ada di server."));
+    return p;
+  }
+  const t = el("table"), th = el("tr");
+  th.appendChild(el("th", null, ""));
+  periode.forEach(x => th.appendChild(el("th", null, x.akhir.slice(0, 4))));
+  t.appendChild(th);
+  const baris = [
+    ["Pendapatan", x => rupiah(x.pos.pendapatan, x.mata_uang)],
+    ["Laba Bersih", x => rupiah(x.pos.laba_bersih, x.mata_uang)],
+    ["Jumlah Aset", x => rupiah(x.pos.aset, x.mata_uang)],
+    ["Jumlah Ekuitas", x => rupiah(x.pos.ekuitas, x.mata_uang)],
+    ["EPS", x => x.pos.eps === undefined ? "-" :
+      Math.round(x.pos.eps * (x.mata_uang === "USD" ? kursUSD() : 1)).toLocaleString("id-ID")],
+    ["Margin Laba Bersih", x => (x.pos.laba_bersih && x.pos.pendapatan)
+      ? (x.pos.laba_bersih / x.pos.pendapatan * 100).toFixed(1).replace(".", ",") + "%" : "-"],
+    ["ROE", x => (x.pos.laba_bersih && x.pos.ekuitas)
+      ? (x.pos.laba_bersih / x.pos.ekuitas * 100).toFixed(1).replace(".", ",") + "%" : "-"],
+    ["DER", x => (x.pos.liabilitas && x.pos.ekuitas)
+      ? (x.pos.liabilitas / x.pos.ekuitas).toFixed(2).replace(".", ",") + "x" : "-"],
+  ];
+  baris.forEach(([label, hitung]) => {
+    const tr = el("tr");
+    tr.appendChild(el("td", null, label));
+    periode.forEach(x => {
+      const td = el("td", null, hitung(x)); td.style.textAlign = "right"; tr.appendChild(td);
+    });
+    t.appendChild(tr);
+  });
+  p.appendChild(t);
+  if (periode[0].mata_uang === "USD")
+    p.appendChild(el("div", "bantu",
+      "Emiten ini melapor dalam dolar; angka sudah dikalikan kurs " +
+      kursUSD().toLocaleString("id-ID") + " yang kamu setel di tab PERBARUI."));
+  return p;
+}
+
+function panelProfil(kode, periode) {
+  const p = el("div", "panel");
+  p.appendChild(el("h2", null, "Profil"));
+  const baris = [];
+  const ix = (PROFIL && PROFIL.data && PROFIL.data[kode]) || null;
+  if (ix && ix.kegiatan) {
+    p.appendChild(el("div", "bantu", "Kegiatan usaha utama"));
+    const u = el("div", null, ix.kegiatan);
+    u.style.margin = "4px 0 10px";
+    p.appendChild(u);
+  }
+  const pr = (LK && LK.profil && LK.profil[kode]) || null;
+  if (ix) {
+    [["nama", "Nama perusahaan"], ["tgl_catat", "Tanggal pencatatan"], ["papan", "Papan"],
+     ["situs", "Situs"], ["alamat", "Alamat"], ["telepon", "Telepon"], ["email", "Email"],
+     ["bae", "Biro Administrasi Efek"]].forEach(([k, label]) => {
+      if (ix[k]) baris.push([label, String(ix[k]).replace(/\n/g, ", ")]);
+    });
+  }
+  if (pr) {
+    [["sektor", "Sektor"], ["subsektor", "Subsektor"],
+     ["industri", "Industri"], ["subindustri", "Subindustri"],
+     ["pengendali", "Pemegang saham pengendali"], ["jenis_entitas", "Jenis entitas"],
+     ["mata_uang", "Mata uang laporan"], ["auditor", "Auditor"], ["opini", "Opini auditor"],
+     ["lk_terakhir", "Laporan terakhir"]].forEach(([k, label]) => {
+      if (pr[k]) baris.push([label, pr[k]]);
+    });
+  }
+  const m = daftarMilik[0];
+  const a = m && m.agg ? m.agg[kode] : null;
+  if (a) {
+    baris.push(["Pemegang saham ≥1%", a.n1 + " pihak"]);
+    baris.push(["Porsi pemegang ≥1%", a.p1.toFixed(2).replace(".", ",") + "%"]);
+    baris.push(["Pemegang terbesar", a.top.toFixed(2).replace(".", ",") + "%"]);
+    baris.push(["Porsi pemegang ≥5%", a.p5.toFixed(2).replace(".", ",") + "%"]);
+    baris.push(["Porsi asing (dari ≥1%)", a.pa.toFixed(2).replace(".", ",") + "%"]);
+  }
+  if (!baris.length) {
+    p.appendChild(el("div", "bantu",
+      "Belum ada data profil. Impor berkas kepemilikan ≥1% di tab PERBARUI, " +
+      "atau tunggu laporan keuangan emiten ini masuk ke server."));
+    return p;
+  }
+  const t = el("table");
+  baris.forEach(([k, v]) => {
+    const tr = el("tr");
+    tr.appendChild(el("td", null, k));
+    const td = el("td", null, v); td.style.textAlign = "right";
+    tr.appendChild(td); t.appendChild(tr);
+  });
+  p.appendChild(t);
+  p.appendChild(el("div", "bantu", ix
+    ? "Kegiatan usaha dan kontak dari profil perusahaan tercatat IDX; sektor, auditor, " +
+      "dan opini dari lembar informasi umum laporan keuangan."
+    : "Keterangan di atas diambil dari lembar informasi umum laporan keuangan IDX."));
+  return p;
+}
+
+function panelPemegang(kode) {
+  const p = el("div", "panel");
+  const isi = (MILIK && MILIK.data && MILIK.data[kode]) || null;
+  p.appendChild(el("h2", null, "Pemegang saham ≥1%"));
+  if (!isi) {
+    p.appendChild(el("div", "bantu",
+      "Belum ada di server. Masukkan berkas KSEI \u201Csatu persen\u201D lewat tambah_milik.py " +
+      "di laptop, lalu ekspor dan unggah ulang."));
+    return p;
+  }
+  p.appendChild(el("div", "bantu", "Posisi " + tglID(MILIK.tanggal) + "."));
+
+  const t = el("table"), th = el("tr");
+  ["Nama", "Golongan", "Saham", "%"].forEach(x => th.appendChild(el("th", null, x)));
+  t.appendChild(th);
+  isi.forEach(([nama, gol, la, saham, persen]) => {
+    const tr = el("tr");
+    tr.appendChild(el("td", null, nama + (la === "F" ? " (asing)" : "")));
+    tr.appendChild(el("td", null, gol));
+    const a = el("td", null, (saham / 1e6).toFixed(1).replace(".", ",") + " jt");
+    a.style.textAlign = "right"; tr.appendChild(a);
+    const b = el("td", null, persen.toFixed(2).replace(".", ",") + "%");
+    b.style.textAlign = "right"; tr.appendChild(b);
+    t.appendChild(tr);
+  });
+  p.appendChild(t);
+
+  /* komposisi menurut golongan investor */
+  const gol = {};
+  let asing = 0, lokal = 0;
+  isi.forEach(([nama, g, la, saham, persen]) => {
+    gol[g || "Lainnya"] = (gol[g || "Lainnya"] || 0) + persen;
+    if (la === "F") asing += persen; else lokal += persen;
+  });
+  const urut = Object.keys(gol).sort((a, b) => gol[b] - gol[a])
+    .map(g => ({kode: g, nama: g, lot: gol[g]}));
+  if (urut.length) {
+    p.appendChild(el("h2", null, "Komposisi pemegang ≥1%"));
+    p.appendChild(gambarPie(urut.slice(0, 7)));
+    p.appendChild(el("div", "bantu",
+      "Lokal " + lokal.toFixed(2).replace(".", ",") + "% · asing " +
+      asing.toFixed(2).replace(".", ",") + "% · jumlah tercatat " +
+      (lokal + asing).toFixed(2).replace(".", ",") + "% dari seluruh saham. " +
+      "Sisanya dipegang publik di bawah 1% dan tidak dirinci KSEI."));
+  }
+  return p;
+}
+
+function halCari() {
+  const w = $("#hal-cari"); if (!w) return;
+  w.innerHTML = "";
+
+  /* ---- kotak pencarian ---- */
+  const pc = el("div", "panel");
+  pc.appendChild(el("h2", null, "Cari emiten"));
+  const inp = el("input");
+  inp.type = "search"; inp.placeholder = "Ketik kode atau nama emiten"; inp.value = cariTeks;
+  inp.oninput = () => { cariTeks = inp.value; isiHasil(); };
+  pc.appendChild(inp);
+  const hasil = el("div");
+  pc.appendChild(hasil);
+  w.appendChild(pc);
+
+  function isiHasil() {
+    hasil.innerHTML = "";
+    const q = cariTeks.trim().toUpperCase();
+    if (!q) { hasil.appendChild(el("div", "bantu", "Ketik minimal satu huruf.")); return; }
+    const cocok = DATA.scr
+      .filter(b => String(b[0]).indexOf(q) === 0 || String(b[1]).toUpperCase().indexOf(q) >= 0)
+      .slice(0, 25);
+    if (!cocok.length) { hasil.appendChild(el("div", "bantu", "Tidak ada yang cocok.")); return; }
+    cocok.forEach(b => {
+      const t = el("button", "tambah", b[0] + " — " + (b[1] || ""));
+      t.style.display = "block"; t.style.width = "100%"; t.style.textAlign = "left";
+      t.onclick = () => { cariKode = b[0]; halCari(); window.scrollTo(0, 0); };
+      hasil.appendChild(t);
+    });
+  }
+  isiHasil();
+
+  if (!cariKode) return;
+
+  /* ---- halaman emiten ---- */
+  const periodeSemua = periodeLK(cariKode);
+  const periode = periodeSemua.filter(p => (cariPeriode === "TTM" ? false : p.jenis === cariPeriode))
+                              .slice(0, 3);
+
+  const ph = el("div", "panel");
+  const baris = barisScr[cariKode];
+  ph.appendChild(el("h2", null, cariKode + (baris && baris[1] ? " — " + baris[1] : "")));
+  const chip = el("div", "bantu");
+  [["Q1", "Q1"], ["Q2", "Q2"], ["Q3", "Q3"], ["Q4", "Q4"], ["TTM", "TTM"], ["FY", "Tahunan"]]
+    .forEach(([kode, label]) => {
+      const b = el("button", "tambah", label);
+      if (cariPeriode === kode) b.style.fontWeight = "700";
+      b.onclick = () => { cariPeriode = kode; halCari(); };
+      chip.appendChild(b);
+    });
+  ph.appendChild(chip);
+  const tab = el("div", "bantu");
+  [["keystats", "KEYSTATS"], ["finansial", "FINANSIAL"], ["profil", "PROFIL"]]
+    .forEach(([kode, label]) => {
+      const b = el("button", "tambah", label);
+      if (cariSub === kode) b.style.fontWeight = "700";
+      b.onclick = () => { cariSub = kode; halCari(); };
+      tab.appendChild(b);
+    });
+  ph.appendChild(tab);
+  w.appendChild(ph);
+
+  if (lkGagal) w.appendChild(el("div", "panel")).appendChild(
+    el("div", "bantu", "Data laporan keuangan belum bisa diambil dari server."));
+
+  if (cariPeriode !== "FY" && cariSub !== "profil") {
+    const kosong = el("div", "panel");
+    kosong.appendChild(el("div", "bantu", cariPeriode === "TTM"
+      ? "TTM butuh laporan triwulanan; sekarang baru ada laporan tahunan."
+      : "Laporan triwulanan " + cariPeriode + " belum dimasukkan."));
+    w.appendChild(kosong);
+    return;
+  }
+
+  if (cariSub === "keystats") {
+    w.appendChild(panelKeystats(cariKode, periode));
+  } else if (cariSub === "profil") {
+    w.appendChild(panelProfil(cariKode, periode));
+    w.appendChild(panelPemegang(cariKode));
+  } else {
+    const pf = el("div", "panel");
+    pf.appendChild(el("h2", null, "Finansial"));
+    const sub = el("div", "bantu");
+    [["lr", "Laba Rugi"], ["neraca", "Neraca"], ["ak", "Arus Kas"]].forEach(([kode, label]) => {
+      const b = el("button", "tambah", label);
+      if (cariLap === kode) b.style.fontWeight = "700";
+      b.onclick = () => { cariLap = kode; halCari(); };
+      sub.appendChild(b);
+    });
+    pf.appendChild(sub);
+    if (!periode.length) {
+      pf.appendChild(el("div", "bantu",
+        "Laporan keuangan " + cariKode + " belum ada di server."));
+    } else {
+      pf.appendChild(tabelLK(periode,
+        cariLap === "lr" ? POS_LR : cariLap === "neraca" ? POS_NERACA : POS_AK));
+      pf.appendChild(el("div", "bantu", "Angka dalam miliar rupiah. Tanda kurung = negatif."));
+    }
+    w.appendChild(pf);
+  }
+}
+
 /* ===== SINKRON DENGAN GUDANG DI SERVER ===== */
 /* Data harian tidak lagi harus dipilih manual: app membaca data/manifest.json,
    membandingkannya dengan yang sudah tersimpan di HP, lalu mengunduh hanya
@@ -2676,7 +3010,7 @@ async function sinkron(diam) {
 }
 
 
-muatDanTerapkan().then(() => { gambarUlang(); sinkron(true).then(ada => { if (ada) gambarUlang(); }); });
+muatDanTerapkan().then(() => { gambarUlang(); muatLK().then(() => halCari()); sinkron(true).then(ada => { if (ada) gambarUlang(); }); });
 
 </script>
 </body>
