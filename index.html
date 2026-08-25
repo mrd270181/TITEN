@@ -775,19 +775,58 @@ function halVolume() {
     "Garis = net foreign kumulatif dalam lot sejak " + tglID(volDari) +
     ". Naik berarti asing net beli."));
 
-  const dataPie = kode7.map(k => ({kode: k, nama: DATA.nama[k] || "",
-                                   lot: Math.abs(Math.round((nf[k] || 0) / LOT))}))
-                       .filter(x => x.lot > 0).sort((a, b) => b.lot - a.lot);
-  if (dataPie.length) {
-    pg.appendChild(el("h2", null, "Porsi net foreign (nilai mutlak)"));
-    pg.appendChild(gambarPie(dataPie));
-    const beli = kode7.filter(k => (nf[k] || 0) > 0);
-    const jual = kode7.filter(k => (nf[k] || 0) < 0);
-    pg.appendChild(el("div", "bantu",
-      "Pie memakai nilai mutlak, jadi net beli dan net jual sama-sama terlihat besar. " +
-      "Net beli: " + (beli.join(", ") || "-") + ". Net jual: " + (jual.join(", ") || "-") + "."));
-  }
   w.appendChild(pg);
+
+  /* ---- papan peringkat: net beli kiri, net jual kanan ---- */
+  const beli = Object.keys(nf).filter(k => nf[k] > 0).sort((a, b) => nf[b] - nf[a]);
+  const jual = Object.keys(nf).filter(k => nf[k] < 0).sort((a, b) => nf[a] - nf[b]);
+  const pr = el("div", "panel");
+  pr.appendChild(el("h2", null, "Net foreign seluruh emiten"));
+  pr.appendChild(el("div", "bantu",
+    tglID(volDari) + " s/d " + tglID(volSampai) + " · net = foreign buy dikurangi foreign sell, " +
+    "dijumlahkan sepanjang rentang."));
+  const tbr = el("div", "tbl-bungkus"), tr2 = el("table");
+  const kep = el("tr");
+  ["#", "Net Beli", "Lot", "Net Jual", "Lot"].forEach(x => kep.appendChild(el("th", null, x)));
+  tr2.appendChild(kep);
+  const banyak = Math.min(20, Math.max(beli.length, jual.length));
+  for (let i = 0; i < banyak; i++) {
+    const b = beli[i], j = jual[i];
+    const tr = el("tr");
+    tr.appendChild(el("td", null, String(i + 1)));
+    const tdB = el("td", null, b || "");
+    if (b) tdB.style.fontWeight = "600";
+    tr.appendChild(tdB);
+    const tdBl = el("td", "naik", b ? lot(nf[b]) : "");
+    tdBl.style.textAlign = "right"; tr.appendChild(tdBl);
+    tr.appendChild(el("td", null, j || ""));
+    const tdJl = el("td", "turun", j ? "-" + lot(Math.abs(nf[j])) : "");
+    tdJl.style.textAlign = "right"; tr.appendChild(tdJl);
+    tr2.appendChild(tr);
+  }
+  tbr.appendChild(tr2); pr.appendChild(tbr);
+  w.appendChild(pr);
+
+  /* ---- pie: net murni, beli dan jual dipisah ---- */
+  const pp = el("div", "panel");
+  const pieBeli = beli.slice(0, 7).map(k => ({kode: k, nama: DATA.nama[k] || "",
+                                              lot: Math.round(nf[k] / LOT)})).filter(x => x.lot > 0);
+  const pieJual = jual.slice(0, 7).map(k => ({kode: k, nama: DATA.nama[k] || "",
+                                              lot: Math.round(-nf[k] / LOT)})).filter(x => x.lot > 0);
+  if (pieBeli.length) {
+    pp.appendChild(el("h2", null, "7 net beli asing terbesar"));
+    pp.appendChild(gambarPie(pieBeli));
+  }
+  if (pieJual.length) {
+    pp.appendChild(el("h2", null, "7 net jual asing terbesar"));
+    pp.appendChild(gambarPie(pieJual));
+  }
+  if (pieBeli.length || pieJual.length) {
+    pp.appendChild(el("div", "bantu",
+      "Nilai net sepanjang rentang, bukan nilai harian. Emiten yang net beli dan net jualnya " +
+      "saling menghapus tidak muncul di kedua pie."));
+    w.appendChild(pp);
+  }
 }
 
 /* ================= navigasi & tema ================= */
@@ -823,7 +862,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-08-25-1";
+const VERSI_APP = "2026-08-25-2";
 let batangVersiTampil = false;
 
 function batangVersi() {
@@ -884,7 +923,7 @@ const ASLI = {
   nama: Object.assign({}, DATA.nama),
   scr: DATA.scr.map(b => b.slice()),
 };
-const BATAS_HARI = 60;                 // simpan paling banyak 60 hari bursa
+const BATAS_HARI = 260;                // simpan paling banyak 260 hari bursa (~1 tahun)
 let kodeTambahan = [];                 // emiten yang belum ada di data bawaan
 let catatanImpor = [];                 // log hasil impor terakhir
 let daftarHari = [];                   // data harian tersimpan, terbaru dulu
