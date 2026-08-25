@@ -632,54 +632,162 @@ function halScreener() {
 }
 
 /* ================= CEK VOLUME ================= */
+const WARNA_NF = ["#1f77b4", "#d62728", "#2ca02c", "#e8890c", "#7b3fa0",
+                  "#0d9488", "#b45309", "#9ca3af"];
+let volKode = "DSSA", volDari = "", volSampai = "", volPilihan = "";
+const LOT = 100;                                  /* 1 lot = 100 lembar */
+const lot = v => Math.round((v || 0) / LOT).toLocaleString("id-ID");
+
+function tglVolTersedia() {
+  return (DATA.tglVol || []).slice();
+}
+
+/* net foreign (lembar) per emiten dalam rentang -> {kode: total} */
+function netForeignRentang(i1, i2) {
+  const hasil = {};
+  Object.keys(DATA.vol).forEach(k => {
+    let n = 0, ada = false;
+    for (let i = i1; i <= i2; i++) {
+      const r = DATA.vol[k][i];
+      if (!r || r[0] === null) continue;
+      n += (r[2] || 0) - (r[1] || 0); ada = true;
+    }
+    if (ada) hasil[k] = n;
+  });
+  return hasil;
+}
+
 function halVolume() {
   const w = $("#hal-volume"); w.innerHTML = "";
+  const tgl = tglVolTersedia();
+  if (!tgl.length) { w.appendChild(el("div", "panel")).appendChild(
+    el("div", "bantu", "Belum ada data harian.")); return; }
+  if (!volDari || tgl.indexOf(volDari) < 0) volDari = tgl[0];
+  if (!volSampai || tgl.indexOf(volSampai) < 0) volSampai = tgl[tgl.length - 1];
+  let i1 = tgl.indexOf(volDari), i2 = tgl.indexOf(volSampai);
+  if (i1 > i2) { const x = i1; i1 = i2; i2 = x; volDari = tgl[i1]; volSampai = tgl[i2]; }
+
+  /* ---- panel pilihan ---- */
   const p = el("div", "panel");
-  p.appendChild(el("h2", null, "Cek volume &amp; net foreign per emiten"));
-  const lab = el("label", null, "Kode emiten"); p.appendChild(lab);
-  const inp = el("input"); inp.placeholder = "contoh: DSSA"; inp.value = "DSSA";
+  p.appendChild(el("h2", null, "Cek volume & net foreign per emiten"));
+  p.appendChild(el("label", null, "Kode emiten"));
+  const inp = el("input"); inp.placeholder = "contoh: DSSA"; inp.value = volKode;
   inp.setAttribute("list", "daftarEmiten"); inp.autocapitalize = "characters";
+  inp.oninput = () => { volKode = inp.value.trim().toUpperCase(); isiTabel(); };
   p.appendChild(inp);
   const dl = el("datalist"); dl.id = "daftarEmiten";
   Object.keys(DATA.vol).sort().forEach(k => { const o = el("option"); o.value = k; dl.appendChild(o); });
   p.appendChild(dl);
+
+  const alat = el("div", "alat");
+  [["Dari", "volDari"], ["Sampai", "volSampai"]].forEach(([label, kunci]) => {
+    const bungkus = el("div");
+    bungkus.appendChild(el("label", null, label));
+    const sel = el("select");
+    tgl.forEach(t => {
+      const o = el("option", null, tglID(t)); o.value = t;
+      if ((kunci === "volDari" ? volDari : volSampai) === t) o.selected = true;
+      sel.appendChild(o);
+    });
+    sel.onchange = () => {
+      if (kunci === "volDari") volDari = sel.value; else volSampai = sel.value;
+      halVolume(); window.scrollTo(0, 0);
+    };
+    bungkus.appendChild(sel);
+    alat.appendChild(bungkus);
+  });
+  p.appendChild(alat);
   const nama = el("div", "hitung"); nama.id = "namaVol"; p.appendChild(nama);
   w.appendChild(p);
 
+  /* ---- tabel harian ---- */
   const kotak = el("div", "panel");
   const tb = el("div", "tbl-bungkus"); const t = el("table");
-  t.innerHTML = `<thead><tr><th>Tanggal</th><th>Volume</th><th>Foreign Buy</th>
-    <th>Foreign Sell</th><th>Net Foreign</th></tr></thead>`;
+  t.innerHTML = `<thead><tr><th>Tanggal</th><th>Volume (lot)</th><th>F. Buy (lot)</th>
+    <th>F. Sell (lot)</th><th>Net Foreign (lot)</th></tr></thead>`;
   const tbody = el("tbody"); t.appendChild(tbody); tb.appendChild(t); kotak.appendChild(tb);
   w.appendChild(kotak);
 
-  function gambar() {
-    const kd = inp.value.trim().toUpperCase();
-    const d = DATA.vol[kd];
+  function isiTabel() {
+    const d = DATA.vol[volKode];
     tbody.innerHTML = "";
-    if (!d) { $("#namaVol").textContent = kd ? "Emiten tidak ditemukan" : "";
+    if (!d) {
+      $("#namaVol").textContent = volKode ? "Emiten tidak ditemukan" : "";
       const tr = el("tr"); const td = el("td", "kosong", "Ketik kode emiten di atas");
-      td.colSpan = 5; tr.appendChild(td); tbody.appendChild(tr); return; }
-    let totNet = 0, hari = 0;
-    d.forEach((r, i) => {
+      td.colSpan = 5; tr.appendChild(td); tbody.appendChild(tr); return;
+    }
+    let totNet = 0, totVol = 0, hari = 0;
+    for (let i = i2; i >= i1; i--) {
+      const r = d[i];
+      if (!r || r[0] === null) continue;
       const [vol, fs, fb] = r;
-      if (vol === null) return;
-      const net = (fb || 0) - (fs || 0); totNet += net; hari++;
+      const net = (fb || 0) - (fs || 0);
+      totNet += net; totVol += vol; hari++;
       const tr = el("tr");
-      tr.appendChild(el("td", null, tglID(DATA.tglVol[i])));
-      tr.appendChild(el("td", null, ringkas(vol)));
-      tr.appendChild(el("td", null, ringkas(fb)));
-      tr.appendChild(el("td", null, ringkas(fs)));
+      tr.appendChild(el("td", null, tglID(tgl[i])));
+      tr.appendChild(el("td", null, lot(vol)));
+      tr.appendChild(el("td", null, lot(fb)));
+      tr.appendChild(el("td", null, lot(fs)));
       const a = arah(net);
-      tr.appendChild(el("td", a.k, a.t + ringkas(Math.abs(net))));
+      tr.appendChild(el("td", a.k, a.t + lot(Math.abs(net))));
       tbody.appendChild(tr);
-    });
+    }
     const a = arah(totNet);
-    $("#namaVol").innerHTML = `${DATA.nama[kd] || ""} — ${hari} hari bursa · net foreign total
-      <b class="${a.k}">${a.t}${ringkas(Math.abs(totNet))}</b> lembar`;
+    $("#namaVol").innerHTML = `${DATA.nama[volKode] || ""} — ${hari} hari bursa ·
+      volume ${lot(totVol)} lot · net foreign
+      <b class="${a.k}">${a.t}${lot(Math.abs(totNet))} lot</b>`;
   }
-  inp.addEventListener("input", gambar);
-  gambar();
+  isiTabel();
+
+  /* ---- net foreign beberapa emiten ---- */
+  const nf = netForeignRentang(i1, i2);
+  const urut = Object.keys(nf).sort((a, b) => Math.abs(nf[b]) - Math.abs(nf[a]));
+  if (!volPilihan) volPilihan = urut.slice(0, 7).join(", ");
+  let kode7 = volPilihan.split(/[ ,;]+/).map(x => x.trim().toUpperCase())
+                        .filter(x => x && DATA.vol[x]).slice(0, 7);
+  if (!kode7.length) kode7 = urut.slice(0, 7);
+
+  const pg = el("div", "panel");
+  pg.appendChild(el("h2", null, "Net foreign — 7 emiten"));
+  pg.appendChild(el("label", null, "Emiten (pisahkan dengan koma, maksimal 7)"));
+  const inp7 = el("input"); inp7.value = kode7.join(", ");
+  inp7.setAttribute("list", "daftarEmiten"); inp7.autocapitalize = "characters";
+  pg.appendChild(inp7);
+  const alat7 = el("div", "alat");
+  const tb1 = el("button", "tambah", "Terapkan");
+  tb1.onclick = () => { volPilihan = inp7.value; halVolume(); };
+  const tb2 = el("button", "tambah", "7 terbesar");
+  tb2.onclick = () => { volPilihan = ""; halVolume(); };
+  alat7.appendChild(tb1); alat7.appendChild(tb2);
+  pg.appendChild(alat7);
+
+  const tglRentang = tgl.slice(i1, i2 + 1);
+  const seri = kode7.map(k => {
+    let kum = 0;
+    return tglRentang.map((_, n) => {
+      const r = DATA.vol[k][i1 + n];
+      if (r && r[0] !== null) kum += ((r[2] || 0) - (r[1] || 0)) / LOT;
+      return Math.round(kum);
+    });
+  });
+  pg.appendChild(gambarGrafik(tglRentang, seri, kode7, WARNA_NF));
+  pg.appendChild(el("div", "bantu",
+    "Garis = net foreign kumulatif dalam lot sejak " + tglID(volDari) +
+    ". Naik berarti asing net beli."));
+
+  const dataPie = kode7.map(k => ({kode: k, nama: DATA.nama[k] || "",
+                                   lot: Math.abs(Math.round((nf[k] || 0) / LOT))}))
+                       .filter(x => x.lot > 0).sort((a, b) => b.lot - a.lot);
+  if (dataPie.length) {
+    pg.appendChild(el("h2", null, "Porsi net foreign (nilai mutlak)"));
+    pg.appendChild(gambarPie(dataPie));
+    const beli = kode7.filter(k => (nf[k] || 0) > 0);
+    const jual = kode7.filter(k => (nf[k] || 0) < 0);
+    pg.appendChild(el("div", "bantu",
+      "Pie memakai nilai mutlak, jadi net beli dan net jual sama-sama terlihat besar. " +
+      "Net beli: " + (beli.join(", ") || "-") + ". Net jual: " + (jual.join(", ") || "-") + "."));
+  }
+  w.appendChild(pg);
 }
 
 /* ================= navigasi & tema ================= */
@@ -715,7 +823,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-08-24-1";
+const VERSI_APP = "2026-08-25-1";
 let batangVersiTampil = false;
 
 function batangVersi() {
@@ -1931,8 +2039,7 @@ function halData() {
 const BRK = JSON.parse(document.getElementById("dataBroker").textContent);
 const PAPAN = ["REG", "NEGO", "TUNAI"];
 const NAMA_PAPAN = {REG: "REGULER", NEGO: "NEGO", TUNAI: "TUNAI"};
-const WARNA_BROKER = ["#1f77b4", "#d62728", "#2ca02c", "#e8890c", "#7b3fa0"];
-const WARNA_PIE = ["#1f77b4", "#d62728", "#2ca02c", "#e8890c", "#7b3fa0", "#0d9488", "#b45309", "#9ca3af"];
+const WARNA_BROKER = ["#1f77b4", "#d62728", "#2ca02c", "#e8890c", "#7b3fa0"];;
 
 /* indeks cepat */
 const brIdx = {}; BRK.br.forEach((k, i) => brIdx[k] = i);
@@ -2378,7 +2485,8 @@ function panelKalender(w) {
   w.appendChild(pieP);
 }
 
-function gambarGrafik(tgl, seri, kode) {
+function gambarGrafik(tgl, seri, kode, warna) {
+  const WRN = warna || WARNA_BROKER;
   const L = 640, T = 260, kiri = 64, kanan = 12, atas = 16, bawah = 34;
   const nilai = seri.filter(Boolean).flat();
   const maks = Math.max(1, ...nilai.map(Math.abs));
@@ -2396,8 +2504,8 @@ function gambarGrafik(tgl, seri, kode) {
   seri.forEach((s, n) => {
     if (!s) return;
     const titik = s.map((v, i) => `${x(i)},${y(v)}`).join(" ");
-    bagian.push(`<polyline points="${titik}" fill="none" stroke="${WARNA_BROKER[n]}" stroke-width="2.5" stroke-linejoin="round"/>`);
-    s.forEach((v, i) => bagian.push(`<circle cx="${x(i)}" cy="${y(v)}" r="3" fill="${WARNA_BROKER[n]}"/>`));
+    bagian.push(`<polyline points="${titik}" fill="none" stroke="${WRN[n]}" stroke-width="2.5" stroke-linejoin="round"/>`);
+    s.forEach((v, i) => bagian.push(`<circle cx="${x(i)}" cy="${y(v)}" r="3" fill="${WRN[n]}"/>`));
   });
   const bungkus = el("div", "grafik");
   bungkus.innerHTML = `<svg viewBox="0 0 ${L} ${T}" width="100%" role="img">${bagian.join("")}</svg>`;
@@ -2405,7 +2513,7 @@ function gambarGrafik(tgl, seri, kode) {
   kode.forEach((k, n) => {
     if (!k) return;
     const tag = el("span", "bantu", "■ " + k);
-    tag.style.color = WARNA_BROKER[n];
+    tag.style.color = WRN[n];
     ket.appendChild(tag);
   });
   bungkus.appendChild(ket);
@@ -2419,7 +2527,7 @@ function gambarPie(data) {
   let sudut = -Math.PI / 2;
   data.forEach((d, n) => {
     const porsi = d.lot / total;
-    const warna = WARNA_PIE[n] || WARNA_PIE[WARNA_PIE.length - 1];
+    const warna = WARNA_NF[n] || WARNA_NF[WARNA_NF.length - 1];
     if (porsi >= 0.9999) {
       bagian.push(`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${warna}"/>`);
     } else {
@@ -2448,7 +2556,7 @@ function gambarPie(data) {
     const baris = el("div", "bantu",
       "■ " + d.kode + (d.kode === "Lainnya" ? "" : " — " + d.nama) + " · " +
       d.lot.toLocaleString("id-ID") + " lot · " + (d.lot / total * 100).toFixed(1) + "%");
-    baris.style.color = WARNA_PIE[n] || WARNA_PIE[WARNA_PIE.length - 1];
+    baris.style.color = WARNA_NF[n] || WARNA_NF[WARNA_NF.length - 1];
     bungkus.appendChild(baris);
   });
   return bungkus;
@@ -2666,6 +2774,104 @@ function tabelLK(periode, daftarPos) {
   return t;
 }
 
+const METRIK_KS = [["laba_bersih", "Net Income"], ["eps", "EPS"], ["pendapatan", "Revenue"]];
+let ksMetrik = "laba_bersih";
+
+/* susun nilai kumulatif per tahun & jenis periode -> tabel kuartalan */
+function kuartalan(kode, pos) {
+  const per = periodeLK(kode);
+  const kum = {};                       /* tahun -> {TW1,TW2,TW3,FY} */
+  const mata = {};
+  per.forEach(p => {
+    const v = p.pos[pos];
+    if (v === undefined) return;
+    const th = p.akhir.slice(0, 4);
+    (kum[th] || (kum[th] = {}))[p.jenis] = v;
+    mata[th] = p.mata_uang;
+  });
+  const tahun = Object.keys(kum).sort().reverse().slice(0, 4);
+  const kolom = tahun.map(th => {
+    const k = kum[th];
+    const q1 = k.TW1;
+    const q2 = (k.TW2 !== undefined && k.TW1 !== undefined) ? k.TW2 - k.TW1 : undefined;
+    const q3 = (k.TW3 !== undefined && k.TW2 !== undefined) ? k.TW3 - k.TW2 : undefined;
+    const q4 = (k.FY !== undefined && k.TW3 !== undefined) ? k.FY - k.TW3 : undefined;
+    const terakhir = k.FY !== undefined ? {n: 4, v: k.FY}
+                   : k.TW3 !== undefined ? {n: 3, v: k.TW3}
+                   : k.TW2 !== undefined ? {n: 2, v: k.TW2}
+                   : k.TW1 !== undefined ? {n: 1, v: k.TW1} : null;
+    return {tahun: th, mata: mata[th], q: [q1, q2, q3, q4], kum: k,
+            setahun: terakhir ? terakhir.v * 4 / terakhir.n : undefined,
+            kuartal: terakhir ? terakhir.n : 0};
+  });
+  /* TTM: kumulatif tahun ini + (setahun penuh tahun lalu - kumulatif tahun lalu pada kuartal sama) */
+  kolom.forEach((c, i) => {
+    const lalu = kolom[i + 1];
+    if (c.kuartal === 4) { c.ttm = c.kum.FY; return; }
+    if (!lalu || lalu.kum.FY === undefined) return;
+    const kunci = ["", "TW1", "TW2", "TW3"][c.kuartal];
+    const sebanding = kunci ? lalu.kum[kunci] : undefined;
+    const kini = c.kum[kunci];
+    if (sebanding !== undefined && kini !== undefined)
+      c.ttm = kini + (lalu.kum.FY - sebanding);
+  });
+  return kolom;
+}
+
+function panelKeystatsKuartal(kode) {
+  const p = el("div", "panel");
+  p.appendChild(el("h2", null, "Keystats"));
+  const chip = el("div", "alat");
+  METRIK_KS.forEach(([pos, label]) => {
+    const b = el("button", "tambah", label);
+    if (ksMetrik === pos) b.style.fontWeight = "700";
+    b.onclick = () => { ksMetrik = pos; halCari(); };
+    chip.appendChild(b);
+  });
+  p.appendChild(chip);
+
+  const kolom = kuartalan(kode, ksMetrik);
+  if (!kolom.length) {
+    p.appendChild(el("div", "bantu",
+      "Laporan keuangan " + kode + " belum ada di server."));
+    return p;
+  }
+  const eps = ksMetrik === "eps";
+  const angka = (v, mata) => v === undefined ? "-"
+    : eps ? Math.round(v * (mata === "USD" ? kursUSD() : 1)).toLocaleString("id-ID")
+          : rupiah(v, mata);
+
+  const tb = el("div", "tbl-bungkus"), t = el("table"), th = el("tr");
+  th.appendChild(el("th", null, "Periode"));
+  kolom.forEach(c => th.appendChild(el("th", null, c.tahun)));
+  t.appendChild(th);
+  ["Q1", "Q2", "Q3", "Q4"].forEach((nama, n) => {
+    const tr = el("tr");
+    tr.appendChild(el("td", null, nama));
+    kolom.forEach(c => {
+      const td = el("td", null, angka(c.q[n], c.mata));
+      td.style.textAlign = "right"; tr.appendChild(td);
+    });
+    t.appendChild(tr);
+  });
+  [["Annualised", "setahun"], ["TTM", "ttm"]].forEach(([nama, kunci]) => {
+    const tr = el("tr");
+    const td0 = el("td", null, nama); td0.style.fontWeight = "700";
+    tr.appendChild(td0);
+    kolom.forEach(c => {
+      const td = el("td", null, angka(c[kunci], c.mata));
+      td.style.textAlign = "right"; td.style.fontWeight = "700"; tr.appendChild(td);
+    });
+    t.appendChild(tr);
+  });
+  tb.appendChild(t); p.appendChild(tb);
+  p.appendChild(el("div", "bantu", eps
+    ? "EPS dalam rupiah per saham. Q2-Q4 dihitung dari selisih laporan kumulatif."
+    : "Angka dalam miliar rupiah. Q2-Q4 dihitung dari selisih laporan kumulatif; " +
+      "Annualised = kuartal terakhir disetahunkan, TTM = empat kuartal terakhir."));
+  return p;
+}
+
 function panelKeystats(kode, periode) {
   const p = el("div", "panel");
   p.appendChild(el("h2", null, "Keystats"));
@@ -2855,16 +3061,7 @@ function halCari() {
   const ph = el("div", "panel");
   const baris = barisScr[cariKode];
   ph.appendChild(el("h2", null, cariKode + (baris && baris[1] ? " — " + baris[1] : "")));
-  const chip = el("div", "bantu");
-  [["Q1", "Q1"], ["Q2", "Q2"], ["Q3", "Q3"], ["Q4", "Q4"], ["TTM", "TTM"], ["FY", "Tahunan"]]
-    .forEach(([kode, label]) => {
-      const b = el("button", "tambah", label);
-      if (cariPeriode === kode) b.style.fontWeight = "700";
-      b.onclick = () => { cariPeriode = kode; halCari(); };
-      chip.appendChild(b);
-    });
-  ph.appendChild(chip);
-  const tab = el("div", "bantu");
+  const tab = el("div", "alat");
   [["keystats", "KEYSTATS"], ["finansial", "FINANSIAL"], ["profil", "PROFIL"]]
     .forEach(([kode, label]) => {
       const b = el("button", "tambah", label);
@@ -2878,16 +3075,8 @@ function halCari() {
   if (lkGagal) w.appendChild(el("div", "panel")).appendChild(
     el("div", "bantu", "Data laporan keuangan belum bisa diambil dari server."));
 
-  if (cariPeriode !== "FY" && cariSub !== "profil") {
-    const kosong = el("div", "panel");
-    kosong.appendChild(el("div", "bantu", cariPeriode === "TTM"
-      ? "TTM butuh laporan triwulanan; sekarang baru ada laporan tahunan."
-      : "Laporan triwulanan " + cariPeriode + " belum dimasukkan."));
-    w.appendChild(kosong);
-    return;
-  }
-
   if (cariSub === "keystats") {
+    w.appendChild(panelKeystatsKuartal(cariKode));
     w.appendChild(panelKeystats(cariKode, periode));
   } else if (cariSub === "profil") {
     w.appendChild(panelProfil(cariKode, periode));
