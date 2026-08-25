@@ -635,6 +635,7 @@ function halScreener() {
 const WARNA_NF = ["#1f77b4", "#d62728", "#2ca02c", "#e8890c", "#7b3fa0",
                   "#0d9488", "#b45309", "#9ca3af"];
 let volKode = "DSSA", volDari = "", volSampai = "", volPilihan = "";
+let volMode = "net", volPasar = "semua", volInvestor = "asing";
 const LOT = 100;                                  /* 1 lot = 100 lembar */
 const lot = v => Math.round((v || 0) / LOT).toLocaleString("id-ID");
 
@@ -644,19 +645,43 @@ function urutTglVol() {
                             .sort((a, b) => a.t < b.t ? -1 : 1);
 }
 
-/* net foreign (lembar) per emiten dalam rentang -> {kode: total} */
-function netForeignRentang(idx, i1, i2) {
+/* ringkasan per emiten dalam rentang, mengikuti pilihan pasar & investor */
+function ringkasRentang(idx, i1, i2) {
   const hasil = {};
   Object.keys(DATA.vol).forEach(k => {
-    let n = 0, ada = false;
+    let vol = 0, nilai = 0, fb = 0, fs = 0, ada = false;
     for (let i = i1; i <= i2; i++) {
       const r = DATA.vol[k][idx[i]];
       if (!r || r[0] === null) continue;
-      n += (r[2] || 0) - (r[1] || 0); ada = true;
+      ada = true;
+      const vReg = r[0] || 0, nReg = r[3] || 0;
+      const vNon = r[4] || 0, nNon = r[5] || 0;
+      if (volPasar === "reguler") { vol += vReg; nilai += nReg; }
+      else if (volPasar === "nego") { vol += vNon; nilai += nNon; }
+      else { vol += vReg + vNon; nilai += nReg + nNon; }
+      fb += r[2] || 0; fs += r[1] || 0;
     }
-    if (ada) hasil[k] = n;
+    if (!ada) return;
+    /* foreign hanya tersedia untuk pasar reguler */
+    const netAsing = fb - fs;
+    let net, gross;
+    if (volInvestor === "domestik") {
+      net = -netAsing;
+      gross = vol - (fb + fs);
+    } else {
+      net = netAsing;
+      gross = fb + fs;
+    }
+    hasil[k] = {vol: vol, nilai: nilai, fb: fb, fs: fs,
+                net: net, gross: gross,
+                avg: vol > 0 ? nilai / vol : 0};
   });
   return hasil;
+}
+
+/* nilai yang dipakai untuk mengurutkan & menggambar, sesuai mode net/gross */
+function nilaiUrut(x) {
+  return volMode === "gross" ? x.gross : x.net;
 }
 
 function halVolume() {
@@ -672,15 +697,7 @@ function halVolume() {
 
   /* ---- panel pilihan ---- */
   const p = el("div", "panel");
-  p.appendChild(el("h2", null, "Cek volume & net foreign per emiten"));
-  p.appendChild(el("label", null, "Kode emiten"));
-  const inp = el("input"); inp.placeholder = "contoh: DSSA"; inp.value = volKode;
-  inp.setAttribute("list", "daftarEmiten"); inp.autocapitalize = "characters";
-  inp.oninput = () => { volKode = inp.value.trim().toUpperCase(); isiTabel(); };
-  p.appendChild(inp);
-  const dl = el("datalist"); dl.id = "daftarEmiten";
-  Object.keys(DATA.vol).sort().forEach(k => { const o = el("option"); o.value = k; dl.appendChild(o); });
-  p.appendChild(dl);
+  p.appendChild(el("h2", null, "Net foreign per emiten"));
 
   const alat = el("div", "alat");
   [["Dari", "volDari"], ["Sampai", "volSampai"]].forEach(([label, kunci]) => {
@@ -699,61 +716,98 @@ function halVolume() {
     bungkus.appendChild(sel);
     alat.appendChild(bungkus);
   });
+
+  const pilih = (label, nilai, daftar, simpan) => {
+    const bungkus = el("div");
+    bungkus.appendChild(el("label", null, label));
+    const sel = el("select");
+    daftar.forEach(([v, t]) => {
+      const o = el("option", null, t); o.value = v;
+      if (nilai === v) o.selected = true;
+      sel.appendChild(o);
+    });
+    sel.onchange = () => { simpan(sel.value); halVolume(); window.scrollTo(0, 0); };
+    bungkus.appendChild(sel);
+    alat.appendChild(bungkus);
+  };
+  pilih("Pasar", volPasar, [["semua", "Semua pasar"], ["reguler", "Reguler"],
+                            ["nego", "Tunai & nego"]], v => volPasar = v);
+  pilih("Investor", volInvestor, [["asing", "Asing"], ["domestik", "Domestik"]],
+        v => volInvestor = v);
+  pilih("Hitungan", volMode, [["net", "Net"], ["gross", "Gross"]], v => volMode = v);
   p.appendChild(alat);
-  const nama = el("div", "hitung"); nama.id = "namaVol"; p.appendChild(nama);
+
+  const rk = ringkasRentang(idx, i1, i2);
+  const kode = Object.keys(rk);
+  let volTot = 0, nilaiTot = 0, netTot = 0;
+  kode.forEach(k => { volTot += rk[k].vol; nilaiTot += rk[k].nilai; netTot += rk[k].net; });
+  const aTot = arah(netTot);
+  p.appendChild(el("div", "hitung")).innerHTML =
+    `${tglID(volDari)} s/d ${tglID(volSampai)} · ${i2 - i1 + 1} hari bursa · ` +
+    `volume ${lot(volTot)} lot · nilai ${rupiah(nilaiTot, "IDR")} · ` +
+    `net ${volInvestor === "domestik" ? "domestik" : "asing"} ` +
+    `<b class="${aTot.k}">${aTot.t}${lot(Math.abs(netTot))} lot</b>`;
+  if (volPasar === "nego")
+    p.appendChild(el("div", "bantu",
+      "IDX tidak memisahkan pembelian asing untuk pasar tunai dan nego. " +
+      "Kolom lot, nilai dan rata-rata tetap terisi; kolom asing memakai angka pasar reguler."));
   w.appendChild(p);
 
-  /* ---- tabel harian ---- */
-  const kotak = el("div", "panel");
-  const tb = el("div", "tbl-bungkus"); const t = el("table");
-  t.innerHTML = `<thead><tr><th>Tanggal</th><th>Volume (lot)</th><th>F. Buy (lot)</th>
-    <th>F. Sell (lot)</th><th>Net Foreign (lot)</th></tr></thead>`;
-  const tbody = el("tbody"); t.appendChild(tbody); tb.appendChild(t); kotak.appendChild(tb);
+  /* ---- papan peringkat: sisi beli kiri, sisi jual kanan ---- */
+  const beli = kode.filter(k => nilaiUrut(rk[k]) > 0)
+                   .sort((a, b) => nilaiUrut(rk[b]) - nilaiUrut(rk[a]));
+  const jual = kode.filter(k => nilaiUrut(rk[k]) < 0)
+                   .sort((a, b) => nilaiUrut(rk[a]) - nilaiUrut(rk[b]));
+  const pr = el("div", "panel");
+  const sisi = volMode === "gross" ? ["Gross Beli", "Gross Jual"] : ["Net Beli", "Net Jual"];
+  const tbr = el("div", "tbl-bungkus"), t2 = el("table");
+  const kep = el("tr");
+  [sisi[0], "N.Val", "N.Lot", "Avg", "N.Foreign",
+   sisi[1], "N.Val", "N.Lot", "Avg", "N.Foreign"].forEach(x =>
+    kep.appendChild(el("th", null, x)));
+  t2.appendChild(kep);
 
-  function isiTabel() {
-    const d = DATA.vol[volKode];
-    tbody.innerHTML = "";
-    if (!d) {
-      $("#namaVol").textContent = volKode ? "Emiten tidak ditemukan" : "";
-      const tr = el("tr"); const td = el("td", "kosong", "Ketik kode emiten di atas");
-      td.colSpan = 5; tr.appendChild(td); tbody.appendChild(tr); return;
-    }
-    let totNet = 0, totVol = 0, hari = 0;
-    for (let i = i2; i >= i1; i--) {
-      const r = d[idx[i]];
-      if (!r || r[0] === null) continue;
-      const [vol, fs, fb] = r;
-      const net = (fb || 0) - (fs || 0);
-      totNet += net; totVol += vol; hari++;
-      const tr = el("tr");
-      tr.appendChild(el("td", null, tglID(tgl[i])));
-      tr.appendChild(el("td", null, lot(vol)));
-      tr.appendChild(el("td", null, lot(fb)));
-      tr.appendChild(el("td", null, lot(fs)));
-      const a = arah(net);
-      tr.appendChild(el("td", a.k, a.t + lot(Math.abs(net))));
-      tbody.appendChild(tr);
-    }
-    const a = arah(totNet);
-    $("#namaVol").innerHTML = `${DATA.nama[volKode] || ""} — ${hari} hari bursa ·
-      volume ${lot(totVol)} lot · net foreign
-      <b class="${a.k}">${a.t}${lot(Math.abs(totNet))} lot</b>`;
+  const isiSisi = (tr, k, tanda) => {
+    if (!k) { for (let n = 0; n < 5; n++) tr.appendChild(el("td", null, "")); return; }
+    const x = rk[k], kelas = tanda > 0 ? "naik" : "turun";
+    const tdK = el("td", null, k); tdK.style.fontWeight = "600"; tr.appendChild(tdK);
+    const netLembar = Math.abs(volMode === "gross" ? x.gross : x.net);
+    const tdV = el("td", kelas, (tanda < 0 ? "-" : "") + rupiah(netLembar * x.avg, "IDR"));
+    tdV.style.textAlign = "right"; tr.appendChild(tdV);
+    const tdL = el("td", kelas, (tanda < 0 ? "-" : "") + lot(netLembar));
+    tdL.style.textAlign = "right"; tr.appendChild(tdL);
+    const tdA = el("td", null, Math.round(x.avg).toLocaleString("id-ID"));
+    tdA.style.textAlign = "right"; tr.appendChild(tdA);
+    const nf = arah(x.net);
+    const tdF = el("td", nf.k, nf.t + lot(Math.abs(x.net)));
+    tdF.style.textAlign = "right"; tr.appendChild(tdF);
+  };
+
+  const banyak = Math.min(20, Math.max(beli.length, jual.length));
+  for (let i = 0; i < banyak; i++) {
+    const tr = el("tr");
+    isiSisi(tr, beli[i], 1);
+    isiSisi(tr, jual[i], -1);
+    t2.appendChild(tr);
   }
-  isiTabel();
+  tbr.appendChild(t2); pr.appendChild(tbr);
+  pr.appendChild(el("div", "bantu",
+    "N.Lot = net dalam lot, N.Val = net lot dikali harga rata-rata, " +
+    "Avg = harga rata-rata hari itu (nilai dibagi volume), N.Foreign = net asing dalam lot."));
+  w.appendChild(pr);
 
-  /* ---- net foreign beberapa emiten ---- */
-  const nf = netForeignRentang(idx, i1, i2);
-  const urut = Object.keys(nf).sort((a, b) => Math.abs(nf[b]) - Math.abs(nf[a]));
+  /* ---- pilihan 7 emiten untuk grafik dan pie ---- */
+  const urut = kode.slice().sort((a, b) => Math.abs(nilaiUrut(rk[b])) - Math.abs(nilaiUrut(rk[a])));
   if (!volPilihan) volPilihan = urut.slice(0, 7).join(", ");
   let kode7 = volPilihan.split(/[ ,;]+/).map(x => x.trim().toUpperCase())
                         .filter(x => x && DATA.vol[x]).slice(0, 7);
   if (!kode7.length) kode7 = urut.slice(0, 7);
 
   const pg = el("div", "panel");
-  pg.appendChild(el("h2", null, "Net foreign — 7 emiten"));
+  pg.appendChild(el("h2", null, "Tujuh emiten pilihan"));
   pg.appendChild(el("label", null, "Emiten (pisahkan dengan koma, maksimal 7)"));
   const inp7 = el("input"); inp7.value = kode7.join(", ");
-  inp7.setAttribute("list", "daftarEmiten"); inp7.autocapitalize = "characters";
+  inp7.autocapitalize = "characters";
   pg.appendChild(inp7);
   const alat7 = el("div", "alat");
   const tb1 = el("button", "tambah", "Terapkan");
@@ -768,69 +822,33 @@ function halVolume() {
     let kum = 0;
     return tglRentang.map((_, n) => {
       const r = DATA.vol[k][idx[i1 + n]];
-      if (r && r[0] !== null) kum += ((r[2] || 0) - (r[1] || 0)) / LOT;
+      if (r && r[0] !== null) {
+        const netHari = (r[2] || 0) - (r[1] || 0);
+        kum += (volInvestor === "domestik" ? -netHari : netHari) / LOT;
+      }
       return Math.round(kum);
     });
   });
   pg.appendChild(gambarGrafik(tglRentang, seri, kode7, WARNA_NF));
   pg.appendChild(el("div", "bantu",
-    "Garis = net foreign kumulatif dalam lot sejak " + tglID(volDari) +
-    ". Naik berarti asing net beli."));
+    "Garis = net " + (volInvestor === "domestik" ? "domestik" : "asing") +
+    " kumulatif dalam lot sejak " + tglID(volDari) + ". Naik berarti net beli."));
 
-  /* ---- papan peringkat: net beli kiri, net jual kanan ---- */
-  const beli = Object.keys(nf).filter(k => nf[k] > 0).sort((a, b) => nf[b] - nf[a]);
-  const jual = Object.keys(nf).filter(k => nf[k] < 0).sort((a, b) => nf[a] - nf[b]);
-  const pr = el("div", "panel");
-  pr.appendChild(el("h2", null, "Net foreign seluruh emiten"));
-  pr.appendChild(el("div", "bantu",
-    tglID(volDari) + " s/d " + tglID(volSampai) + " · net = foreign buy dikurangi foreign sell, " +
-    "dijumlahkan sepanjang rentang."));
-  const tbr = el("div", "tbl-bungkus"), tr2 = el("table");
-  const kep = el("tr");
-  ["#", "Net Beli", "Lot", "Net Jual", "Lot"].forEach(x => kep.appendChild(el("th", null, x)));
-  tr2.appendChild(kep);
-  const banyak = Math.min(20, Math.max(beli.length, jual.length));
-  for (let i = 0; i < banyak; i++) {
-    const b = beli[i], j = jual[i];
-    const tr = el("tr");
-    tr.appendChild(el("td", null, String(i + 1)));
-    const tdB = el("td", null, b || "");
-    if (b) tdB.style.fontWeight = "600";
-    tr.appendChild(tdB);
-    const tdBl = el("td", "naik", b ? lot(nf[b]) : "");
-    tdBl.style.textAlign = "right"; tr.appendChild(tdBl);
-    tr.appendChild(el("td", null, j || ""));
-    const tdJl = el("td", "turun", j ? "-" + lot(Math.abs(nf[j])) : "");
-    tdJl.style.textAlign = "right"; tr.appendChild(tdJl);
-    tr2.appendChild(tr);
-  }
-  tbr.appendChild(tr2); pr.appendChild(tbr);
-  w.appendChild(pr);
-  w.appendChild(pg);
-
-  /* ---- pie: net murni, beli dan jual dipisah ---- */
-  const pp = el("div", "panel");
-  const pieBeli = beli.slice(0, 7).map(k => ({kode: k, nama: DATA.nama[k] || "",
-                                              lot: Math.round(nf[k] / LOT)})).filter(x => x.lot > 0);
-  const pieJual = jual.slice(0, 7).map(k => ({kode: k, nama: DATA.nama[k] || "",
-                                              lot: Math.round(-nf[k] / LOT)})).filter(x => x.lot > 0);
+  const pieBeli = kode7.filter(k => rk[k] && rk[k].net > 0)
+    .map(k => ({kode: k, nama: DATA.nama[k] || "", lot: Math.round(rk[k].net / LOT)}))
+    .filter(x => x.lot > 0).sort((a, b) => b.lot - a.lot);
+  const pieJual = kode7.filter(k => rk[k] && rk[k].net < 0)
+    .map(k => ({kode: k, nama: DATA.nama[k] || "", lot: Math.round(-rk[k].net / LOT)}))
+    .filter(x => x.lot > 0).sort((a, b) => b.lot - a.lot);
   if (pieBeli.length) {
-    pp.appendChild(el("h2", null, "7 net beli asing terbesar"));
-    pp.appendChild(gambarPie(pieBeli));
+    pg.appendChild(el("h2", null, "Porsi net beli"));
+    pg.appendChild(gambarPie(pieBeli));
   }
   if (pieJual.length) {
-    pp.appendChild(el("h2", null, "7 net jual asing terbesar"));
-    pp.appendChild(gambarPie(pieJual));
+    pg.appendChild(el("h2", null, "Porsi net jual"));
+    pg.appendChild(gambarPie(pieJual));
   }
-  if (pieBeli.length || pieJual.length) {
-    pp.appendChild(el("div", "bantu",
-      "Nilai net sepanjang rentang, bukan nilai harian. Emiten yang net beli dan net jualnya " +
-      "saling menghapus tidak muncul di kedua pie."));
-    w.appendChild(pp);
-  }
-
-  kotak.insertBefore(el("h2", null, "Rincian harian " + volKode), kotak.firstChild);
-  w.appendChild(kotak);
+  w.appendChild(pg);
 }
 
 /* ================= navigasi & tema ================= */
@@ -866,7 +884,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-08-25-4";
+const VERSI_APP = "2026-08-25-5";
 let batangVersiTampil = false;
 
 function batangVersi() {
@@ -1320,10 +1338,13 @@ function gabungkan(rekaman) {
   kodeSet.forEach(k => {
     vol[k] = semuaTgl.map(t => {
       const b = peta[t] && peta[t][k];
-      if (b) return [b.v, b.fs, b.fb];
+      if (b) return [b.v, b.fs, b.fb, b.n || 0, b.nrv || 0, b.nrn || 0];
       const i = iVolAsli[t];
-      if (i !== undefined && ASLI.vol[k] && ASLI.vol[k][i]) return ASLI.vol[k][i];
-      return [null, null, null];
+      if (i !== undefined && ASLI.vol[k] && ASLI.vol[k][i]) {
+        const a = ASLI.vol[k][i];
+        return [a[0], a[1], a[2], a[3] || 0, a[4] || 0, a[5] || 0];
+      }
+      return [null, null, null, 0, 0, 0];
     });
     hrg[k] = tgl5.map(t => {
       const b = peta[t] && peta[t][k];
@@ -3221,7 +3242,9 @@ async function sinkron(diam) {
         if (!perTgl[t]) perTgl[t] = {};
         perTgl[t][j.emiten[j.e[i]]] = {
           c: j.c[i], p: j.prev[i], v: j.v[i], n: j.val[i],
-          fs: j.fs[i], fb: j.fb[i], ls: null, nm: (j.nama || [])[j.e[i]] || ""};
+          fs: j.fs[i], fb: j.fb[i], ls: (j.ls || [])[i] || null,
+          nrv: (j.nrv || [])[i] || 0, nrn: (j.nrn || [])[i] || 0,
+          nm: (j.nama || [])[j.e[i]] || ""};
       }
       for (const t of Object.keys(perTgl)) {
         await dbSimpan({tgl: t, berkas: "sinkron", jumlah: Object.keys(perTgl[t]).length,
