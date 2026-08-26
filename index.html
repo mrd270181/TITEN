@@ -1057,7 +1057,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-08-26-1";
+const VERSI_APP = "2026-08-26-2";
 let batangVersiTampil = false;
 
 function batangVersi() {
@@ -3044,20 +3044,32 @@ function kuartalan(kode, pos) {
     mata[th] = p.mata_uang;
   });
   const tahun = Object.keys(kum).sort().reverse().slice(0, 4);
+  /* Laporan IDX yang tersimpan tidak selalu lengkap empat kuartal. Kalau TW1 dan
+     TW3 tidak ada sama sekali — dan itu keadaan yang paling sering — memaksakan
+     Q1..Q4 membuat seluruh tabel kosong, padahal TW2 dan FY-nya ada. Karena itu
+     barisnya menyesuaikan: empat kuartal kalau bisa, kalau tidak dua semester. */
+  const perKuartal = tahun.some(th => kum[th].TW1 !== undefined || kum[th].TW3 !== undefined);
   const kolom = tahun.map(th => {
     const k = kum[th];
-    const q1 = k.TW1;
-    const q2 = (k.TW2 !== undefined && k.TW1 !== undefined) ? k.TW2 - k.TW1 : undefined;
-    const q3 = (k.TW3 !== undefined && k.TW2 !== undefined) ? k.TW3 - k.TW2 : undefined;
-    const q4 = (k.FY !== undefined && k.TW3 !== undefined) ? k.FY - k.TW3 : undefined;
+    let q;
+    if (perKuartal) {
+      q = [k.TW1,
+           (k.TW2 !== undefined && k.TW1 !== undefined) ? k.TW2 - k.TW1 : undefined,
+           (k.TW3 !== undefined && k.TW2 !== undefined) ? k.TW3 - k.TW2 : undefined,
+           (k.FY !== undefined && k.TW3 !== undefined) ? k.FY - k.TW3 : undefined];
+    } else {
+      q = [k.TW2,
+           (k.FY !== undefined && k.TW2 !== undefined) ? k.FY - k.TW2 : undefined];
+    }
     const terakhir = k.FY !== undefined ? {n: 4, v: k.FY}
                    : k.TW3 !== undefined ? {n: 3, v: k.TW3}
                    : k.TW2 !== undefined ? {n: 2, v: k.TW2}
                    : k.TW1 !== undefined ? {n: 1, v: k.TW1} : null;
-    return {tahun: th, mata: mata[th], q: [q1, q2, q3, q4], kum: k,
+    return {tahun: th, mata: mata[th], q: q, kum: k,
             setahun: terakhir ? terakhir.v * 4 / terakhir.n : undefined,
             kuartal: terakhir ? terakhir.n : 0};
   });
+  kolom.perKuartal = perKuartal;
   /* TTM: kumulatif tahun ini + (setahun penuh tahun lalu - kumulatif tahun lalu pada kuartal sama) */
   kolom.forEach((c, i) => {
     const lalu = kolom[i + 1];
@@ -3099,7 +3111,10 @@ function panelKeystatsKuartal(kode) {
   th.appendChild(el("th", null, "Periode"));
   kolom.forEach(c => th.appendChild(el("th", null, c.tahun)));
   t.appendChild(th);
-  ["Q1", "Q2", "Q3", "Q4"].forEach((nama, n) => {
+  const namaBaris = kolom.perKuartal
+    ? ["Q1", "Q2", "Q3", "Q4"]
+    : ["S1 Jan–Jun", "S2 Jul–Des"];
+  namaBaris.forEach((nama, n) => {
     const tr = el("tr");
     tr.appendChild(el("td", null, nama));
     kolom.forEach(c => {
@@ -3119,10 +3134,13 @@ function panelKeystatsKuartal(kode) {
     t.appendChild(tr);
   });
   tb.appendChild(t); p.appendChild(tb);
-  p.appendChild(el("div", "bantu", eps
-    ? "EPS dalam rupiah per saham. Q2-Q4 dihitung dari selisih laporan kumulatif."
-    : "Angka dalam miliar rupiah. Q2-Q4 dihitung dari selisih laporan kumulatif; " +
-      "Annualised = kuartal terakhir disetahunkan, TTM = empat kuartal terakhir."));
+  p.appendChild(el("div", "bantu",
+    (eps ? "EPS dalam rupiah per saham. " : "Angka dalam miliar rupiah. ") +
+    (kolom.perKuartal
+      ? "Q2-Q4 dihitung dari selisih laporan kumulatif. "
+      : "Emiten ini hanya melaporkan tengah tahun dan setahun penuh, jadi " +
+        "yang ditampilkan dua semester — S2 = setahun penuh dikurangi S1. ") +
+    (eps ? "" : "Annualised = periode terakhir disetahunkan, TTM = empat kuartal terakhir.")));
   return p;
 }
 
@@ -3309,8 +3327,13 @@ function halCari() {
 
   /* ---- halaman emiten ---- */
   const periodeSemua = periodeLK(cariKode);
-  const periode = periodeSemua.filter(p => (cariPeriode === "TTM" ? false : p.jenis === cariPeriode))
-                              .slice(0, 3);
+  /* Tidak semua emiten punya laporan setahun penuh untuk tahun berjalan — banyak
+     yang baru terbit tengah tahun. Kalau jenis yang sedang dipilih tidak ada,
+     dipakai jenis yang memang tersedia, supaya halamannya tidak kosong. */
+  const jenisAda = [...new Set(periodeSemua.map(p => p.jenis))]
+    .sort((a, b) => (a === "FY" ? -1 : b === "FY" ? 1 : a < b ? -1 : 1));
+  if (jenisAda.length && jenisAda.indexOf(cariPeriode) < 0) cariPeriode = jenisAda[0];
+  const periode = periodeSemua.filter(p => p.jenis === cariPeriode).slice(0, 3);
 
   const ph = el("div", "panel");
   const baris = barisScr[cariKode];
@@ -3346,6 +3369,18 @@ function halCari() {
       sub.appendChild(b);
     });
     pf.appendChild(sub);
+    if (jenisAda.length > 1) {
+      const jp = el("div", "bantu");
+      const NAMA_JENIS = {FY: "Setahun penuh", TW1: "Kuartal I", TW2: "Tengah tahun",
+                          TW3: "Kuartal III"};
+      jenisAda.forEach(j => {
+        const b = el("button", "tambah", NAMA_JENIS[j] || j);
+        if (cariPeriode === j) b.style.fontWeight = "700";
+        b.onclick = () => { cariPeriode = j; halCari(); };
+        jp.appendChild(b);
+      });
+      pf.appendChild(jp);
+    }
     if (!periode.length) {
       pf.appendChild(el("div", "bantu",
         "Laporan keuangan " + cariKode + " belum ada di server."));
