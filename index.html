@@ -74,6 +74,9 @@ input,select{
   background:var(--surface-1);color:var(--ink-1);font-size:14px;font-family:inherit
 }
 input:focus,select:focus{outline:2px solid var(--merek);outline-offset:-1px}
+/* Safari iOS meratakan isi input tanggal ke kiri atas dan memberinya tinggi sendiri */
+input[type=date]{-webkit-appearance:none;appearance:none;min-height:38px;
+  display:flex;align-items:center;text-align:left}
 .baris{display:flex;gap:7px}.baris>*{flex:1;min-width:0}
 .tbl-bungkus{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -10px;padding:0 10px}
 table{border-collapse:collapse;width:100%;font-size:12px}
@@ -270,6 +273,35 @@ const fmtMetrik = (m, v) => DATA.fmt[m] === "pct" ? pct(v) : DATA.fmt[m] === "x"
   : (Math.abs(v) >= 1e6 ? ringkas(v) : nf(v, Math.abs(v) < 100 && v % 1 !== 0 ? 2 : 0));
 const tglID = s => { const [y, m, d] = s.split("-");
   return d + " " + ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"][+m-1]; };
+
+/* ---------- pemilih tanggal ----------
+   Kotak kalender, bukan daftar panjang: dengan setahun data, daftar pilihan
+   berisi ratusan baris dan harus digulir lama di HP. Rentangnya dibatasi ke
+   tanggal yang benar-benar ada, dan kalau yang dipilih bukan hari bursa,
+   digeser sendiri ke hari bursa terdekat. */
+function tglTerdekat(t, daftar) {
+  if (!daftar.length) return "";
+  if (!t) return daftar[daftar.length - 1];
+  if (daftar.indexOf(t) >= 0) return t;
+  let terbaik = daftar[daftar.length - 1], jarak = Infinity;
+  daftar.forEach(x => {
+    const d = Math.abs(Date.parse(x) - Date.parse(t));
+    if (d < jarak) { jarak = d; terbaik = x; }
+  });
+  return terbaik;
+}
+function kotakTanggal(nilai, daftar, saatUbah) {
+  const inp = el("input", "cari tgl");
+  inp.type = "date";
+  inp.value = nilai || "";
+  if (daftar.length) { inp.min = daftar[0]; inp.max = daftar[daftar.length - 1]; }
+  inp.onchange = () => {
+    const t = tglTerdekat(inp.value, daftar);
+    inp.value = t;
+    saatUbah(t);
+  };
+  return inp;
+}
 
 /* arah: warna SELALU didampingi tanda ▲▼ dan angkanya sendiri, tidak pernah warna saja */
 function arah(v) {
@@ -734,6 +766,7 @@ const WARNA_NF = ["#1f77b4", "#d62728", "#2ca02c", "#e8890c", "#7b3fa0",
                   "#0d9488", "#b45309", "#9ca3af"];
 let volKode = "DSSA", volDari = "", volSampai = "", volPilihan = "";
 let volMode = "net", volPasar = "semua", volInvestor = "asing";
+let volUrut = "val", volArah = -1;                /* kolom & arah pengurutan tabel */
 const LOT = 100;                                  /* 1 lot = 100 lembar */
 const lot = v => Math.round((v || 0) / LOT).toLocaleString("id-ID");
 
@@ -766,12 +799,17 @@ function ringkasRentang(idx, i1, i2) {
     if (volInvestor === "domestik") {
       net = -netAsing;
       gross = vol - (fb + fs);
+    } else if (volInvestor === "semua") {
+      /* asing dan domestik dijumlahkan: netnya selalu nol, jadi yang ditampilkan
+         seluruh transaksi pasar — volume dan nilainya apa adanya */
+      net = vol;
+      gross = vol;
     } else {
       net = netAsing;
       gross = fb + fs;
     }
     hasil[k] = {vol: vol, nilai: nilai, fb: fb, fs: fs,
-                net: net, gross: gross,
+                net: net, gross: gross, asing: netAsing,
                 avg: vol > 0 ? nilai / vol : 0};
   });
   return hasil;
@@ -788,7 +826,9 @@ function halVolume() {
   const tgl = urutTgl.map(x => x.t), idx = urutTgl.map(x => x.i);
   if (!tgl.length) { w.appendChild(el("div", "panel")).appendChild(
     el("div", "bantu", "Belum ada data harian.")); return; }
-  if (!volDari || tgl.indexOf(volDari) < 0) volDari = tgl[0];
+  /* bawaan: dua-duanya hari bursa terakhir, jadi begitu dibuka langsung
+     menampilkan hari terbaru — bukan seluruh riwayat */
+  if (!volDari || tgl.indexOf(volDari) < 0) volDari = tgl[tgl.length - 1];
   if (!volSampai || tgl.indexOf(volSampai) < 0) volSampai = tgl[tgl.length - 1];
   let i1 = tgl.indexOf(volDari), i2 = tgl.indexOf(volSampai);
   if (i1 > i2) { const x = i1; i1 = i2; i2 = x; volDari = tgl[i1]; volSampai = tgl[i2]; }
@@ -801,17 +841,10 @@ function halVolume() {
   [["Dari", "volDari"], ["Sampai", "volSampai"]].forEach(([label, kunci]) => {
     const bungkus = el("div");
     bungkus.appendChild(el("label", null, label));
-    const sel = el("select");
-    tgl.forEach(t => {
-      const o = el("option", null, tglID(t)); o.value = t;
-      if ((kunci === "volDari" ? volDari : volSampai) === t) o.selected = true;
-      sel.appendChild(o);
-    });
-    sel.onchange = () => {
-      if (kunci === "volDari") volDari = sel.value; else volSampai = sel.value;
+    bungkus.appendChild(kotakTanggal(kunci === "volDari" ? volDari : volSampai, tgl, t => {
+      if (kunci === "volDari") volDari = t; else volSampai = t;
       halVolume(); window.scrollTo(0, 0);
-    };
-    bungkus.appendChild(sel);
+    }));
     alat.appendChild(bungkus);
   });
 
@@ -830,8 +863,8 @@ function halVolume() {
   };
   pilih("Pasar", volPasar, [["semua", "Semua pasar"], ["reguler", "Reguler"],
                             ["nego", "Tunai & nego"]], v => volPasar = v);
-  pilih("Investor", volInvestor, [["asing", "Asing"], ["domestik", "Domestik"]],
-        v => volInvestor = v);
+  pilih("Investor", volInvestor, [["asing", "Asing"], ["domestik", "Domestik"],
+                                  ["semua", "Semua investor"]], v => volInvestor = v);
   pilih("Hitungan", volMode, [["net", "Net"], ["gross", "Gross"]], v => volMode = v);
   p.appendChild(alat);
 
@@ -843,26 +876,57 @@ function halVolume() {
   p.appendChild(el("div", "hitung")).innerHTML =
     `${tglID(volDari)} s/d ${tglID(volSampai)} · ${i2 - i1 + 1} hari bursa · ` +
     `volume ${lot(volTot)} lot · nilai ${rupiah(nilaiTot, "IDR")} · ` +
-    `net ${volInvestor === "domestik" ? "domestik" : "asing"} ` +
-    `<b class="${aTot.k}">${aTot.t}${lot(Math.abs(netTot))} lot</b>`;
+    (volInvestor === "semua"
+      ? `seluruh transaksi <b>${lot(Math.abs(netTot))} lot</b>`
+      : `net ${volInvestor === "domestik" ? "domestik" : "asing"} ` +
+        `<b class="${aTot.k}">${aTot.t}${lot(Math.abs(netTot))} lot</b>`);
   if (volPasar === "nego")
     p.appendChild(el("div", "bantu",
       "IDX tidak memisahkan pembelian asing untuk pasar tunai dan nego. " +
       "Kolom lot, nilai dan rata-rata tetap terisi; kolom asing memakai angka pasar reguler."));
   w.appendChild(p);
 
-  /* ---- papan peringkat: sisi beli kiri, sisi jual kanan ---- */
-  const beli = kode.filter(k => nilaiUrut(rk[k]) > 0)
-                   .sort((a, b) => nilaiUrut(rk[b]) - nilaiUrut(rk[a]));
-  const jual = kode.filter(k => nilaiUrut(rk[k]) < 0)
-                   .sort((a, b) => nilaiUrut(rk[a]) - nilaiUrut(rk[b]));
+  /* ---- papan peringkat ----
+     Asing/domestik: sisi beli di kiri, sisi jual di kanan.
+     Semua investor: satu daftar, karena tidak ada sisi negatifnya.
+     Kolom N.Val, N.Lot, dan N.Foreign bisa diketuk untuk mengurutkan. */
+  const nilaiKolom = (k, kolom) => {
+    const x = rk[k];
+    const n = Math.abs(volMode === "gross" ? x.gross : x.net);
+    if (kolom === "lot") return n;
+    if (kolom === "foreign") return Math.abs(volInvestor === "semua" ? x.asing : x.net);
+    return n * x.avg;
+  };
+  const banding = (a, b) => (nilaiKolom(a, volUrut) - nilaiKolom(b, volUrut)) * volArah;
+  const satuSisi = volInvestor === "semua";
+  const beli = satuSisi ? kode.slice().sort(banding)
+                        : kode.filter(k => nilaiUrut(rk[k]) > 0).sort(banding);
+  const jual = satuSisi ? [] : kode.filter(k => nilaiUrut(rk[k]) < 0).sort(banding);
+
   const pr = el("div", "panel");
-  const sisi = volMode === "gross" ? ["Gross Beli", "Gross Jual"] : ["Net Beli", "Net Jual"];
+  const sisi = satuSisi ? ["Teraktif", ""]
+             : volMode === "gross" ? ["Gross Beli", "Gross Jual"]
+             : ["Net Beli", "Net Jual"];
   const tbr = el("div", "tbl-bungkus"), t2 = el("table");
   const kep = el("tr");
-  [sisi[0], "N.Val", "N.Lot", "Avg", "N.Foreign",
-   sisi[1], "N.Val", "N.Lot", "Avg", "N.Foreign"].forEach(x =>
-    kep.appendChild(el("th", null, x)));
+  const kolomAngka = [["N.Val", "val"], ["N.Lot", "lot"], ["Avg", null], ["N.Foreign", "foreign"]];
+  const buatKepala = judul => {
+    kep.appendChild(el("th", null, judul));
+    kolomAngka.forEach(([teks, kunci]) => {
+      const th = el("th", null, teks + (kunci && volUrut === kunci
+        ? (volArah < 0 ? " ▼" : " ▲") : ""));
+      if (kunci) {
+        th.style.cursor = "pointer";
+        th.onclick = () => {
+          if (volUrut === kunci) volArah = -volArah; else { volUrut = kunci; volArah = -1; }
+          halVolume();
+        };
+      }
+      kep.appendChild(th);
+    });
+  };
+  buatKepala(sisi[0]);
+  if (!satuSisi) buatKepala(sisi[1]);
   t2.appendChild(kep);
 
   const isiSisi = (tr, k, tanda) => {
@@ -870,14 +934,16 @@ function halVolume() {
     const x = rk[k], kelas = tanda > 0 ? "naik" : "turun";
     const tdK = el("td", null, k); tdK.style.fontWeight = "600"; tr.appendChild(tdK);
     const netLembar = Math.abs(volMode === "gross" ? x.gross : x.net);
-    const tdV = el("td", kelas, (tanda < 0 ? "-" : "") + rupiah(netLembar * x.avg, "IDR"));
+    const tdV = el("td", satuSisi ? null : kelas,
+                  (tanda < 0 ? "-" : "") + rupiah(netLembar * x.avg, "IDR"));
     tdV.style.textAlign = "right"; tr.appendChild(tdV);
-    const tdL = el("td", kelas, (tanda < 0 ? "-" : "") + lot(netLembar));
+    const tdL = el("td", satuSisi ? null : kelas, (tanda < 0 ? "-" : "") + lot(netLembar));
     tdL.style.textAlign = "right"; tr.appendChild(tdL);
     const tdA = el("td", null, Math.round(x.avg).toLocaleString("id-ID"));
     tdA.style.textAlign = "right"; tr.appendChild(tdA);
-    const nf = arah(x.net);
-    const tdF = el("td", nf.k, nf.t + lot(Math.abs(x.net)));
+    const nfNilai = satuSisi ? x.asing : x.net;
+    const nf = arah(nfNilai);
+    const tdF = el("td", nf.k, nf.t + lot(Math.abs(nfNilai)));
     tdF.style.textAlign = "right"; tr.appendChild(tdF);
   };
 
@@ -885,19 +951,23 @@ function halVolume() {
   for (let i = 0; i < banyak; i++) {
     const tr = el("tr");
     isiSisi(tr, beli[i], 1);
-    isiSisi(tr, jual[i], -1);
+    if (!satuSisi) isiSisi(tr, jual[i], -1);
     t2.appendChild(tr);
   }
   tbr.appendChild(t2); pr.appendChild(tbr);
-  pr.appendChild(el("div", "bantu",
-    "N.Lot = net dalam lot, N.Val = net lot dikali harga rata-rata, " +
-    "Avg = harga rata-rata hari itu (nilai dibagi volume), N.Foreign = net asing dalam lot."));
+  pr.appendChild(el("div", "bantu", satuSisi
+    ? "Semua investor: N.Lot dan N.Val adalah volume dan nilai transaksi seluruh pasar, " +
+      "tanpa memisah asing dan domestik. N.Foreign tetap menunjukkan net asing. " +
+      "Ketuk judul N.Val, N.Lot, atau N.Foreign untuk mengurutkan."
+    : "N.Lot = net dalam lot, N.Val = net lot dikali harga rata-rata, " +
+      "Avg = harga rata-rata hari itu (nilai dibagi volume), N.Foreign = net asing dalam lot. " +
+      "Ketuk judul N.Val, N.Lot, atau N.Foreign untuk mengurutkan."));
   w.appendChild(pr);
 
   /* ---- pilihan 7 emiten untuk grafik dan pie ---- */
   /* pilihan awal: empat pembeli terbesar dan tiga penjual terbesar,
      supaya kedua pie selalu ada isinya */
-  const urut = beli.slice(0, 4).concat(jual.slice(0, 3));
+  const urut = satuSisi ? beli.slice(0, 7) : beli.slice(0, 4).concat(jual.slice(0, 3));
   if (!urut.length)
     kode.slice().sort((a, b) => Math.abs(nilaiUrut(rk[b])) - Math.abs(nilaiUrut(rk[a])))
         .slice(0, 7).forEach(k => urut.push(k));
@@ -987,7 +1057,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-08-25-7";
+const VERSI_APP = "2026-08-26-1";
 let batangVersiTampil = false;
 
 function batangVersi() {
@@ -2292,13 +2362,14 @@ function saldoAwal(emiten, pasar) {
 
 /* ---------- kontrol bersama ---------- */
 const pilih = {emiten: "", pasar: "ALL MARKET", dari: "", sampai: "",
-               urut: "posisi", arah: -1, sub: "posisi",
+               urut: "posisi", arah: -1, sub: "posisi", subPos: "posisi",
                kalBroker: "", kalBulan: "", grafik: ["", "", "", "", ""]};
 
 function siapkanPilihan() {
   const tgl = tanggalTersedia();
   if (!pilih.emiten) pilih.emiten = BRK.em.includes("AADI") ? "AADI" : BRK.em[0];
-  if (!pilih.dari) pilih.dari = tgl[0] || "";
+  /* bawaan: dua-duanya hari bursa terakhir */
+  if (!pilih.dari) pilih.dari = tgl[tgl.length - 1] || "";
   if (!pilih.sampai) pilih.sampai = tgl[tgl.length - 1] || "";
   if (!pilih.kalBulan) pilih.kalBulan = (pilih.sampai || "").slice(0, 7);
   if (!pilih.grafik[0]) {
@@ -2335,15 +2406,10 @@ function kotakKontrol(opsi) {
     const baris2 = el("div", "alat");
     const tgl = tanggalTersedia();
     [["dari", "Dari"], ["sampai", "Sampai"]].forEach(([kunci, label]) => {
-      const s = el("select", "cari");
-      tgl.forEach(t => {
-        const o = el("option", null, tglID(t) + " " + t.slice(0, 4)); o.value = t;
-        if (t === pilih[kunci]) o.selected = true;
-        s.appendChild(o);
-      });
-      s.onchange = () => { pilih[kunci] = s.value; halBroker(); };
       const bungkus = el("label", "bantu", label + ": ");
-      bungkus.appendChild(s);
+      bungkus.appendChild(kotakTanggal(pilih[kunci], tgl, t => {
+        pilih[kunci] = t; halBroker();
+      }));
       baris2.appendChild(bungkus);
     });
     p.appendChild(baris2);
@@ -2782,7 +2848,21 @@ function halBroker() {
 
   w.appendChild(kotakKontrol({tanggal: pilih.sub !== "kalender"}));
 
-  if (pilih.sub === "posisi") { panelPosisi(w); panelSaldo(w); panelTransaksi(w); }
+  if (pilih.sub === "posisi") {
+    /* tiga panel posisi dulu ditumpuk ke bawah dan halamannya jadi panjang sekali;
+       sekarang dipilih satu per satu, seperti di halaman CARI */
+    const tab2 = el("div", "sub-tab");
+    [["posisi", "POSISI"], ["saldo", "SALDO AWAL"], ["transaksi", "TRANSAKSI"]]
+      .forEach(([k, judul]) => {
+        const b = el("button", pilih.subPos === k ? "aktif" : null, judul);
+        b.onclick = () => { pilih.subPos = k; halBroker(); };
+        tab2.appendChild(b);
+      });
+    w.appendChild(tab2);
+    if (pilih.subPos === "saldo") panelSaldo(w);
+    else if (pilih.subPos === "transaksi") panelTransaksi(w);
+    else panelPosisi(w);
+  }
   else if (pilih.sub === "kalender") panelKalender(w);
   else panelDashboard(w);
 }
