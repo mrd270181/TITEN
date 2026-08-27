@@ -826,12 +826,18 @@ function nilaiUrut(x) {
 
 /* ===== GRAFIK & PIE: MASING-MASING PILIHANNYA SENDIRI =====
 
-   Halaman CEK VOLUME dibagi tiga panel: Volume (papan peringkat), Grafik, dan
-   Pie porsi. Ketiganya punya rentang tanggal, pasar, investor dan hitungan
-   sendiri, jadi mengubah salah satu tidak menyeret yang lain.
+   Halaman CEK VOLUME dibagi empat panel: Volume (papan peringkat), Grafik,
+   Pie net beli, dan Pie net jual. Semuanya punya rentang tanggal, pasar,
+   investor dan hitungan sendiri, jadi mengubah salah satu tidak menyeret yang
+   lain.
 
-   Grafik dan Pie memakai fungsi yang sama, dibedakan lewat parameter "jenis" -
-   isinya cuma beda cara menggambar, sisanya identik.
+   Beli dan jual sengaja dipisah jadi dua panel, bukan dua pie dalam satu panel:
+   delapan emiten yang paling besar net belinya hampir tidak pernah sama dengan
+   delapan yang paling besar net jualnya, jadi satu daftar centang bersama selalu
+   memaksa salah satu sisi tampil setengah kosong.
+
+   Keempatnya memakai fungsi yang sama, dibedakan lewat parameter "jenis" -
+   yang berbeda cuma cara mengurutkan dan cara menggambar, isian panelnya identik.
 
    Daftar centang sengaja hanya menampilkan yang SUDAH dicentang. Emiten di bursa
    ada ratusan; menampilkan semuanya membuat panel ini panjang dan sulit dibaca di
@@ -840,8 +846,10 @@ function nilaiUrut(x) {
 const G_MAKS = 8;
 const volGrafik = {dari: "", sampai: "", pasar: "semua", investor: "asing",
                    mode: "net", kode: [], auto: true, cari: ""};
-const volPie = {dari: "", sampai: "", pasar: "semua", investor: "asing",
-                mode: "net", kode: [], auto: true, cari: ""};
+const volPieBeli = {dari: "", sampai: "", pasar: "semua", investor: "asing",
+                    mode: "net", kode: [], auto: true, cari: ""};
+const volPieJual = {dari: "", sampai: "", pasar: "semua", investor: "asing",
+                    mode: "net", kode: [], auto: true, cari: ""};
 
 /* sumbangan satu hari, definisinya dibuat sama persis dengan ringkasRentang
    supaya angka di grafik dan di tabel tidak pernah berbeda arti */
@@ -902,20 +910,37 @@ function panelVolPilihan(st, judul, jenis, urutTgl) {
     p.appendChild(el("div", "bantu", "Tidak ada data pada rentang ini."));
     return p;
   }
-  const urutNF = semua.slice().sort((a, b) => Math.abs(rk[b].asing) - Math.abs(rk[a].asing));
-  const dipilih = (st.auto ? urutNF.slice(0, G_MAKS)
+  /* Angka yang dipakai untuk mengurutkan daftar dan memilih 8 otomatis berbeda
+     tiap panel: grafik tidak peduli arah (net foreign terbesar, beli maupun jual),
+     pie beli mencari yang paling positif, pie jual yang paling negatif. Dengan
+     begitu tiap pie langsung terisi delapan emiten yang memang relevan untuknya. */
+  const nilaiPie = k => st.mode === "gross" ? rk[k].gross : rk[k].net;
+  const peringkat = jenis === "pieBeli" ? (a, b) => nilaiPie(b) - nilaiPie(a)
+                  : jenis === "pieJual" ? (a, b) => nilaiPie(a) - nilaiPie(b)
+                  : (a, b) => Math.abs(rk[b].asing) - Math.abs(rk[a].asing);
+  const urutNF = semua.slice().sort(peringkat);
+  /* Pilihan otomatis hanya mengambil emiten yang benar-benar ada di sisi panel ini.
+     Tanpa saringan ini, panel beli bisa terisi emiten yang justru net jual - masuk
+     daftar centang tapi tidak pernah muncul di pie-nya. */
+  const sisiCocok = jenis === "pieBeli" ? (k => nilaiPie(k) > 0)
+                  : jenis === "pieJual" ? (k => nilaiPie(k) < 0)
+                  : (() => true);
+  const dipilih = (st.auto ? urutNF.filter(sisiCocok).slice(0, G_MAKS)
                            : st.kode.filter(k => rk[k])).slice(0, G_MAKS);
+  const namaOtomatis = jenis === "pieBeli" ? "8 net beli terbesar"
+                     : jenis === "pieJual" ? "8 net jual terbesar"
+                     : "net foreign terbesar";
 
   const kepala = el("div", "gab",
     "Emiten (" + dipilih.length + " dari maksimal " + G_MAKS + ")" +
-    (st.auto ? " \u2014 otomatis: net foreign terbesar" : ""));
+    (st.auto ? " \u2014 otomatis: " + namaOtomatis : ""));
   kepala.style.marginTop = "8px";
   p.appendChild(kepala);
 
   const barisAlat = el("div", "alat");
   barisAlat.style.display = "flex";
   barisAlat.style.gap = "6px";
-  const bOto = el("button", "kecil", "Otomatis (8 terbesar)");
+  const bOto = el("button", "kecil", "Otomatis (" + namaOtomatis + ")");
   bOto.onclick = () => { st.auto = true; st.kode = []; st.cari = ""; ulang(); };
   const bKosong = el("button", "kecil", "Kosongkan");
   bKosong.onclick = () => { st.auto = false; st.kode = []; ulang(); };
@@ -971,10 +996,13 @@ function panelVolPilihan(st, judul, jenis, urutTgl) {
       const titik = el("span");
       titik.style.cssText = "width:9px;height:9px;border-radius:50%;flex:0 0 auto;background:" +
         (c.checked ? WARNA_NF[dipilih.indexOf(k) % WARNA_NF.length] : "transparent");
-      const nf = arah(rk[k].asing);
+      /* angka di kanan = ukuran yang dipakai panel ini mengurutkan, supaya daftar
+         centangnya bisa dibaca langsung tanpa menebak */
+      const nilaiBaris = jenis === "grafik" ? rk[k].asing : nilaiPie(k);
+      const nf = arah(nilaiBaris);
       const teks = el("span", null, k);
       teks.style.fontWeight = "600";
-      const angka = el("span", nf.k, nf.t + lot(Math.abs(rk[k].asing)));
+      const angka = el("span", nf.k, nf.t + lot(Math.abs(nilaiBaris)));
       angka.style.cssText = "margin-left:auto;font-size:10.5px";
       baris.appendChild(c); baris.appendChild(titik);
       baris.appendChild(teks); baris.appendChild(angka);
@@ -1013,33 +1041,28 @@ function panelVolPilihan(st, judul, jenis, urutTgl) {
         ? " Gross selalu menanjak karena beli dan jual dijumlahkan."
         : " Naik berarti net beli.")));
   } else {
-    const nilaiPie = k => st.mode === "gross" ? rk[k].gross : rk[k].net;
-    const buatPie = (judulPie, tanda) => {
-      const isi = dipilih.filter(k => rk[k] && tanda * nilaiPie(k) > 0)
-        .map(k => ({kode: k, nama: DATA.nama[k] || "",
-                    lot: Math.round(tanda * nilaiPie(k) / LOT)}))
-        .filter(x => x.lot > 0).sort((a, b) => b.lot - a.lot);
-      if (!isi.length) return false;
-      p.appendChild(el("div", "gab", judulPie));
-      p.appendChild(gambarPie(isi));
-      return true;
-    };
-    let ada;
-    if (st.mode === "gross" || st.investor === "semua") {
-      ada = buatPie("Porsi " + (st.mode === "gross" ? "gross " : "") + namaInv, 1);
+    /* satu panel menggambar satu sisi saja: beli atau jual, tidak dua-duanya */
+    const tanda = jenis === "pieJual" ? -1 : 1;
+    const isi = dipilih.filter(k => rk[k] && tanda * nilaiPie(k) > 0)
+      .map(k => ({kode: k, nama: DATA.nama[k] || "",
+                  lot: Math.round(tanda * nilaiPie(k) / LOT)}))
+      .filter(x => x.lot > 0).sort((a, b) => b.lot - a.lot);
+    if (!isi.length) {
+      p.appendChild(el("div", "bantu",
+        (st.mode === "gross" || st.investor === "semua") && tanda < 0
+          ? "Pada hitungan Gross dan investor Semua, tidak ada angka negatif \u2014 " +
+            "sisi jual tidak ada isinya. Ganti Hitungan ke Net untuk memakai panel ini."
+          : "Emiten yang dicentang tidak ada yang net " + (tanda < 0 ? "jual" : "beli") +
+            " pada rentang ini. Tekan Otomatis untuk mengambil 8 terbesar."));
     } else {
-      const b1 = buatPie("Porsi net beli", 1);
-      const b2 = buatPie("Porsi net jual", -1);
-      ada = b1 || b2;
+      p.appendChild(gambarPie(isi));
+      const jml = isi.reduce((a, b) => a + b.lot, 0);
+      p.appendChild(el("div", "bantu",
+        "Porsi dihitung antar emiten yang dicentang saja \u2014 bersama-sama " +
+        jml.toLocaleString("id-ID") + " lot. " + tglID(st.dari) + " s/d " +
+        tglID(st.sampai) + " \u00b7 " + namaInv + " \u00b7 " +
+        (st.mode === "gross" ? "gross" : "net") + "."));
     }
-    if (!ada)
-      p.appendChild(el("div", "bantu",
-        "Emiten yang dicentang tidak punya angka positif pada rentang ini, jadi pie " +
-        "tidak bisa digambar."));
-    else
-      p.appendChild(el("div", "bantu",
-        "Porsi dihitung antar emiten yang dicentang saja, " + tglID(st.dari) +
-        " s/d " + tglID(st.sampai) + " \u00b7 " + namaInv + "."));
   }
   return p;
 }
@@ -1190,7 +1213,8 @@ function halVolume() {
 
   /* ---- dua panel terpisah, masing-masing pilihannya sendiri ---- */
   w.appendChild(panelVolPilihan(volGrafik, "Grafik", "grafik", urutTgl));
-  w.appendChild(panelVolPilihan(volPie, "Pie porsi", "pie", urutTgl));
+  w.appendChild(panelVolPilihan(volPieBeli, "Pie net beli", "pieBeli", urutTgl));
+  w.appendChild(panelVolPilihan(volPieJual, "Pie net jual", "pieJual", urutTgl));
 }
 
 /* ================= navigasi & tema ================= */
@@ -1226,7 +1250,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-08-26-6";
+const VERSI_APP = "2026-08-27-1";
 let batangVersiTampil = false;
 
 function batangVersi() {
