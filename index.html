@@ -1250,7 +1250,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-08-28-10";
+const VERSI_APP = "2026-08-28-11";
 let batangVersiTampil = false;
 
 function batangVersi() {
@@ -4105,6 +4105,74 @@ function volHari(kode, tgl) {
   return a ? [a[0] || 0, a[4] || 0] : null;
 }
 
+function volAntara(kode, t0, t1) {
+  /* jumlah volume perdagangan sejak pengumuman sebelumnya sampai tanggal ini,
+     dimundurkan 2 hari bursa karena transaksi pasar reguler baru terlihat di
+     posisi KSEI dua hari kemudian (T+2). Sengaja dilebihkan: penilaian
+     "tidak lewat pasar" baru diberikan kalau jendela yang longgar pun tak cukup. */
+  if (!DATA || !DATA.tgl || !DATA.vol || !DATA.vol[kode]) return null;
+  const a = DATA.tgl.indexOf(t0), b = DATA.tgl.indexOf(t1);
+  if (a < 0 || b < 0 || b < a) return null;
+  const V = DATA.vol[kode];
+  let s = 0;
+  /* pasar reguler settle T+2: posisi tanggal b mencerminkan transaksi sampai b-2 */
+  for (let i = Math.max(0, a - 2); i <= Math.max(0, b - 2); i++) s += (V[i] || [0])[0] || 0;
+  /* pasar negosiasi settle sesuai kesepakatan, sering hari itu juga - ambil penuh */
+  for (let i = Math.max(0, a - 2); i <= b; i++) s += (V[i] || [0, 0, 0, 0, 0])[4] || 0;
+  return s;
+}
+
+/* Kepemilikan BERKURANG, tapi seluruh volume perdagangan pada rentang itu pun
+   tidak cukup untuk menjelaskannya. Berarti sahamnya berpindah pemilik di luar
+   bursa - hibah, waris, penyelesaian utang, eksekusi jaminan, atau kesepakatan
+   langsung. Sama seperti pindah buku, kejadian begini tidak meninggalkan jejak
+   apa pun di broker summary. */
+function cariLepas(kode) {
+  const isi = (PRE && PRE.data && PRE.data[kode]) || null;
+  const tgl = (PRE && PRE.tanggal) || [];
+  const hasil = [];
+  if (!isi || tgl.length < 2) return hasil;
+  const n = tgl.length;
+
+  isi.forEach(pem => {
+    const gab = bukaDeret(pem.g, n), per = bukaDeret(pem.p, n);
+    const tempat = {};
+    (pem.r || []).forEach(r => {
+      const pre = (PRE.pre || [])[r[0]] || ["?", "", "lainnya", "?"];
+      const kunci = (pre[1] || "") + "|" + pre[0];
+      const v = bukaDeret(r[2], n);
+      if (!tempat[kunci]) tempat[kunci] = {kode: pre[1] || "", nama: pre[0],
+                                           v: new Array(n).fill(null)};
+      for (let i = 0; i < n; i++)
+        if (v[i] !== null && v[i] !== undefined)
+          tempat[kunci].v[i] = (tempat[kunci].v[i] || 0) + v[i];
+    });
+    const daftar = Object.values(tempat);
+
+    for (let i = 1; i < n; i++) {
+      if (gab[i] === null || gab[i - 1] === null) continue;
+      const hilang = gab[i - 1] - gab[i];
+      if (hilang <= 0) continue;
+      const vol = volAntara(kode, tgl[i - 1], tgl[i]);
+      if (vol === null || vol <= 0) continue;
+      /* Ambang setengah, bukan satu kali: seorang pemegang yang melepas lebih dari
+         separuh SELURUH volume pasar pada rentang itu sudah luar biasa, dan angka
+         kelipatannya ditampilkan supaya kamu bisa menilai sendiri. */
+      if (hilang <= vol * 0.5) continue;
+      const dari = daftar.filter(t => (t.v[i] || 0) - (t.v[i - 1] || 0) <= -1)
+        .sort((a, b) => (a.v[i] - a.v[i - 1]) - (b.v[i] - b.v[i - 1]));
+      hasil.push({
+        tgl: tgl[i], pem: pem.n, hilang: hilang, vol: vol, kali: hilang / vol,
+        dari: dari,
+        poin: (per[i] !== null && per[i - 1] !== null) ? per[i - 1] - per[i] : null,
+        sisa: per[i]
+      });
+    }
+  });
+  hasil.sort((a, b) => a.tgl < b.tgl ? 1 : a.tgl > b.tgl ? -1 : b.hilang - a.hilang);
+  return hasil;
+}
+
 function cariMutasi(kode) {
   const isi = (PRE && PRE.data && PRE.data[kode]) || null;
   const tgl = (PRE && PRE.tanggal) || [];
@@ -4251,6 +4319,53 @@ function panelMutasi(kode) {
     "periksa dulu sebelum dipercaya. Nama tanpa kode broker di depannya berarti " +
     "bank kustodian."));
   w.appendChild(pn);
+  w.appendChild(panelLepas(kode));
+  return w;
+}
+
+function panelLepas(kode) {
+  const w = el("div");
+  const l = cariLepas(kode);
+  if (!l.length) return w;
+
+  const p = el("div", "panel");
+  p.appendChild(el("h2", null, "Perubahan kepemilikan tanpa jejak di pasar"));
+  p.appendChild(el("div", "bantu",
+    "Kepemilikannya BERKURANG, tapi seluruh volume perdagangan pada rentang itu " +
+    "pun tidak cukup untuk menjelaskannya. Berarti sahamnya berpindah pemilik di " +
+    "luar bursa. Sama seperti pindah buku, ini tidak terlihat di broker summary."));
+
+  const bg = el("div", "tbl-bungkus"), t = el("table"), th = el("tr");
+  ["Tgl", "Pemegang", "Dari", "Hilang", "Vol pasar", "×"]
+    .forEach(x => th.appendChild(el("th", null, x)));
+  t.appendChild(th);
+  l.forEach(r => {
+    const tr = el("tr");
+    tr.appendChild(el("td", null, tglID(r.tgl)));
+    const np = el("td", null, r.pem);
+    np.style.maxWidth = "104px"; np.style.overflow = "hidden";
+    np.style.textOverflow = "ellipsis"; np.title = r.pem;
+    tr.appendChild(np);
+    tr.appendChild(el("td", null, r.dari.map(x => x.kode || "\u2014").join(" ") || "\u2013"));
+    const th2 = el("td", "num", sahamPre(r.hilang));
+    th2.style.fontWeight = "600";
+    if (r.poin !== null) th2.title = "porsi turun " + nf(r.poin, 2) + " poin, sisa " +
+      nf(r.sisa || 0, 2) + "%";
+    tr.appendChild(th2);
+    tr.appendChild(el("td", "num", sahamPre(r.vol)));
+    const tk = el("td", "num turun", nf(r.kali, 1) + "\u00d7");
+    tk.title = "yang hilang " + nf(r.kali, 1) + " kali seluruh volume perdagangan " +
+      "pada rentang itu";
+    tr.appendChild(tk);
+    t.appendChild(tr);
+  });
+  bg.appendChild(t); p.appendChild(bg);
+  p.appendChild(el("div", "bantu",
+    "Kolom \u00d7 = jumlah yang hilang dibanding seluruh volume perdagangan sejak " +
+    "pengumuman sebelumnya, sudah dimundurkan dua hari bursa untuk jeda penyelesaian. " +
+    "Makin besar angkanya, makin mustahil itu terjadi lewat pasar. Ketuk angkanya " +
+    "untuk melihat penurunan porsinya."));
+  w.appendChild(p);
   return w;
 }
 
