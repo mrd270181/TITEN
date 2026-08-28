@@ -1250,7 +1250,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-08-28-5";
+const VERSI_APP = "2026-08-28-6";
 let batangVersiTampil = false;
 
 function batangVersi() {
@@ -3988,13 +3988,19 @@ function panelPre5(kode) {
       const db = (br[i] || 0) - (br[i - 1] || 0), dk = (ku[i] || 0) - (ku[i - 1] || 0);
       if (Math.abs(db) < 1 || Math.abs(dk) < 1 || (db > 0) === (dk > 0)) return;
       const besar = Math.min(Math.abs(db), Math.abs(dk));
-      pindah.push(tglID(tgl[i]) + ": " + sahamPre(besar) + " saham pindah dari " +
+      pindah.push(tglID(tgl[i]) + ": " + sahamPre(besar) + " lembar pindah dari " +
         (db < 0 ? "broker ke kustodian" : "kustodian ke broker") +
         (beredar ? " (" + nf(besar / beredar * 100, 2) + "% dari saham tercatat)" : ""));
     });
 
-    p.appendChild(el("div", "bantu", "Posisi " + sahamPre(gab[iAkhir]) + " saham · " +
-      nf(per[iAkhir] || 0, 2) + "% · " + rek.length + " rekening efek."));
+    /* Jumlah rekening dihitung pada tanggal terakhir yang tampil, bukan sepanjang
+       bulan: rekening yang sempat ada lalu dikosongkan tetap ikut sebagai baris
+       (supaya perpindahannya kelihatan), tapi tidak boleh ikut dihitung. */
+    const nAktif = rek.filter(r => r.v[iAkhir] !== null && r.v[iAkhir] !== undefined).length;
+    p.appendChild(el("div", "bantu", "Posisi " + sahamPre(gab[iAkhir]) + " lembar · " +
+      nf(per[iAkhir] || 0, 2) + "% · " + nAktif + " rekening efek pada " + tglID(tgl[iAkhir]) +
+      (rek.length > nAktif ? " (" + (rek.length - nAktif) +
+        " rekening lain sempat terisi di tanggal lain)" : "") + "."));
     if (pindah.length) {
       const k = el("div", "bantu", "Perpindahan tempat penitipan — " + pindah.join("; ") + ".");
       k.style.color = "var(--turun)";
