@@ -1250,7 +1250,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-08-28-9";
+const VERSI_APP = "2026-08-28-10";
 let batangVersiTampil = false;
 
 function batangVersi() {
@@ -4195,42 +4195,61 @@ function panelMutasi(kode) {
   w.appendChild(p);
   if (!m.length) return w;
 
+  /* Tabel tujuh kolom tidak muat di layar HP - Lembar, %, dan Yakin terdorong
+     ke kanan dan tidak terlihat tanpa digeser, padahal justru itu isinya.
+     Jadi tiap perpindahan ditulis sebagai blok bertumpuk, angka di depan. */
   const pn = el("div", "panel");
-  const bg = el("div", "tbl-bungkus"), t = el("table"), th = el("tr");
-  ["Tgl", "Pemegang", "Dari", "Ke", "Lembar", "% saham", "Yakin"]
-    .forEach(x => th.appendChild(el("th", null, x)));
-  t.appendChild(th);
+  m.forEach((r, k) => {
+    const b = el("div");
+    b.style.padding = "9px 0";
+    if (k) b.style.borderTop = "1px solid var(--garis)";
 
-  const sisi = a => a.map(x => (x.t.kode || "—") + " " + x.t.nama).join(" + ");
+    const atas = el("div");
+    atas.style.display = "flex";
+    atas.style.justifyContent = "space-between";
+    atas.style.alignItems = "baseline";
+    atas.style.gap = "8px";
+    const kiri = el("div", null, sahamPre(r.lembar) + " lembar");
+    kiri.style.fontWeight = "700";
+    kiri.style.fontSize = "14px";
+    atas.appendChild(kiri);
+    const cap = el("span", "pil " + (r.yakin === "pasti" ? "naik" : "turun"), r.yakin);
+    cap.style.fontSize = "10px";
+    if (r.yakin === "pasti") cap.title = "volume non-reguler hari itu jauh lebih kecil " +
+      "daripada yang berpindah - mustahil lewat crossing";
+    else if (r.yakin === "ragu") cap.title = "hari itu ada volume non-reguler yang " +
+      "sebanding - bisa jadi ini sebenarnya crossing";
+    atas.appendChild(cap);
+    b.appendChild(atas);
 
-  m.forEach(r => {
-    const tr = el("tr");
-    tr.appendChild(el("td", null, tglID(r.tgl)));
-    tr.appendChild(el("td", null, r.pem));
-    tr.appendChild(el("td", null, sisi(r.dari)));
-    const tdk = el("td", null, sisi(r.ke));
-    if (r.ke.every(x => x.t.jenis === "kustodian")) tdk.style.color = "var(--ink-2)";
-    tr.appendChild(tdk);
-    const tl = el("td", "num", sahamPre(r.lembar));
-    tr.appendChild(tl);
-    tr.appendChild(el("td", "num", r.porsi === null ? "–" : nf(r.porsi, 2) + "%"));
-    const ty = el("td", null, r.yakin);
-    if (r.yakin === "pasti") { ty.className = "naik"; ty.title =
-      "volume non-reguler hari itu jauh lebih kecil daripada yang berpindah — " +
-      "mustahil lewat crossing"; }
-    else if (r.yakin === "ragu") { ty.className = "turun"; ty.title =
-      "hari itu ada volume non-reguler yang besarnya sebanding — bisa jadi ini " +
-      "sebenarnya crossing, bukan pemindahbukuan"; }
-    tr.appendChild(ty);
-    t.appendChild(tr);
+    b.appendChild(el("div", "bantu", tglID(r.tgl) + " · " +
+      (r.porsi === null ? "" : nf(r.porsi, 2) + "% dari saham tercatat · ") + r.pem));
+
+    const arah = el("div");
+    arah.style.fontSize = "11.5px";
+    arah.style.marginTop = "4px";
+    arah.style.lineHeight = "1.5";
+    const nm = a => a.map(x => (x.t.kode ? x.t.kode + " " : "") + x.t.nama).join(" + ");
+    const dari = el("span", null, nm(r.dari));
+    const panah = el("span", null, "  \u2192  ");
+    panah.style.color = "var(--ink-3)";
+    const ke = el("span", null, nm(r.ke));
+    ke.style.fontWeight = "600";
+    if (r.ke.every(x => x.t.jenis === "kustodian")) ke.style.color = "var(--ink-2)";
+    arah.appendChild(dari); arah.appendChild(panah); arah.appendChild(ke);
+    b.appendChild(arah);
+
+    if (r.volReg !== null)
+      b.appendChild(el("div", "bantu", "volume hari itu " + sahamPre(r.volReg) +
+        " lembar, non-reguler " + sahamPre(r.volNon)));
+    pn.appendChild(b);
   });
-  bg.appendChild(t); pn.appendChild(bg);
   pn.appendChild(el("div", "bantu",
-    "“pasti” berarti volume non-reguler emiten hari itu jauh lebih kecil " +
+    "\u201Cpasti\u201D berarti volume non-reguler emiten hari itu jauh lebih kecil " +
     "daripada jumlah yang berpindah, jadi tidak mungkin sebuah crossing. " +
-    "“ragu” berarti hari itu ada transaksi non-reguler yang sebanding — " +
-    "periksa dulu sebelum dipercaya. Tanda — di kolom Dari/Ke berarti bank " +
-    "kustodian, yang tidak punya kode broker."));
+    "\u201Cragu\u201D berarti hari itu ada transaksi non-reguler yang sebanding \u2014 " +
+    "periksa dulu sebelum dipercaya. Nama tanpa kode broker di depannya berarti " +
+    "bank kustodian."));
   w.appendChild(pn);
   return w;
 }
