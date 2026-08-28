@@ -1250,7 +1250,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-08-28-6";
+const VERSI_APP = "2026-08-28-7";
 let batangVersiTampil = false;
 
 function batangVersi() {
@@ -3967,7 +3967,7 @@ function panelPre5(kode) {
     const gab = bukaDeret(pem.g, n), per = bukaDeret(pem.p, n);
     const rek = (pem.r || []).map(r => ({
       pre: (PRE.pre || [])[r[0]] || ["?", "", "lainnya", "?"],
-      rek: r[1], v: bukaDeret(r[2], n)}));
+      rek: r[1], v: bukaDeret(r[2], n), sub: r[3] || 1}));
 
     /* jumlah per jenis tempat penitipan — inilah yang membuat perpindahan
        kustodian <-> broker kelihatan, karena totalnya bisa tidak berubah */
@@ -4038,7 +4038,9 @@ function panelPre5(kode) {
       const nm = el("td", null, r.pre[0]);
       if (r.pre[2] === "kustodian") nm.style.color = "var(--ink-2)";
       tr.appendChild(nm);
-      const rk = el("td", null, r.rek);
+      const rk = el("td", null, r.rek + (r.sub > 1 ? "  ×" + r.sub : ""));
+      if (r.sub > 1) rk.title = "IDX memecahnya jadi " + r.sub +
+        " baris dengan nama rekening sama — dijumlahkan di sini";
       if (/PINJAMAN|MARGIN|GADAI|REPO/i.test(r.rek)) {
         rk.style.color = "var(--turun)";
         rk.title = "nama rekening menyebut pinjaman/margin — saham kemungkinan dijaminkan";
