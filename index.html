@@ -162,7 +162,7 @@ tr.klik:active{background:var(--merek-muda)}
 .sub-tab{display:flex;gap:6px;margin:0 0 10px}
 .sub-tab button{flex:1;padding:9px 6px;border:1px solid var(--garis);background:var(--kartu);
   color:var(--ink-2);border-radius:10px;font:600 11.5px/1 ui-sans-serif,system-ui;letter-spacing:.04em}
-.sub-tab button.aktif{background:var(--hijau);color:#fff;border-color:var(--hijau)}
+.sub-tab button.aktif{background:var(--merek);color:#fff;border-color:var(--merek)}
 table.kalender{width:100%;border-collapse:collapse;table-layout:fixed;margin-top:8px}
 table.kalender th{font-size:10.5px;color:var(--ink-2);padding:4px 0}
 table.kalender td{border:1px solid var(--garis);height:74px;vertical-align:top;padding:3px 2px;border-radius:4px}
@@ -1250,7 +1250,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-08-28-4";
+const VERSI_APP = "2026-08-28-5";
 let batangVersiTampil = false;
 
 function batangVersi() {
@@ -3396,8 +3396,12 @@ async function muatBroker() {
 let LK = null;                 /* isi data/lk.json, diambil sekali */
 let MILIK = null;              /* isi data/milik.json — pemegang saham >=1% */
 let PROFIL = null;             /* isi data/profil.json — profil perusahaan dari IDX */
+let PRE = null;                /* isi data/pre-YYYY-MM.json — kepemilikan >=5% + rekening efek */
+let preBulan = "", preGagal = false, preSedang = false;
 let lkGagal = false;
 let cariTeks = "", cariKode = "", cariSub = "keystats", cariLap = "lr", cariMode = "TTM";
+let cariSumber = "lima";       /* tab PEMILIK: "satu" = >=1% bulanan, "lima" = >=5% harian */
+let preKolom = 6;              /* berapa tanggal terakhir yang ditampilkan berjajar */
 
 const POS_LR = [["pendapatan", "Pendapatan"], ["beban_pokok", "Beban Pokok Penjualan"],
   ["laba_kotor", "Laba Kotor"], ["beban_penjualan", "Beban Penjualan"],
@@ -3430,6 +3434,59 @@ async function muatLK() {
     const r3 = await fetch(GUDANG + "profil.json", {cache: "no-cache"});
     if (r3.ok) PROFIL = await r3.json();
   } catch (e) { PROFIL = null; }
+}
+
+/* ===== KEPEMILIKAN >=5% BERIKUT PEMEGANG REKENING EFEK =====
+
+   Dua sumber, dan sifatnya berbeda — jangan tertukar:
+
+     milik.json        kepemilikan >=1%. Pemilik akhir saja, sebulan sekali,
+                       tidak menyebut di mana saham diparkir.
+     pre-YYYY-MM.json  kepemilikan >=5%. Hanya pemegang besar, tapi tembus
+                       sampai rekening efek dan terbit hampir tiap hari bursa.
+
+   Hanya sumber kedua yang bisa memperlihatkan saham berpindah dari bank
+   kustodian ke broker atau sebaliknya. Perpindahan seperti itu tidak mengubah
+   jumlah saham yang dipegang sama sekali, jadi di data >=1% tampak seperti
+   tidak terjadi apa-apa.                                                     */
+
+/* Bulan mana yang tersedia dibaca dari manifest, bukan ditebak dari tanggal
+   hari ini: pengumumannya tidak terbit setiap hari dan bulan berjalan bisa
+   saja belum ada berkasnya. */
+function bulanPRE() {
+  return ((manifestGudang && manifestGudang.berkas) || [])
+    .map(x => String(x.berkas || "").match(/^pre-(\d{4}-\d{2})\.json$/))
+    .filter(Boolean).map(m => m[1]).sort();
+}
+
+async function muatPRE(bulan) {
+  const semua = bulanPRE();
+  if (!semua.length) { PRE = null; preGagal = true; return; }
+  const pilih = semua.indexOf(bulan) >= 0 ? bulan : semua[semua.length - 1];
+  if (PRE && preBulan === pilih) return;
+  try {
+    PRE = await ambilGudang("pre-" + pilih + ".json");
+    preBulan = pilih; preGagal = false;
+  } catch (e) { PRE = null; preGagal = true; }
+}
+
+/* Kebalikan deret() di ekspor.py:
+     angka  nilai baru pada tanggal itu
+     null   sama persis dengan tanggal sebelumnya
+     -1     baris tidak ada di pengumuman tanggal itu
+   Deret boleh berakhir lebih pendek daripada jumlah tanggal — sisanya berarti
+   nilainya tidak berubah lagi sampai akhir bulan. */
+function bukaDeret(d, n) {
+  const hasil = new Array(n);
+  let akhir = null;
+  d = d || [];
+  for (let i = 0; i < n; i++) {
+    const v = i < d.length ? d[i] : undefined;
+    if (v === undefined || v === null) hasil[i] = akhir;
+    else if (v === -1) { hasil[i] = null; akhir = null; }
+    else { hasil[i] = v; akhir = v; }
+  }
+  return hasil;
 }
 
 /* gabungkan potongan periode (neraca & laba rugi terpisah) jadi satu per tanggal */
@@ -3832,7 +3889,8 @@ function panelPemegang(kode) {
     const tr = el("tr");
     tr.appendChild(el("td", null, nama + (la === "F" ? " (asing)" : "")));
     tr.appendChild(el("td", null, gol));
-    const a = el("td", null, (saham / 1e6).toFixed(1).replace(".", ",") + " jt");
+    /* format sama dengan tab ≥5% supaya dua sumber itu bisa dibandingkan sekilas */
+    const a = el("td", null, ringkas(saham));
     a.style.textAlign = "right"; tr.appendChild(a);
     const b = el("td", null, persen.toFixed(2).replace(".", ",") + "%");
     b.style.textAlign = "right"; tr.appendChild(b);
@@ -3859,6 +3917,215 @@ function panelPemegang(kode) {
       "Sisanya dipegang publik di bawah 1% dan tidak dirinci KSEI."));
   }
   return p;
+}
+
+/* saham bisa pecahan (IDX benar-benar mencatat 29,7 lembar), jadi angka kecil
+   jangan dibulatkan habis seperti ringkas() */
+const sahamPre = v => v === null || v === undefined ? "–"
+  : (Math.abs(v) < 1000 && v % 1 !== 0 ? nf(v, 1) : ringkas(v));
+
+/* satu sel: nilai, dan di bawahnya perubahan terhadap tanggal sebelumnya —
+   hanya kalau memang berubah, supaya kolom yang diam tetap tenang dibaca */
+function selPre(kini, lalu) {
+  const td = el("td", "num");
+  if (kini === null || kini === undefined) { td.textContent = "–"; return td; }
+  td.appendChild(el("div", null, sahamPre(kini)));
+  if (lalu !== null && lalu !== undefined && Math.abs(kini - lalu) > 0.005) {
+    const d = kini - lalu;
+    const teks = lalu > 0
+      ? (d > 0 ? "+" : "−") + nf(Math.abs(d / lalu * 100), 1) + "%"
+      : (d > 0 ? "+" : "−") + sahamPre(Math.abs(d));
+    const s = el("div", d > 0 ? "naik" : "turun", teks);
+    s.style.fontSize = "10px";
+    td.appendChild(s);
+  }
+  return td;
+}
+
+function panelPre5(kode) {
+  const w = el("div");
+  const isi = (PRE && PRE.data && PRE.data[kode]) || null;
+  const tgl = (PRE && PRE.tanggal) || [];
+  if (!isi || !tgl.length) {
+    const p = el("div", "panel");
+    p.appendChild(el("div", "bantu", PRE
+      ? "Emiten ini tidak punya pemegang ≥5% pada bulan " + preBulan + "."
+      : "Belum ada di server. Jalankan di laptop: unduh_kepemilikan.py → " +
+        "impor_limapersen.py → ekspor.py, lalu unggah folder data/."));
+    w.appendChild(p);
+    return w;
+  }
+
+  const n = tgl.length;
+  const mulai = Math.max(0, n - preKolom);
+  const kol = []; for (let i = mulai; i < n; i++) kol.push(i);
+
+  isi.forEach(pem => {
+    const p = el("div", "panel");
+    p.appendChild(el("h2", null, pem.n + (pem.la === "F" ? " — asing" : "")));
+
+    const gab = bukaDeret(pem.g, n), per = bukaDeret(pem.p, n);
+    const rek = (pem.r || []).map(r => ({
+      pre: (PRE.pre || [])[r[0]] || ["?", "", "lainnya", "?"],
+      rek: r[1], v: bukaDeret(r[2], n)}));
+
+    /* jumlah per jenis tempat penitipan — inilah yang membuat perpindahan
+       kustodian <-> broker kelihatan, karena totalnya bisa tidak berubah */
+    const jml = jenis => kol.concat([mulai - 1]).reduce((o, i) => {
+      if (i < 0) return o;
+      o[i] = rek.reduce((a, r) => a + (r.pre[2] === jenis && r.v[i] !== null ? r.v[i] : 0), 0);
+      return o;
+    }, {});
+    const br = jml("broker"), ku = jml("kustodian");
+
+    /* saham tercatat emiten disimpulkan dari posisi dan persentasenya sendiri */
+    const iAkhir = kol[kol.length - 1];
+    const beredar = per[iAkhir] > 0 && gab[iAkhir] ? gab[iAkhir] / (per[iAkhir] / 100) : 0;
+
+    const pindah = [];
+    kol.forEach(i => {
+      if (i === 0) return;
+      const db = (br[i] || 0) - (br[i - 1] || 0), dk = (ku[i] || 0) - (ku[i - 1] || 0);
+      if (Math.abs(db) < 1 || Math.abs(dk) < 1 || (db > 0) === (dk > 0)) return;
+      const besar = Math.min(Math.abs(db), Math.abs(dk));
+      pindah.push(tglID(tgl[i]) + ": " + sahamPre(besar) + " saham pindah dari " +
+        (db < 0 ? "broker ke kustodian" : "kustodian ke broker") +
+        (beredar ? " (" + nf(besar / beredar * 100, 2) + "% dari saham tercatat)" : ""));
+    });
+
+    p.appendChild(el("div", "bantu", "Posisi " + sahamPre(gab[iAkhir]) + " saham · " +
+      nf(per[iAkhir] || 0, 2) + "% · " + rek.length + " rekening efek."));
+    if (pindah.length) {
+      const k = el("div", "bantu", "Perpindahan tempat penitipan — " + pindah.join("; ") + ".");
+      k.style.color = "var(--turun)";
+      p.appendChild(k);
+    }
+
+    /* ---- ringkas: di broker vs di kustodian ---- */
+    const b1 = el("div", "tbl-bungkus"), t1 = el("table"), h1 = el("tr");
+    h1.appendChild(el("th", null, ""));
+    kol.forEach(i => h1.appendChild(el("th", null, tglID(tgl[i]))));
+    t1.appendChild(h1);
+    [["Di broker", br], ["Di bank kustodian", ku]].forEach(([label, seri]) => {
+      const tr = el("tr");
+      tr.appendChild(el("td", null, label));
+      kol.forEach(i => tr.appendChild(selPre(seri[i], i > 0 ? seri[i - 1] : null)));
+      t1.appendChild(tr);
+    });
+    const trT = el("tr");
+    trT.appendChild(el("td", null, "Total"));
+    kol.forEach(i => trT.appendChild(selPre(gab[i], i > 0 ? gab[i - 1] : null)));
+    t1.appendChild(trT);
+    b1.appendChild(t1); p.appendChild(b1);
+
+    /* ---- rincian tiap rekening efek ---- */
+    const b2 = el("div", "tbl-bungkus"), t2 = el("table"), h2 = el("tr");
+    ["Kode", "Pemegang rekening efek", "Nama rekening"].forEach(x => h2.appendChild(el("th", null, x)));
+    kol.forEach(i => h2.appendChild(el("th", null, tglID(tgl[i]))));
+    t2.appendChild(h2);
+    rek.slice().sort((a, b) => (b.v[iAkhir] || 0) - (a.v[iAkhir] || 0)).forEach(r => {
+      const tr = el("tr");
+      const kd = el("td", null, r.pre[1] || "—");
+      if (r.pre[1]) kd.style.fontWeight = "600";
+      if (r.pre[3] !== "aktif") kd.title = "broker tidak aktif — rekening tampungan KSEI";
+      tr.appendChild(kd);
+      const nm = el("td", null, r.pre[0]);
+      if (r.pre[2] === "kustodian") nm.style.color = "var(--ink-2)";
+      tr.appendChild(nm);
+      const rk = el("td", null, r.rek);
+      if (/PINJAMAN|MARGIN|GADAI|REPO/i.test(r.rek)) {
+        rk.style.color = "var(--turun)";
+        rk.title = "nama rekening menyebut pinjaman/margin — saham kemungkinan dijaminkan";
+      }
+      tr.appendChild(rk);
+      kol.forEach(i => tr.appendChild(selPre(r.v[i], i > 0 ? r.v[i - 1] : null)));
+      t2.appendChild(tr);
+    });
+    b2.appendChild(t2); p.appendChild(b2);
+    p.appendChild(el("div", "bantu", "Kolom kode kosong berarti bank kustodian — " +
+      "bukan Anggota Bursa, jadi tidak punya kode broker. Angka kecil di bawah nilai " +
+      "adalah perubahan terhadap tanggal pengumuman sebelumnya."));
+    w.appendChild(p);
+  });
+
+  return w;
+}
+
+function panelPemilik(kode) {
+  const w = el("div");
+
+  const p = el("div", "panel");
+  p.appendChild(el("h2", null, "Pemegang saham"));
+  const jp = el("div", "alat");
+  const bungkus = el("label", "bantu", "Sumber: ");
+  const sel = el("select", "cari");
+  [["lima", "≥5% — tiap pengumuman, sampai rekening efek"],
+   ["satu", "≥1% — bulanan, pemilik saja"]].forEach(([k, label]) => {
+    const o = el("option", null, label); o.value = k;
+    if (cariSumber === k) o.selected = true;
+    sel.appendChild(o);
+  });
+  sel.onchange = () => { cariSumber = sel.value; halCari(); };
+  bungkus.appendChild(sel); jp.appendChild(bungkus);
+  p.appendChild(jp);
+
+  if (cariSumber === "satu") {
+    p.appendChild(el("div", "bantu", "Daftar pemilik akhir sampai ambang 1%, terbit " +
+      "sebulan sekali. Tidak menyebut di broker atau kustodian mana saham diparkir."));
+    w.appendChild(p);
+    w.appendChild(panelPemegang(kode));
+    return w;
+  }
+
+  /* ---- sumber >=5% ---- */
+  if (!PRE && !preGagal) {
+    if (!preSedang) {
+      preSedang = true;
+      muatPRE(preBulan).then(() => { preSedang = false; halCari(); });
+    }
+    p.appendChild(el("div", "bantu", "Mengambil kepemilikan ≥5% dari server…"));
+    w.appendChild(p);
+    return w;
+  }
+
+  const semua = bulanPRE();
+  if (semua.length > 1) {
+    const jb = el("div", "alat");
+    const bb = el("label", "bantu", "Bulan: ");
+    const sb = el("select", "cari");
+    semua.slice().reverse().forEach(b => {
+      const o = el("option", null, b); o.value = b;
+      if (preBulan === b) o.selected = true;
+      sb.appendChild(o);
+    });
+    sb.onchange = () => { PRE = null; preBulan = sb.value; halCari(); };
+    bb.appendChild(sb); jb.appendChild(bb); p.appendChild(jb);
+  }
+
+  const tgl = (PRE && PRE.tanggal) || [];
+  if (tgl.length > 3) {
+    const jk = el("div", "alat");
+    const bk = el("label", "bantu", "Tanggal berjajar: ");
+    const sk = el("select", "cari");
+    [3, 4, 6, 8, tgl.length].filter((v, i, a) => v <= tgl.length && a.indexOf(v) === i)
+      .forEach(v => {
+        const o = el("option", null, v === tgl.length ? "semua (" + v + ")" : String(v));
+        o.value = String(v);
+        if (preKolom === v) o.selected = true;
+        sk.appendChild(o);
+      });
+    sk.onchange = () => { preKolom = parseInt(sk.value, 10) || 6; halCari(); };
+    bk.appendChild(sk); jk.appendChild(bk); p.appendChild(jk);
+  }
+
+  p.appendChild(el("div", "bantu", tgl.length
+    ? "Hanya pemegang ≥5%, tapi tembus sampai rekening efek dan terbit hampir " +
+      "tiap hari bursa. " + tgl.length + " tanggal pengumuman: " + tglID(tgl[0]) +
+      " s/d " + tglID(tgl[tgl.length - 1]) + " " + preBulan.slice(0, 4) + "."
+    : "Berkas pre-YYYY-MM.json belum ada di server."));
+  w.appendChild(p);
+  w.appendChild(panelPre5(kode));
+  return w;
 }
 
 function halCari() {
@@ -3903,16 +4170,17 @@ function halCari() {
   const ph = el("div", "panel");
   const baris = barisScr[cariKode];
   ph.appendChild(el("h2", null, cariKode + (baris && baris[1] ? " — " + baris[1] : "")));
-  const tab = el("div", "alat");
-  [["keystats", "KEYSTATS"], ["finansial", "FINANSIAL"], ["profil", "PROFIL"]]
+  /* empat tab bertumpuk penuh layar memakan ruang yang seharusnya jadi isi;
+     .sub-tab menaruhnya berjajar sama lebar seperti di halaman lain */
+  const tab = el("div", "sub-tab");
+  [["keystats", "KEYSTATS"], ["finansial", "FINANSIAL"], ["pemilik", "PEMILIK"], ["profil", "PROFIL"]]
     .forEach(([kode, label]) => {
-      const b = el("button", "tambah", label);
-      if (cariSub === kode) b.style.fontWeight = "700";
+      const b = el("button", cariSub === kode ? "aktif" : null, label);
       b.onclick = () => { cariSub = kode; halCari(); };
       tab.appendChild(b);
     });
   ph.appendChild(tab);
-  if (cariSub !== "profil") {
+  if (cariSub === "keystats" || cariSub === "finansial") {
     /* Tujuh tombol periode berjajar memakan hampir separuh layar HP padahal yang
        dipakai satu. Diganti satu kotak pilihan: yang tampil cuma periode yang
        sedang aktif, sisanya keluar waktu diketuk. */
@@ -3944,8 +4212,11 @@ function halCari() {
     w.appendChild(panelKeystatsKuartal(cariKode));
     w.appendChild(panelKeystats(cariKode, periode));
   } else if (cariSub === "profil") {
+    /* daftar pemegang saham pindah ke tab PEMILIK supaya tidak ada dua tempat
+       yang menampilkan hal yang sama dengan ambang berbeda */
     w.appendChild(panelProfil(cariKode, periode));
-    w.appendChild(panelPemegang(cariKode));
+  } else if (cariSub === "pemilik") {
+    w.appendChild(panelPemilik(cariKode));
   } else {
     const pf = el("div", "panel");
     pf.appendChild(el("h2", null, "Finansial"));
