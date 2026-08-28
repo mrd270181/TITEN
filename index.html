@@ -1250,7 +1250,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-08-28-7";
+const VERSI_APP = "2026-08-28-8";
 let batangVersiTampil = false;
 
 function batangVersi() {
@@ -3973,7 +3973,10 @@ function panelPre5(kode) {
        kustodian <-> broker kelihatan, karena totalnya bisa tidak berubah */
     const jml = jenis => kol.concat([mulai - 1]).reduce((o, i) => {
       if (i < 0) return o;
-      o[i] = rek.reduce((a, r) => a + (r.pre[2] === jenis && r.v[i] !== null ? r.v[i] : 0), 0);
+      /* kalau pemegangnya belum/tidak lagi masuk daftar ≥5% pada tanggal itu,
+         biarkan kosong — jangan ditulis nol, karena artinya berbeda */
+      o[i] = (gab[i] === null || gab[i] === undefined) ? null
+        : rek.reduce((a, r) => a + (r.pre[2] === jenis && r.v[i] !== null ? r.v[i] : 0), 0);
       return o;
     }, {});
     const br = jml("broker"), ku = jml("kustodian");
@@ -4022,6 +4025,29 @@ function panelPre5(kode) {
     trT.appendChild(el("td", null, "Total"));
     kol.forEach(i => trT.appendChild(selPre(gab[i], i > 0 ? gab[i - 1] : null)));
     t1.appendChild(trT);
+
+    /* Persentase kepemilikan berlaku untuk SATU pemegang, bukan per rekening —
+       jadi tempatnya di tabel ringkas ini, bukan di tabel rincian rekening.
+       Perubahannya ditulis dalam poin persen, bukan persen dari persen. */
+    const trP = el("tr");
+    trP.appendChild(el("td", null, "% kepemilikan"));
+    kol.forEach(i => {
+      const td = el("td", "num");
+      if (per[i] === null || per[i] === undefined) { td.textContent = "–"; }
+      else {
+        td.appendChild(el("div", null, nf(per[i], 2) + "%"));
+        const lalu = i > 0 ? per[i - 1] : null;
+        if (lalu !== null && lalu !== undefined && Math.abs(per[i] - lalu) > 0.005) {
+          const d = per[i] - lalu;
+          const s = el("div", d > 0 ? "naik" : "turun",
+            (d > 0 ? "+" : "−") + nf(Math.abs(d), 2) + " poin");
+          s.style.fontSize = "10px";
+          td.appendChild(s);
+        }
+      }
+      trP.appendChild(td);
+    });
+    t1.appendChild(trP);
     b1.appendChild(t1); p.appendChild(b1);
 
     /* ---- rincian tiap rekening efek ---- */
