@@ -1250,7 +1250,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-08-28-11";
+const VERSI_APP = "2026-08-28-12";
 let batangVersiTampil = false;
 
 function batangVersi() {
@@ -4259,9 +4259,14 @@ function panelMutasi(kode) {
       "bergeser. Perpindahan seperti ini tidak lewat bursa, jadi tidak muncul di " +
       "broker summary."
     : "Tidak ada perpindahan tempat penitipan pada " + preBulan +
-      ", atau emiten ini tidak punya pemegang ≥5%."));
+      ", atau emiten ini tidak punya pemegang ≥5%. Perubahan kepemilikan yang " +
+      "tidak lewat pasar tetap ditampilkan di bawah kalau ada."));
   w.appendChild(p);
-  if (!m.length) return w;
+  /* Tabel kedua harus tetap tampil walau tidak ada pindah buku sama sekali:
+     emiten seperti SMMA cuma punya pelepasan di luar pasar, tidak punya
+     perpindahan tempat penitipan. Sebelumnya fungsi ini keluar lebih dulu di
+     sini dan tabel keduanya tidak pernah terpasang. */
+  if (!m.length) { w.appendChild(panelLepas(kode)); return w; }
 
   /* Tabel tujuh kolom tidak muat di layar HP - Lembar, %, dan Yakin terdorong
      ke kanan dan tidak terlihat tanpa digeser, padahal justru itu isinya.
