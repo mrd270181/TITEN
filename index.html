@@ -1250,7 +1250,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-08-28-8";
+const VERSI_APP = "2026-08-28-9";
 let batangVersiTampil = false;
 
 function batangVersi() {
@@ -4085,6 +4085,156 @@ function panelPre5(kode) {
   return w;
 }
 
+/* ===== MUTASI: perpindahan tempat penitipan =====
+
+   Dihitung di HP dari data ≥5% yang sudah diunduh — tidak ada berkas tambahan.
+   Yang dicari: komposisi tempat penitipan berubah sementara TOTAL pemegangnya
+   tidak bergerak sama sekali. Itu ciri pemindahbukuan KSEI, bukan transaksi.
+
+   Pemindahbukuan tidak lewat bursa, jadi tidak muncul di broker summary sama
+   sekali. Akibatnya saldo broker yang dikumpulkan dari broker summary akan
+   salah sejak hari itu, dan tidak ada hari transaksi yang memperbaikinya
+   sendiri. Halaman ini gunanya supaya perpindahan itu tidak lolos dari mata.  */
+
+function volHari(kode, tgl) {
+  /* -> [volume reguler, volume non-reguler] pada tanggal itu, atau null */
+  if (!DATA || !DATA.tgl || !DATA.vol || !DATA.vol[kode]) return null;
+  const i = DATA.tgl.indexOf(tgl);
+  if (i < 0) return null;
+  const a = DATA.vol[kode][i];
+  return a ? [a[0] || 0, a[4] || 0] : null;
+}
+
+function cariMutasi(kode) {
+  const isi = (PRE && PRE.data && PRE.data[kode]) || null;
+  const tgl = (PRE && PRE.tanggal) || [];
+  const hasil = [];
+  if (!isi || tgl.length < 2) return hasil;
+  const n = tgl.length;
+
+  isi.forEach(pem => {
+    const gab = bukaDeret(pem.g, n), per = bukaDeret(pem.p, n);
+    /* jumlahkan per tempat penitipan, bukan per rekening: satu pemegang bisa
+       punya beberapa rekening di broker yang sama */
+    const tempat = {};
+    (pem.r || []).forEach(r => {
+      const pre = (PRE.pre || [])[r[0]] || ["?", "", "lainnya", "?"];
+      const kunci = (pre[1] || "") + "|" + pre[0];
+      const v = bukaDeret(r[2], n);
+      if (!tempat[kunci]) tempat[kunci] = {kode: pre[1] || "", nama: pre[0],
+                                           jenis: pre[2], v: new Array(n).fill(null)};
+      for (let i = 0; i < n; i++)
+        if (v[i] !== null && v[i] !== undefined)
+          tempat[kunci].v[i] = (tempat[kunci].v[i] || 0) + v[i];
+    });
+    const daftar = Object.values(tempat);
+
+    for (let i = 1; i < n; i++) {
+      if (gab[i] === null || gab[i - 1] === null) continue;
+      if (Math.abs(gab[i] - gab[i - 1]) >= 1) continue;      /* total berubah = transaksi */
+      const naik = [], turun = [];
+      daftar.forEach(t => {
+        const d = (t.v[i] || 0) - (t.v[i - 1] || 0);
+        if (d >= 1) naik.push({t: t, d: d});
+        else if (d <= -1) turun.push({t: t, d: -d});
+      });
+      if (!naik.length || !turun.length) continue;
+      const lembar = naik.reduce((a, x) => a + x.d, 0);
+      const beredar = per[i] > 0 && gab[i] ? gab[i] / (per[i] / 100) : 0;
+      const vol = volHari(kode, tgl[i]);
+      hasil.push({
+        tgl: tgl[i], pem: pem.n, lembar: lembar,
+        dari: turun, ke: naik,
+        porsi: beredar ? lembar / beredar * 100 : null,
+        volReg: vol ? vol[0] : null, volNon: vol ? vol[1] : null,
+        yakin: !vol ? "?" : (vol[1] < lembar * 0.2 ? "pasti" : "ragu")
+      });
+    }
+  });
+  hasil.sort((a, b) => a.tgl < b.tgl ? 1 : a.tgl > b.tgl ? -1 : b.lembar - a.lembar);
+  return hasil;
+}
+
+function panelMutasi(kode) {
+  const w = el("div");
+  const p = el("div", "panel");
+  p.appendChild(el("h2", null, "Mutasi tempat penitipan"));
+
+  if (!PRE && !preGagal) {
+    if (!preSedang) {
+      preSedang = true;
+      muatPRE(preBulan).then(() => { preSedang = false; halCari(); });
+    }
+    p.appendChild(el("div", "bantu", "Mengambil kepemilikan ≥5% dari server…"));
+    w.appendChild(p);
+    return w;
+  }
+
+  const semua = bulanPRE();
+  if (semua.length > 1) {
+    const jb = el("div", "alat");
+    const bb = el("label", "bantu", "Bulan: ");
+    const sb = el("select", "cari");
+    semua.slice().reverse().forEach(b => {
+      const o = el("option", null, b); o.value = b;
+      if (preBulan === b) o.selected = true;
+      sb.appendChild(o);
+    });
+    sb.onchange = () => { PRE = null; preBulan = sb.value; halCari(); };
+    bb.appendChild(sb); jb.appendChild(bb); p.appendChild(jb);
+  }
+
+  const m = cariMutasi(kode);
+  p.appendChild(el("div", "bantu", m.length
+    ? m.length + " perpindahan pada " + preBulan + ". Yang dicatat di sini hanya " +
+      "yang jumlah kepemilikannya TIDAK berubah — cuma tempat penitipannya yang " +
+      "bergeser. Perpindahan seperti ini tidak lewat bursa, jadi tidak muncul di " +
+      "broker summary."
+    : "Tidak ada perpindahan tempat penitipan pada " + preBulan +
+      ", atau emiten ini tidak punya pemegang ≥5%."));
+  w.appendChild(p);
+  if (!m.length) return w;
+
+  const pn = el("div", "panel");
+  const bg = el("div", "tbl-bungkus"), t = el("table"), th = el("tr");
+  ["Tgl", "Pemegang", "Dari", "Ke", "Lembar", "% saham", "Yakin"]
+    .forEach(x => th.appendChild(el("th", null, x)));
+  t.appendChild(th);
+
+  const sisi = a => a.map(x => (x.t.kode || "—") + " " + x.t.nama).join(" + ");
+
+  m.forEach(r => {
+    const tr = el("tr");
+    tr.appendChild(el("td", null, tglID(r.tgl)));
+    tr.appendChild(el("td", null, r.pem));
+    tr.appendChild(el("td", null, sisi(r.dari)));
+    const tdk = el("td", null, sisi(r.ke));
+    if (r.ke.every(x => x.t.jenis === "kustodian")) tdk.style.color = "var(--ink-2)";
+    tr.appendChild(tdk);
+    const tl = el("td", "num", sahamPre(r.lembar));
+    tr.appendChild(tl);
+    tr.appendChild(el("td", "num", r.porsi === null ? "–" : nf(r.porsi, 2) + "%"));
+    const ty = el("td", null, r.yakin);
+    if (r.yakin === "pasti") { ty.className = "naik"; ty.title =
+      "volume non-reguler hari itu jauh lebih kecil daripada yang berpindah — " +
+      "mustahil lewat crossing"; }
+    else if (r.yakin === "ragu") { ty.className = "turun"; ty.title =
+      "hari itu ada volume non-reguler yang besarnya sebanding — bisa jadi ini " +
+      "sebenarnya crossing, bukan pemindahbukuan"; }
+    tr.appendChild(ty);
+    t.appendChild(tr);
+  });
+  bg.appendChild(t); pn.appendChild(bg);
+  pn.appendChild(el("div", "bantu",
+    "“pasti” berarti volume non-reguler emiten hari itu jauh lebih kecil " +
+    "daripada jumlah yang berpindah, jadi tidak mungkin sebuah crossing. " +
+    "“ragu” berarti hari itu ada transaksi non-reguler yang sebanding — " +
+    "periksa dulu sebelum dipercaya. Tanda — di kolom Dari/Ke berarti bank " +
+    "kustodian, yang tidak punya kode broker."));
+  w.appendChild(pn);
+  return w;
+}
+
 function panelPemilik(kode) {
   const w = el("div");
 
@@ -4207,9 +4357,15 @@ function halCari() {
   /* empat tab bertumpuk penuh layar memakan ruang yang seharusnya jadi isi;
      .sub-tab menaruhnya berjajar sama lebar seperti di halaman lain */
   const tab = el("div", "sub-tab");
-  [["keystats", "KEYSTATS"], ["finansial", "FINANSIAL"], ["pemilik", "PEMILIK"], ["profil", "PROFIL"]]
+  tab.style.gap = "4px";
+  [["keystats", "KEYSTATS"], ["finansial", "FINANSIAL"], ["pemilik", "PEMILIK"],
+   ["mutasi", "MUTASI"], ["profil", "PROFIL"]]
     .forEach(([kode, label]) => {
       const b = el("button", cariSub === kode ? "aktif" : null, label);
+      /* lima tab tidak muat dengan ukuran bawaan .sub-tab yang dirancang untuk tiga */
+      b.style.padding = "9px 2px";
+      b.style.fontSize = "10px";
+      b.style.letterSpacing = "0";
       b.onclick = () => { cariSub = kode; halCari(); };
       tab.appendChild(b);
     });
@@ -4251,6 +4407,8 @@ function halCari() {
     w.appendChild(panelProfil(cariKode, periode));
   } else if (cariSub === "pemilik") {
     w.appendChild(panelPemilik(cariKode));
+  } else if (cariSub === "mutasi") {
+    w.appendChild(panelMutasi(cariKode));
   } else {
     const pf = el("div", "panel");
     pf.appendChild(el("h2", null, "Finansial"));
