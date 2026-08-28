@@ -1250,7 +1250,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-08-28-14";
+const VERSI_APP = "2026-08-28-16";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -4087,6 +4087,10 @@ function panelPre5(kode) {
       if (r.pre[2] === "kustodian") nm.style.color = "var(--ink-2)";
       tr.appendChild(nm);
       const rk = el("td", null, r.rek + (r.sub > 1 ? "  ×" + r.sub : ""));
+      /* nama rekening efek panjang-panjang dan cuma keterangan, jadi dikecilkan
+         supaya kolom angka di sebelahnya lebih cepat terbaca */
+      rk.style.fontSize = "10px";
+      rk.style.color = "var(--ink-2)";
       if (r.sub > 1) rk.title = "IDX memecahnya jadi " + r.sub +
         " baris dengan nama rekening sama — dijumlahkan di sini";
       if (/PINJAMAN|MARGIN|GADAI|REPO/i.test(r.rek)) {
@@ -4373,27 +4377,36 @@ function panelLepas(kode) {
     "luar bursa. Sama seperti pindah buku, ini tidak terlihat di broker summary."));
 
   const bg = el("div", "tbl-bungkus"), t = el("table"), th = el("tr");
-  ["Tgl", "Pemegang", "Dari", "Hilang", "Vol pasar", "×"]
+  /* Urutan kolom: dua angka penentu - berapa yang hilang dan berapa kali lipat
+     volume pasar - ditaruh di depan supaya terbaca tanpa menggeser tabel.
+     Sebelumnya kolom kali lipat ada di ujung kanan dan selalu terpotong di HP. */
+  ["Tgl", "Hilang", "×", "Pemegang", "Dari", "Vol pasar"]
     .forEach(x => th.appendChild(el("th", null, x)));
   t.appendChild(th);
   l.forEach(r => {
     const tr = el("tr");
     tr.appendChild(el("td", null, tglID(r.tgl)));
+
+    const th2 = el("td", "num", sahamPre(r.hilang));
+    th2.style.fontWeight = "700";
+    if (r.poin !== null) th2.title = "porsi turun " + nf(r.poin, 2) + " poin, sisa " +
+      nf(r.sisa || 0, 2) + "%";
+    tr.appendChild(th2);
+
+    /* dibulatkan tanpa desimal: pada kelipatan ribuan, angka di belakang koma
+       tidak menambah arti apa pun tapi memakan lebar kolom */
+    const tk = el("td", "num turun", (r.kali >= 9999 ? "9999+" : nf(Math.round(r.kali))) + "\u00d7");
+    tk.title = "yang hilang " + nf(Math.round(r.kali)) + " kali seluruh volume " +
+      "perdagangan pada rentang itu";
+    tr.appendChild(tk);
+
     const np = el("td", null, r.pem);
     np.style.maxWidth = "104px"; np.style.overflow = "hidden";
     np.style.textOverflow = "ellipsis"; np.title = r.pem;
     tr.appendChild(np);
+
     tr.appendChild(el("td", null, r.dari.map(x => x.kode || "\u2014").join(" ") || "\u2013"));
-    const th2 = el("td", "num", sahamPre(r.hilang));
-    th2.style.fontWeight = "600";
-    if (r.poin !== null) th2.title = "porsi turun " + nf(r.poin, 2) + " poin, sisa " +
-      nf(r.sisa || 0, 2) + "%";
-    tr.appendChild(th2);
     tr.appendChild(el("td", "num", sahamPre(r.vol)));
-    const tk = el("td", "num turun", nf(r.kali, 1) + "\u00d7");
-    tk.title = "yang hilang " + nf(r.kali, 1) + " kali seluruh volume perdagangan " +
-      "pada rentang itu";
-    tr.appendChild(tk);
     t.appendChild(tr);
   });
   bg.appendChild(t); p.appendChild(bg);
