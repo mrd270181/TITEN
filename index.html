@@ -1250,7 +1250,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-08-27-1";
+const VERSI_APP = "2026-08-28-3";
 let batangVersiTampil = false;
 
 function batangVersi() {
@@ -2643,10 +2643,27 @@ function tabelUrut(kepala, baris, kunciAwal) {
     const tr = el("tr");
     kepala.forEach(k => {
       const nilai = r[k.kunci];
+      const kosong = nilai === null || nilai === undefined;
       const td = el("td", k.angka ? "num" : null,
-                    k.angka ? (nilai === null || nilai === undefined ? "–" : nilai.toLocaleString("id-ID")) : String(nilai));
+                    !k.angka ? String(nilai)
+                    : kosong ? "–"
+                    : k.persen ? nilai.toLocaleString("id-ID") + "%"
+                    : nilai.toLocaleString("id-ID"));
       if (k.warna && typeof nilai === "number")
         td.style.color = nilai > 0 ? "var(--naik)" : nilai < 0 ? "var(--turun)" : "";
+      /* Kolom %Net: yang menarik justru angka KECIL - beli dan jual hampir sama
+         besar, ciri transaksi bolak-balik (crossing), bukan akumulasi sungguhan.
+         Karena itu yang di bawah ambang dibuat kelabu dan diberi tanda, bukan
+         diwarnai hijau/merah seperti kolom net biasa. */
+      if (k.silang && typeof nilai === "number") {
+        if (Math.abs(nilai) < 15) {
+          td.style.color = "var(--ink-3)";
+          td.textContent = "≈ " + td.textContent;
+          td.title = "Beli dan jual hampir seimbang — kemungkinan crossing";
+        } else {
+          td.style.color = nilai > 0 ? "var(--naik)" : "var(--turun)";
+        }
+      }
       tr.appendChild(td);
     });
     tbody.appendChild(tr);
@@ -2704,16 +2721,79 @@ function panelSaldo(w) {
   w.appendChild(p);
 }
 
+/* Tabel GROSS atau tabel NETT? Dibedakan dari isi datanya, bukan dari penanda.
+
+   Di tabel gross IPOT satu broker boleh muncul di sisi beli DAN sisi jual pada hari
+   yang sama; di tabel nett tidak pernah, karena kedua sisinya sudah saling dihapus.
+   Kalau yang tersimpan nett, "beli + jual" cuma menghasilkan |net| - angka yang
+   tidak berarti apa-apa, dan %Net-nya selalu tepat ±100%.
+
+   Pemeriksaannya harus per (tanggal, papan). Kalau REGULER dan NEGO dijumlahkan
+   dulu, broker yang beli di reguler dan jual di nego akan terlihat dua sisi padahal
+   datanya nett. Blok dengan sedikit broker tidak bisa dinilai - wajar tidak ada yang
+   kebetulan bertransaksi dua arah - jadi diabaikan, bukan dianggap nett. */
+const MIN_BROKER_NILAI = 6;
+
+function periksaGross(emiten, pasar, dari, sampai) {
+  const papanDipakai = pasar === "ALL MARKET" ? PAPAN : [pasar === "REGULER" ? "REG" : pasar];
+  const trx = semuaTrx();
+  const blok = {};
+  papanDipakai.forEach(p => (trx[p] || []).forEach(r => {
+    if (r.em !== emiten) return;
+    if (dari && r.tgl < dari) return;
+    if (sampai && r.tgl > sampai) return;
+    const kunci = r.tgl + "|" + p;
+    const b = blok[kunci] || (blok[kunci] = {});
+    const x = b[r.br] || (b[r.br] = {beli: 0, jual: 0});
+    x.beli += r.beli; x.jual += r.jual;
+  }));
+  let gross = 0, net = 0;
+  Object.keys(blok).forEach(kunci => {
+    const br = Object.keys(blok[kunci]);
+    if (br.some(k => blok[kunci][k].beli > 0 && blok[kunci][k].jual > 0)) gross++;
+    else if (br.length >= MIN_BROKER_NILAI) net++;
+  });
+  return {gross: gross, net: net,
+          semuaGross: gross > 0 && net === 0,
+          campur: gross > 0 && net > 0};
+}
+
 function panelTransaksi(w) {
   const agg = kumpulkan(pilih.emiten, pilih.pasar, pilih.dari, pilih.sampai);
+  const cekG = periksaGross(pilih.emiten, pilih.pasar, pilih.dari, pilih.sampai);
+  /* Rentang campuran sengaja TIDAK dihitung: menjumlahkan angka nett dengan angka
+     gross menghasilkan bilangan yang tidak berarti apa pun. */
+  const punyaGross = cekG.semuaGross;
   const baris = Object.keys(agg).map(k => {
     const a = agg[k];
+    const gross = punyaGross ? a.beli + a.jual : null;
     return {broker: k, nama: namaBroker(k), beli: a.beli,
             avgB: a.beli ? Math.round(a.nilaiB / a.beli / 100) : 0,
             jual: a.jual,
             avgJ: a.jual ? Math.round(a.nilaiJ / a.jual / 100) : 0,
-            net: a.beli - a.jual, nilai: Math.round(a.nilaiB - a.nilaiJ)};
+            gross: gross,
+            net: a.beli - a.jual,
+            pnet: gross ? Math.round((a.beli - a.jual) / gross * 100) : null,
+            nilai: Math.round(a.nilaiB - a.nilaiJ)};
   });
+  const catatanGross = punyaGross
+    ? "Gross Lot = beli + jual, seluruh lot yang lewat broker itu. " +
+      "%Net = Net Lot dibagi Gross Lot. Mendekati ±100% berarti broker itu bergerak " +
+      "satu arah — benar-benar menyerap atau melepas barang. Mendekati 0% (ditandai ≈ " +
+      "dan dibuat kelabu) berarti beli dan jualnya hampir seimbang: barangnya cuma " +
+      "diputar bolak-balik, ciri khas crossing. Ketuk judul %Net untuk mengurutkan."
+    : cekG.campur
+    ? "Gross Lot dan %Net dikosongkan karena rentang tanggal ini mencampur dua jenis " +
+      "data: " + cekG.gross + " blok berisi tabel GROSS dan " + cekG.net + " blok " +
+      "berisi tabel NETT. Menjumlahkan keduanya menghasilkan angka yang tidak berarti. " +
+      "Persempit rentangnya ke tanggal yang sejenis saja. Kolom Net Lot dan Net Value " +
+      "tetap benar untuk seluruh rentang."
+    : "Gross Lot dan %Net kosong karena data yang tersimpan berasal dari tabel NETT " +
+      "IPOT — tiap broker cuma muncul di satu sisi, jadi beli + jual hanya " +
+      "menghasilkan |net|, bukan perputaran sebenarnya. Untuk mengisinya, yang " +
+      "ditempel ke DATA BROKER VERTIKAL harus tabel GROSS IPOT (broker yang sama " +
+      "boleh muncul di sisi beli dan sisi jual). Kolom Net Lot dan Net Value di sini " +
+      "tetap benar.";
   const p = el("div", "panel");
   p.appendChild(el("h2", null, "Detail transaksi harian — semua broker"));
   p.appendChild(el("div", "bantu", tglID(pilih.dari) + " – " + tglID(pilih.sampai) + " " +
@@ -2725,9 +2805,12 @@ function panelTransaksi(w) {
     {judul: "Avg Beli", kunci: "avgB", angka: true},
     {judul: "Vol Jual", kunci: "jual", angka: true},
     {judul: "Avg Jual", kunci: "avgJ", angka: true},
+    {judul: "Gross Lot", kunci: "gross", angka: true},
     {judul: "Net Lot", kunci: "net", angka: true, warna: true},
+    {judul: "%Net", kunci: "pnet", angka: true, persen: true, silang: true},
     {judul: "Net Value", kunci: "nilai", angka: true, warna: true},
   ], baris, "net"));
+  p.appendChild(el("div", "bantu", catatanGross));
   w.appendChild(p);
 }
 
@@ -3223,8 +3306,35 @@ function bacaBrokerVertikal(namaFile, wb) {
       });
     });
     mulai.sort((a, b) => a - b);
+    /* Satu sheet bisa memuat blok NETT dan blok GROSS berdampingan. Kalau dua-duanya
+       ikut terbaca, angkanya tertumpuk dan net jadi dua kali lipat. Yang dipilih blok
+       GROSS, karena netnya bisa dihitung dari gross tapi tidak sebaliknya. Penandanya
+       sel bertuliskan "GROSS" atau "NETT" di atas kelompok bloknya; tanpa penanda,
+       dipakai tiga blok pertama seperti sebelumnya. Aturan ini harus sama persis
+       dengan pilih_blok() di impor-broker.py. */
+    const label = [];
+    rows.forEach(r => {
+      if (!r) return;
+      r.forEach((v, j) => {
+        if (typeof v !== "string") return;
+        const t = v.trim().toUpperCase();
+        if (t === "GROSS" || t === "NETT" || t === "NET")
+          label.push({j: j, jenis: t === "GROSS" ? "GROSS" : "NETT"});
+      });
+    });
+    let blok = mulai;
+    if (label.length) {
+      label.sort((a, b) => a.j - b.j);
+      const kelompok = k => {
+        let jenis = null;
+        label.forEach(x => { if (x.j <= k) jenis = x.jenis; });
+        return jenis;
+      };
+      const gross = mulai.filter(k => kelompok(k) === "GROSS");
+      if (gross.length) blok = gross;
+    }
     const AWAL = {};
-    ["REG", "NEGO", "TUNAI"].forEach((p, n) => { if (mulai[n] !== undefined) AWAL[p] = mulai[n]; });
+    ["REG", "NEGO", "TUNAI"].forEach((p, n) => { if (blok[n] !== undefined) AWAL[p] = blok[n]; });
     Object.keys(AWAL).forEach(papan => {
       const k = AWAL[papan];
       let tgl = null;
