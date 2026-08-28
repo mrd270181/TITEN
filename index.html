@@ -1250,7 +1250,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-08-28-13";
+const VERSI_APP = "2026-08-28-14";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -4118,13 +4118,19 @@ function panelPre5(kode) {
    salah sejak hari itu, dan tidak ada hari transaksi yang memperbaikinya
    sendiri. Halaman ini gunanya supaya perpindahan itu tidak lolos dari mata.  */
 
+/* PENTING soal bentuk data:
+   DATA.tgl cuma 5 tanggal (kolom harga di WATCHLIST). Deret volume harian
+   diindeks oleh DATA.tglVol, dan urutannya TERBARU DULU - indeks 0 = hari
+   bursa terakhir, indeks yang lebih besar = makin ke belakang. Salah memakai
+   DATA.tgl membuat semua pencarian tanggal gagal tanpa pesan apa pun. */
 function volHari(kode, tgl) {
   /* -> [volume reguler, volume non-reguler] pada tanggal itu, atau null */
-  if (!DATA || !DATA.tgl || !DATA.vol || !DATA.vol[kode]) return null;
-  const i = DATA.tgl.indexOf(tgl);
+  if (!DATA || !DATA.tglVol || !DATA.vol || !DATA.vol[kode]) return null;
+  const i = DATA.tglVol.indexOf(tgl);
   if (i < 0) return null;
   const a = DATA.vol[kode][i];
-  return a ? [a[0] || 0, a[4] || 0] : null;
+  if (!a) return null;
+  return [a[0] || 0, a[4] || 0];
 }
 
 function volAntara(kode, t0, t1) {
@@ -4132,15 +4138,19 @@ function volAntara(kode, t0, t1) {
      dimundurkan 2 hari bursa karena transaksi pasar reguler baru terlihat di
      posisi KSEI dua hari kemudian (T+2). Sengaja dilebihkan: penilaian
      "tidak lewat pasar" baru diberikan kalau jendela yang longgar pun tak cukup. */
-  if (!DATA || !DATA.tgl || !DATA.vol || !DATA.vol[kode]) return null;
-  const a = DATA.tgl.indexOf(t0), b = DATA.tgl.indexOf(t1);
-  if (a < 0 || b < 0 || b < a) return null;
-  const V = DATA.vol[kode];
+  if (!DATA || !DATA.tglVol || !DATA.vol || !DATA.vol[kode]) return null;
+  const a = DATA.tglVol.indexOf(t0), b = DATA.tglVol.indexOf(t1);
+  /* urutan terbaru dulu, jadi tanggal yang lebih baru justru indeksnya lebih kecil */
+  if (a < 0 || b < 0 || b > a) return null;
+  const V = DATA.vol[kode], akhir = V.length - 1;
   let s = 0;
-  /* pasar reguler settle T+2: posisi tanggal b mencerminkan transaksi sampai b-2 */
-  for (let i = Math.max(0, a - 2); i <= Math.max(0, b - 2); i++) s += (V[i] || [0])[0] || 0;
-  /* pasar negosiasi settle sesuai kesepakatan, sering hari itu juga - ambil penuh */
-  for (let i = Math.max(0, a - 2); i <= b; i++) s += (V[i] || [0, 0, 0, 0, 0])[4] || 0;
+  /* pasar reguler settle T+2: posisi tanggal D mencerminkan transaksi sampai
+     dua hari bursa sebelumnya, yaitu indeks D+2 pada urutan terbaru-dulu */
+  for (let i = Math.min(akhir, b + 2); i <= Math.min(akhir, a + 1); i++)
+    s += (V[i] || [0])[0] || 0;
+  /* pasar negosiasi sering settle hari itu juga, jadi jendelanya tidak digeser */
+  for (let i = b; i <= Math.min(akhir, a - 1); i++)
+    s += (V[i] || [0, 0, 0, 0, 0])[4] || 0;
   return s;
 }
 
