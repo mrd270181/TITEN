@@ -1250,7 +1250,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-08-28-3";
+const VERSI_APP = "2026-08-28-4";
 let batangVersiTampil = false;
 
 function batangVersi() {
@@ -3913,14 +3913,21 @@ function halCari() {
     });
   ph.appendChild(tab);
   if (cariSub !== "profil") {
+    /* Tujuh tombol periode berjajar memakan hampir separuh layar HP padahal yang
+       dipakai satu. Diganti satu kotak pilihan: yang tampil cuma periode yang
+       sedang aktif, sisanya keluar waktu diketuk. */
     const jp = el("div", "alat");
-    jp.appendChild(el("span", "bantu", "Periode:"));
+    const bungkus = el("label", "bantu", "Periode: ");
+    const sel = el("select", "cari");
     MODE_PERIODE.forEach(([m, label]) => {
-      const b = el("button", "tambah", label);
-      if (cariMode === m) b.style.fontWeight = "700";
-      b.onclick = () => { cariMode = m; halCari(); };
-      jp.appendChild(b);
+      const o = el("option", null, NAMA_MODE[m] ? label + " — " + NAMA_MODE[m] : label);
+      o.value = m;
+      if (cariMode === m) o.selected = true;
+      sel.appendChild(o);
     });
+    sel.onchange = () => { cariMode = sel.value; halCari(); };
+    bungkus.appendChild(sel);
+    jp.appendChild(bungkus);
     ph.appendChild(jp);
     const c = periode.map(x => x.catatan).filter(Boolean)[0];
     ph.appendChild(el("div", "bantu", (NAMA_MODE[cariMode] || cariMode) +
@@ -3942,13 +3949,18 @@ function halCari() {
   } else {
     const pf = el("div", "panel");
     pf.appendChild(el("h2", null, "Finansial"));
-    const sub = el("div", "bantu");
+    /* sama seperti pilihan periode: satu kotak pilihan, bukan tiga tombol berjajar */
+    const sub = el("div", "alat");
+    const bungkusL = el("label", "bantu", "Laporan: ");
+    const selL = el("select", "cari");
     [["lr", "Laba Rugi"], ["neraca", "Neraca"], ["ak", "Arus Kas"]].forEach(([kode, label]) => {
-      const b = el("button", "tambah", label);
-      if (cariLap === kode) b.style.fontWeight = "700";
-      b.onclick = () => { cariLap = kode; halCari(); };
-      sub.appendChild(b);
+      const o = el("option", null, label); o.value = kode;
+      if (cariLap === kode) o.selected = true;
+      selL.appendChild(o);
     });
+    selL.onchange = () => { cariLap = selL.value; halCari(); };
+    bungkusL.appendChild(selL);
+    sub.appendChild(bungkusL);
     pf.appendChild(sub);
     const daftarPos = cariLap === "lr" ? POS_LR : cariLap === "neraca" ? POS_NERACA : POS_AK;
     /* Satu kolom bisa punya neraca tapi belum punya laba rugi (laporan kuartalnya
