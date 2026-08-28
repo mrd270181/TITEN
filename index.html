@@ -1250,8 +1250,30 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-08-28-12";
+const VERSI_APP = "2026-08-28-13";
 let batangVersiTampil = false;
+const mulaiApp = Date.now();
+
+/* Ikon PWA di layar utama selalu membuka alamat tanpa penanda versi, dan
+   peramban boleh menyajikan salinan lama dari cache-nya. Akibatnya batang
+   "Versi baru tersedia" muncul lagi tiap kali app dibuka, walau kemarin sudah
+   ditekan. Jadi kalau versi baru terdeteksi tepat sesudah app dibuka, app
+   memuat ulang dirinya sendiri sekali ke alamat bertanda versi - alamat yang
+   berbeda memaksa peramban mengambil berkas baru.
+
+   Penanda di localStorage mencegahnya berulang: satu versi cuma dicoba sekali.
+   Kalau sesudah itu versinya masih tidak cocok (berarti server memang belum
+   diperbarui), batangnya yang muncul, bukan muat ulang lagi. IndexedDB dan
+   data 260 hari di HP tidak disentuh sama sekali. */
+function perbaruiSendiri(v) {
+  if (Date.now() - mulaiApp > 10000) return false;   /* jangan menyela di tengah pakai */
+  let sudah = "";
+  try { sudah = localStorage.getItem("titenMuatVersi") || ""; } catch (e) {}
+  if (sudah === v) return false;
+  try { localStorage.setItem("titenMuatVersi", v); } catch (e) {}
+  location.replace(location.href.split("?")[0] + "?v=" + encodeURIComponent(v));
+  return true;
+}
 
 function batangVersi() {
   if (batangVersiTampil) return;
@@ -1291,7 +1313,7 @@ async function periksaVersi() {
     const r = await fetch("versi.txt?t=" + Date.now(), {cache: "no-store"});
     if (!r.ok) return;
     const v = (await r.text()).trim().split(/\s+/)[0];
-    if (v && v !== VERSI_APP) batangVersi();
+    if (v && v !== VERSI_APP && !perbaruiSendiri(v)) batangVersi();
   } catch (e) {}
 }
 periksaVersi();
