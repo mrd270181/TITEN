@@ -4496,6 +4496,389 @@ function panelPemilik(kode) {
   return w;
 }
 
+/* ================= HALAMAN CARI (emiten) =================
+   Delapan tab: CHART, KEYSTATS, FINANSIAL, BANDING, AKSI, PEMILIK,
+   MUTASI, PROFIL. Enam yang pertama mengikuti susunan Stockbit;
+   PEMILIK dan MUTASI tetap berdiri sendiri seperti sebelumnya karena
+   keduanya buatan sendiri dan tidak ada padanannya di sana.
+
+   Rel tabnya digeser ke samping - delapan tab mustahil muat berjajar
+   di layar HP, dan kode lama pun sudah sempit dengan lima. */
+
+/* ---- warna dari token TITEN, supaya grafik ikut tema gelap/terang ---- */
+function warnaTema(nama) {
+  return getComputedStyle(document.documentElement).getPropertyValue(nama).trim();
+}
+
+/* ---- harga per emiten per tahun: data/harga/<KODE>-<TAHUN>.json ----
+   Berkas bulanan (harga-YYYY-MM.json) memuat semua emiten dan tidak
+   menyimpan harga pembukaan, jadi tidak bisa dipakai menggambar candle.
+   Berkas ini kebalikannya: satu emiten satu tahun, sekitar 15 KB. */
+const simpanHarga = {};          /* "AADI-2026" -> isi berkas / null kalau tidak ada */
+
+async function ambilHargaTahun(kode, tahun) {
+  const kunci = kode + "-" + tahun;
+  if (kunci in simpanHarga) return simpanHarga[kunci];
+  const versi = (manifestGudang && manifestGudang.harga_emiten &&
+                 manifestGudang.harga_emiten.versi) || "";
+  try {
+    const r = await fetch(GUDANG + "harga/" + kunci + ".json" + (versi ? "?v=" + versi : ""),
+                          {cache: "force-cache"});
+    simpanHarga[kunci] = r.ok ? await r.json() : null;
+  } catch (e) { simpanHarga[kunci] = null; }
+  return simpanHarga[kunci];
+}
+
+/* tahun berapa saja yang tersedia untuk emiten ini, menurut manifest */
+function tahunHarga(kode) {
+  const h = manifestGudang && manifestGudang.harga_emiten;
+  if (!h || !h.emiten) return null;
+  const i = h.emiten.indexOf(kode);
+  if (i < 0) return [];
+  const a = [];
+  for (let t = h.dari[i]; t <= h.sampai[i]; t++) a.push(t);
+  return a;
+}
+
+/* gabung beberapa tahun jadi satu deret hari, urut naik */
+async function deretHarga(kode, hariDiminta) {
+  const semua = tahunHarga(kode);
+  if (!semua || !semua.length) return {siap: semua !== null, hari: []};
+  const perTahun = Math.ceil(hariDiminta / 240) + 1;
+  const dipakai = semua.slice(-Math.min(semua.length, perTahun));
+  const isi = await Promise.all(dipakai.map(t => ambilHargaTahun(kode, t)));
+  const hari = [];
+  isi.forEach(j => {
+    if (!j || !j.tanggal) return;
+    for (let i = 0; i < j.tanggal.length; i++) {
+      /* Hari saham tidak diperdagangkan: IDX mengisi 0. Kalau penutupannya
+         pun 0 hari itu dilewati sama sekali; kalau penutupan ada tapi OHLC
+         nol, candle digambar rata di harga penutupan. */
+      const c = j.c[i] || 0;
+      if (!c) continue;
+      const o = j.o[i] || c, h = j.h[i] || c, l = j.l[i] || c;
+      hari.push({t: j.tanggal[i], o: o, h: Math.max(h, o, c), l: Math.min(l || c, o, c), c: c,
+                 v: j.v[i] || 0, f: (j.fb[i] || 0) - (j.fs[i] || 0)});
+    }
+  });
+  hari.sort((a, b) => a.t < b.t ? -1 : a.t > b.t ? 1 : 0);
+  return {siap: true, hari: hari.slice(-hariDiminta)};
+}
+
+/* ---- panel grafik ---- */
+let cariHari = 120;              /* rentang yang sedang tampil */
+let cariAsing = "harian";        /* "harian" atau "kumulatif" */
+
+function panelChart(kode) {
+  const p = el("div", "panel");
+  p.appendChild(el("h2", null, "Grafik harga"));
+
+  const alat = el("div", "alat");
+  const bRentang = [[20, "1B"], [60, "3B"], [120, "6B"], [240, "1T"], [1200, "5T"], [99999, "Semua"]];
+  bRentang.forEach(([n, teks]) => {
+    const b = el("button", cariHari === n ? "aktif" : null, teks);
+    b.style.padding = "5px 10px"; b.style.fontSize = "12px";
+    b.onclick = () => { cariHari = n; halCari(); };
+    alat.appendChild(b);
+  });
+  p.appendChild(alat);
+
+  const alat2 = el("div", "alat");
+  [["harian", "Asing harian"], ["kumulatif", "Asing kumulatif"]].forEach(([m, teks]) => {
+    const b = el("button", cariAsing === m ? "aktif" : null, teks);
+    b.style.padding = "5px 10px"; b.style.fontSize = "12px";
+    b.onclick = () => { cariAsing = m; halCari(); };
+    alat2.appendChild(b);
+  });
+  p.appendChild(alat2);
+
+  const ket = el("div", "bantu", "Memuat harga…");
+  p.appendChild(ket);
+  const kan = document.createElement("canvas");
+  kan.style.width = "100%"; kan.style.display = "block"; kan.style.marginTop = "6px";
+  p.appendChild(kan);
+  p.appendChild(el("div", "bantu",
+    "Candle harga harian, batang volume dengan rata-rata 20 hari, dan arus asing bersih " +
+    "(foreign buy dikurangi foreign sell). Hari tanpa transaksi dilewati."));
+
+  deretHarga(kode, cariHari).then(hasil => {
+    if (!hasil.siap) {
+      ket.textContent = "Berkas harga per emiten belum ada di server. " +
+        "Jalankan ekspor.py di komputer, lalu unggah folder data/harga/ ke repo.";
+      kan.style.display = "none";
+      return;
+    }
+    if (!hasil.hari.length) {
+      ket.textContent = "Belum ada data harga untuk " + kode + ".";
+      kan.style.display = "none";
+      return;
+    }
+    const a = hasil.hari[hasil.hari.length - 1];
+    const sls = a.c - a.o;
+    ket.innerHTML = "";
+    ket.appendChild(el("span", null,
+      "O " + rp(a.o) + "   H " + rp(a.h) + "   L " + rp(a.l) + "   C " + rp(a.c) + "   "));
+    ket.appendChild(el("span", sls >= 0 ? "naik" : "turun",
+      (sls >= 0 ? "+" : "") + rp(sls) + " (" + (sls >= 0 ? "+" : "") +
+      (a.o ? (sls / a.o * 100).toFixed(2) : "0.00") + "%)"));
+    ket.appendChild(el("span", null, "   · " + tglID(a.t)));
+    gambarChart(kan, hasil.hari);
+  });
+
+  return p;
+}
+
+function rp(n) { return Number(n || 0).toLocaleString("id-ID"); }
+function ringkasAngka(x) {
+  const a = Math.abs(x);
+  if (a >= 1e12) return (x / 1e12).toFixed(1) + "T";
+  if (a >= 1e9) return (x / 1e9).toFixed(1) + "M";
+  if (a >= 1e6) return (x / 1e6).toFixed(1) + "Jt";
+  if (a >= 1e3) return (x / 1e3).toFixed(0) + "rb";
+  return String(Math.round(x));
+}
+
+const BULAN_PENDEK = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun",
+                      "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+
+function gambarChart(kan, d) {
+  const lebar = kan.parentElement.clientWidth || 340;
+  const tinggi = Math.max(320, Math.min(520, Math.round(lebar * 0.95)));
+  const dpr = window.devicePixelRatio || 1;
+  kan.width = lebar * dpr; kan.height = tinggi * dpr;
+  kan.style.height = tinggi + "px";
+  const g = kan.getContext("2d");
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, lebar, tinggi);
+
+  const cGaris = warnaTema("--garis"), cInk3 = warnaTema("--ink-3"),
+        cNaik = warnaTema("--naik"), cTurun = warnaTema("--turun"),
+        cMerek = warnaTema("--merek"), cDasar = warnaTema("--surface-1");
+
+  const kananLabel = 52, kiri = 4, atas = 6, bawah = 18;
+  const lebarPlot = lebar - kiri - kananLabel;
+  const sisa = tinggi - atas - bawah - 16;
+  const tH = Math.round(sisa * 0.56), tV = Math.round(sisa * 0.22),
+        tF = sisa - tH - tV;
+  const yH = atas, yV = yH + tH + 8, yF = yV + tV + 8;
+
+  let lo = Infinity, hi = -Infinity, volMaks = 0, asMaks = 0, kum = 0;
+  const kumArr = [];
+  d.forEach(b => { lo = Math.min(lo, b.l); hi = Math.max(hi, b.h);
+                   volMaks = Math.max(volMaks, b.v); kum += b.f; kumArr.push(kum); });
+  d.forEach((b, i) => { asMaks = Math.max(asMaks,
+    Math.abs(cariAsing === "harian" ? b.f : kumArr[i])); });
+  if (!(hi > lo)) { hi = lo + 1; }
+  const pad = (hi - lo) * 0.08; lo -= pad; hi += pad;
+  if (!volMaks) volMaks = 1;
+  if (!asMaks) asMaks = 1;
+
+  const w = lebarPlot / d.length;
+  const badan = Math.max(1, Math.min(9, w * 0.62));
+  const X = i => kiri + i * w + w / 2;
+  const Y = v => yH + tH - ((v - lo) / (hi - lo)) * tH;
+
+  g.font = "10px system-ui, sans-serif";
+  g.textBaseline = "middle";
+
+  const kasar = (hi - lo) / 4;
+  const pangkat = Math.pow(10, Math.floor(Math.log(kasar) / Math.LN10));
+  const step = Math.max(1, Math.ceil(kasar / pangkat) * pangkat);
+  for (let v = Math.ceil(lo / step) * step; v < hi; v += step) {
+    const y = Math.round(Y(v)) + 0.5;
+    g.strokeStyle = cGaris; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(kiri, y); g.lineTo(kiri + lebarPlot, y); g.stroke();
+    g.fillStyle = cInk3; g.textAlign = "left";
+    g.fillText(rp(v), kiri + lebarPlot + 5, Y(v));
+  }
+
+  d.forEach((b, i) => {
+    const naik = b.c >= b.o;
+    g.strokeStyle = g.fillStyle = naik ? cNaik : cTurun;
+    g.lineWidth = 1;
+    const x = Math.round(X(i)) + 0.5;
+    g.beginPath(); g.moveTo(x, Y(b.h)); g.lineTo(x, Y(b.l)); g.stroke();
+    const yo = Y(b.o), yc = Y(b.c);
+    g.fillRect(X(i) - badan / 2, Math.min(yo, yc), badan, Math.max(1, Math.abs(yc - yo)));
+  });
+
+  const akhir = d[d.length - 1], yA = Y(akhir.c);
+  g.setLineDash([3, 3]); g.strokeStyle = cMerek; g.lineWidth = 1;
+  g.beginPath(); g.moveTo(kiri, Math.round(yA) + 0.5);
+  g.lineTo(kiri + lebarPlot, Math.round(yA) + 0.5); g.stroke();
+  g.setLineDash([]);
+  g.fillStyle = cMerek; g.fillRect(kiri + lebarPlot + 2, yA - 8, kananLabel - 4, 16);
+  g.fillStyle = cDasar; g.textAlign = "center";
+  g.fillText(rp(akhir.c), kiri + lebarPlot + 2 + (kananLabel - 4) / 2, yA);
+
+  d.forEach((b, i) => {
+    const h = (b.v / volMaks) * tV;
+    g.fillStyle = b.c >= b.o ? cNaik : cTurun; g.globalAlpha = 0.55;
+    g.fillRect(X(i) - badan / 2, yV + tV - h, badan, h);
+    g.globalAlpha = 1;
+  });
+  g.strokeStyle = cMerek; g.lineWidth = 1.4; g.beginPath();
+  d.forEach((b, i) => {
+    if (i < 19) return;
+    let s = 0; for (let k = i - 19; k <= i; k++) s += d[k].v;
+    const y = yV + tV - (s / 20 / volMaks) * tV;
+    if (i === 19) g.moveTo(X(i), y); else g.lineTo(X(i), y);
+  });
+  g.stroke();
+  g.fillStyle = cInk3; g.textAlign = "left";
+  g.fillText("Volume · MA20", kiri + 2, yV + 8);
+
+  const y0 = yF + tF / 2;
+  g.strokeStyle = cGaris; g.lineWidth = 1;
+  g.beginPath(); g.moveTo(kiri, Math.round(y0) + 0.5);
+  g.lineTo(kiri + lebarPlot, Math.round(y0) + 0.5); g.stroke();
+  if (cariAsing === "harian") {
+    d.forEach((b, i) => {
+      const h = (b.f / asMaks) * (tF / 2);
+      g.fillStyle = b.f >= 0 ? cNaik : cTurun; g.globalAlpha = 0.8;
+      g.fillRect(X(i) - badan / 2, h >= 0 ? y0 - h : y0, badan, Math.max(1, Math.abs(h)));
+      g.globalAlpha = 1;
+    });
+  } else {
+    g.strokeStyle = kumArr[kumArr.length - 1] >= 0 ? cNaik : cTurun;
+    g.lineWidth = 1.8; g.beginPath();
+    d.forEach((b, i) => {
+      const y = y0 - (kumArr[i] / asMaks) * (tF / 2);
+      if (i === 0) g.moveTo(X(i), y); else g.lineTo(X(i), y);
+    });
+    g.stroke();
+  }
+  g.fillStyle = cInk3; g.textAlign = "left";
+  g.fillText(cariAsing === "harian" ? "Asing bersih harian" : "Asing bersih kumulatif",
+             kiri + 2, yF + 8);
+  g.fillText("±" + ringkasAngka(asMaks), kiri + lebarPlot + 5, yF + 8);
+
+  g.fillStyle = cInk3; g.textAlign = "center";
+  let bln = -1;
+  d.forEach((b, i) => {
+    const m = parseInt(String(b.t).slice(5, 7), 10) - 1;
+    if (m !== bln && i > 2 && i < d.length - 2) {
+      bln = m;
+      g.fillText(BULAN_PENDEK[m] + (m === 0 ? " " + String(b.t).slice(2, 4) : ""),
+                 X(i), tinggi - 6);
+      g.strokeStyle = cGaris; g.lineWidth = 1;
+      g.beginPath(); g.moveTo(Math.round(X(i)) + 0.5, yH);
+      g.lineTo(Math.round(X(i)) + 0.5, yF + tF); g.stroke();
+    }
+  });
+}
+
+/* ---- BANDING: emiten ini vs beberapa emiten lain ---- */
+let cariBanding = [];            /* kode pembanding pilihan user */
+
+function panelBanding(kode, periode) {
+  const p = el("div", "panel");
+  p.appendChild(el("h2", null, "Banding"));
+
+  const alat = el("div", "alat");
+  const inp = el("input", "cari");
+  inp.placeholder = "Ketik kode emiten pembanding";
+  inp.autocapitalize = "characters";
+  inp.onchange = () => {
+    const v = inp.value.trim().toUpperCase();
+    if (v && v !== kode && cariBanding.indexOf(v) < 0 && barisScr[v]) {
+      cariBanding.push(v); halCari();
+    } else if (v) { inp.value = ""; }
+  };
+  alat.appendChild(inp);
+  p.appendChild(alat);
+
+  if (cariBanding.length) {
+    const baris = el("div", "alat");
+    cariBanding.forEach(k => {
+      const b = el("button", "aktif", k + " ×");
+      b.style.padding = "5px 10px"; b.style.fontSize = "12px";
+      b.onclick = () => { cariBanding = cariBanding.filter(x => x !== k); halCari(); };
+      baris.appendChild(b);
+    });
+    p.appendChild(baris);
+  }
+
+  const kolom = [kode].concat(cariBanding);
+  const BARIS = [
+    ["Pendapatan", d => d.pendapatan, "M"],
+    ["Laba kotor", d => d.laba_kotor, "M"],
+    ["Laba bersih", d => d.laba_bersih, "M"],
+    ["Marjin kotor", d => bagi(d.laba_kotor, d.pendapatan) * 100, "%"],
+    ["Marjin bersih", d => bagi(d.laba_bersih, d.pendapatan) * 100, "%"],
+    ["Return on Equity", d => bagi(d.laba_bersih, d.ekuitas) * 100, "%"],
+    ["Return on Assets", d => bagi(d.laba_bersih, d.aset) * 100, "%"],
+    ["Current Ratio", d => bagi(d.aset_lancar, d.liabilitas_pendek), ""],
+    ["Quick Ratio", d => bagi(d.aset_lancar - (d.persediaan || 0), d.liabilitas_pendek), ""],
+    ["Debt to Equity", d => bagi(d.liabilitas, d.ekuitas), ""],
+    ["Arus kas operasi", d => d.ak_operasi, "M"],
+  ];
+
+  const isi = {};
+  kolom.forEach(k => {
+    const per = kolomPeriode(k, cariMode, 1);
+    isi[k] = (per && per.length) ? (per[per.length - 1].pos || {}) : {};
+  });
+
+  const t = el("table");
+  const th = el("tr");
+  th.appendChild(el("th", null, "Pos"));
+  kolom.forEach(k => th.appendChild(el("th", null, k)));
+  t.appendChild(th);
+  BARIS.forEach(([nama, hitung, satuan]) => {
+    const tr = el("tr");
+    tr.appendChild(el("td", null, nama));
+    kolom.forEach(k => {
+      let v;
+      try { v = hitung(isi[k] || {}); } catch (e) { v = null; }
+      const teks = (v === null || v === undefined || !isFinite(v)) ? "—"
+        : satuan === "M" ? rp(Math.round(v / 1e9))
+        : satuan === "%" ? v.toFixed(2) + "%"
+        : v.toFixed(2);
+      tr.appendChild(el("td", null, teks));
+    });
+    t.appendChild(tr);
+  });
+  const bungkus = el("div");
+  bungkus.style.overflowX = "auto";
+  bungkus.appendChild(t);
+  p.appendChild(bungkus);
+  p.appendChild(el("div", "bantu",
+    "Angka bertanda M dalam miliar rupiah, memakai periode " +
+    (NAMA_MODE[cariMode] || cariMode) + " yang dipilih di atas. " +
+    "Kolom rata-rata industri dan sektor belum ada — perlu perhitungan median " +
+    "seluruh emiten sesektor, menyusul."));
+  return p;
+}
+
+function bagi(a, b) {
+  a = Number(a); b = Number(b);
+  if (!isFinite(a) || !isFinite(b) || !b) return NaN;
+  return a / b;
+}
+
+/* ---- AKSI KORPORASI: belum ada sumber datanya ---- */
+function panelAksi(kode) {
+  const p = el("div", "panel");
+  p.appendChild(el("h2", null, "Aksi korporasi"));
+  const alat = el("div", "alat");
+  ["Semua", "Dividen", "Stock split", "Reverse split", "Right issue", "Warrant", "Bonus"]
+    .forEach((teks, i) => {
+      const b = el("button", i === 0 ? "aktif" : null, teks);
+      b.style.padding = "5px 10px"; b.style.fontSize = "12px";
+      alat.appendChild(b);
+    });
+  p.appendChild(alat);
+  p.appendChild(el("div", "bantu",
+    "Belum ada satu pun data aksi korporasi di TITEN: dividen, stock split, " +
+    "reverse split, right issue, warrant, bonus, maupun jadwal RUPS. Yang " +
+    "diperlukan per baris: jenis aksi, nilai, cum date, ex date, recording date, " +
+    "dan payment date. Begitu sumbernya masuk, empat baris di KEYSTATS " +
+    "(dividen TTM, payout ratio, dividend yield, ex-date terakhir) ikut hidup."));
+  return p;
+}
+
+/* ---- halaman utama ---- */
 function halCari() {
   const w = $("#hal-cari"); if (!w) return;
   w.innerHTML = "";
@@ -4530,34 +4913,42 @@ function halCari() {
 
   if (!cariKode) return;
 
-  /* ---- halaman emiten ---- */
-  /* Semua tampilan laporan keuangan memakai satu pilihan periode yang sama:
-     Q1-Q4 berdiri sendiri, Tahunan, TTM, dan YTD apa adanya. Lihat kolomPeriode. */
   const periode = kolomPeriode(cariKode, cariMode, 3);
 
+  /* ---- kepala emiten + rel tab ---- */
   const ph = el("div", "panel");
   const baris = barisScr[cariKode];
   ph.appendChild(el("h2", null, cariKode + (baris && baris[1] ? " — " + baris[1] : "")));
-  /* empat tab bertumpuk penuh layar memakan ruang yang seharusnya jadi isi;
-     .sub-tab menaruhnya berjajar sama lebar seperti di halaman lain */
-  const tab = el("div", "sub-tab");
-  tab.style.gap = "4px";
-  [["keystats", "KEYSTATS"], ["finansial", "FINANSIAL"], ["pemilik", "PEMILIK"],
+
+  /* Enam tab tidak muat berjajar di layar HP. Rel yang digeser ke samping
+     memberi tiap tab lebar penuh sesuai tulisannya, dan masih menyisakan
+     petunjuk bahwa ada tab lain di sebelah kanan. */
+  const rel = el("div");
+  rel.style.display = "flex";
+  rel.style.gap = "2px";
+  rel.style.overflowX = "auto";
+  rel.style.margin = "6px -12px 0";
+  rel.style.padding = "0 12px";
+  rel.style.scrollbarWidth = "none";
+  [["chart", "CHART"], ["keystats", "KEYSTATS"], ["finansial", "FINANSIAL"],
+   ["banding", "BANDING"], ["aksi", "AKSI"], ["pemilik", "PEMILIK"],
    ["mutasi", "MUTASI"], ["profil", "PROFIL"]]
-    .forEach(([kode, label]) => {
-      const b = el("button", cariSub === kode ? "aktif" : null, label);
-      /* lima tab tidak muat dengan ukuran bawaan .sub-tab yang dirancang untuk tiga */
-      b.style.padding = "9px 2px";
-      b.style.fontSize = "10px";
-      b.style.letterSpacing = "0";
-      b.onclick = () => { cariSub = kode; halCari(); };
-      tab.appendChild(b);
+    .forEach(([k, label]) => {
+      const b = el("button", cariSub === k ? "aktif" : null, label);
+      b.style.flex = "0 0 auto";
+      b.style.padding = "9px 12px";
+      b.style.fontSize = "11px";
+      b.style.letterSpacing = ".02em";
+      b.style.whiteSpace = "nowrap";
+      b.style.borderBottom = cariSub === k
+        ? "2px solid var(--merek)" : "2px solid transparent";
+      b.onclick = () => { cariSub = k; halCari(); };
+      rel.appendChild(b);
     });
-  ph.appendChild(tab);
-  if (cariSub === "keystats" || cariSub === "finansial") {
-    /* Tujuh tombol periode berjajar memakan hampir separuh layar HP padahal yang
-       dipakai satu. Diganti satu kotak pilihan: yang tampil cuma periode yang
-       sedang aktif, sisanya keluar waktu diketuk. */
+  ph.appendChild(rel);
+
+  /* pilihan periode dipakai bersama oleh KEYSTATS, FINANSIAL, dan BANDING */
+  if (["keystats", "finansial", "banding"].indexOf(cariSub) >= 0) {
     const jp = el("div", "alat");
     const bungkus = el("label", "bantu", "Periode: ");
     const sel = el("select", "cari");
@@ -4579,24 +4970,34 @@ function halCari() {
   }
   w.appendChild(ph);
 
-  if (lkGagal) w.appendChild(el("div", "panel")).appendChild(
+  if (lkGagal && cariSub !== "chart") w.appendChild(el("div", "panel")).appendChild(
     el("div", "bantu", "Data laporan keuangan belum bisa diambil dari server."));
 
-  if (cariSub === "keystats") {
+  if (cariSub === "chart") {
+    w.appendChild(panelChart(cariKode));
+
+  } else if (cariSub === "keystats") {
     w.appendChild(panelKeystatsKuartal(cariKode));
     w.appendChild(panelKeystats(cariKode, periode));
-  } else if (cariSub === "profil") {
-    /* daftar pemegang saham pindah ke tab PEMILIK supaya tidak ada dua tempat
-       yang menampilkan hal yang sama dengan ambang berbeda */
-    w.appendChild(panelProfil(cariKode, periode));
+
+  } else if (cariSub === "banding") {
+    w.appendChild(panelBanding(cariKode, periode));
+
+  } else if (cariSub === "aksi") {
+    w.appendChild(panelAksi(cariKode));
+
   } else if (cariSub === "pemilik") {
     w.appendChild(panelPemilik(cariKode));
+
   } else if (cariSub === "mutasi") {
     w.appendChild(panelMutasi(cariKode));
+
+  } else if (cariSub === "profil") {
+    w.appendChild(panelProfil(cariKode, periode));
+
   } else {
     const pf = el("div", "panel");
     pf.appendChild(el("h2", null, "Finansial"));
-    /* sama seperti pilihan periode: satu kotak pilihan, bukan tiga tombol berjajar */
     const sub = el("div", "alat");
     const bungkusL = el("label", "bantu", "Laporan: ");
     const selL = el("select", "cari");
@@ -4610,9 +5011,6 @@ function halCari() {
     sub.appendChild(bungkusL);
     pf.appendChild(sub);
     const daftarPos = cariLap === "lr" ? POS_LR : cariLap === "neraca" ? POS_NERACA : POS_AK;
-    /* Satu kolom bisa punya neraca tapi belum punya laba rugi (laporan kuartalnya
-       belum masuk). Jadi kosong-tidaknya diperiksa per jenis laporan, bukan sekadar
-       ada-tidaknya kolom — kalau tidak, tabelnya cuma judul tanpa satu baris pun. */
     if (!periode.some(p => daftarPos.some(([k]) => p.pos[k] !== undefined))) {
       pf.appendChild(el("div", "bantu", sebabKosong(cariKode, cariMode)));
     } else {
