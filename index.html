@@ -1250,7 +1250,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-04-04";
+const VERSI_APP = "2026-09-04-07";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -3902,10 +3902,16 @@ function panelPemegang(kode) {
       "di laptop, lalu ekspor dan unggah ulang."));
     return p;
   }
-  p.appendChild(el("div", "bantu", "Posisi " + tglID(MILIK.tanggal) + "."));
+  /* Posisi sebulan sebelumnya ikut diekspor supaya perubahannya bisa dihitung
+     di sini. Kalau berkasnya masih versi lama (tanpa bagian "sebelum"), kolom
+     perubahan disembunyikan, bukan diisi nol - nol dan "tidak tahu" berbeda. */
+  const seb = (MILIK.sebelum && MILIK.sebelum.data && MILIK.sebelum.data[kode]) || null;
+  p.appendChild(el("div", "bantu", "Posisi " + tglID(MILIK.tanggal) +
+    (seb ? ", dibandingkan " + tglID(MILIK.sebelum.tanggal) : "") + "."));
 
   const t = el("table"), th = el("tr");
-  ["Nama", "Golongan", "Saham", "%"].forEach(x => th.appendChild(el("th", null, x)));
+  ["Nama", "Golongan", "Saham", "%"].concat(seb ? ["Perubahan"] : [])
+    .forEach(x => th.appendChild(el("th", null, x)));
   t.appendChild(th);
   isi.forEach(([nama, gol, la, saham, persen]) => {
     const tr = el("tr");
@@ -3916,9 +3922,36 @@ function panelPemegang(kode) {
     a.style.textAlign = "right"; tr.appendChild(a);
     const b = el("td", null, persen.toFixed(2).replace(".", ",") + "%");
     b.style.textAlign = "right"; tr.appendChild(b);
+    if (seb) {
+      const lalu = seb[nama];
+      const c = el("td");
+      c.style.textAlign = "right";
+      if (!lalu) {
+        c.textContent = "baru";
+        c.style.color = "var(--ink-3)";
+      } else {
+        const d = saham - lalu[0];
+        if (Math.abs(d) < 1) {
+          c.textContent = "tetap";
+          c.style.color = "var(--ink-3)";
+        } else {
+          const pd = lalu[0] ? d / lalu[0] * 100 : 0;
+          c.textContent = (d > 0 ? "+" : "\u2212") + ringkas(Math.abs(d)) +
+            "  (" + (d > 0 ? "+" : "\u2212") + nf(Math.abs(pd), 2) + "%)";
+          c.className = d > 0 ? "naik" : "turun";
+        }
+      }
+      tr.appendChild(c);
+    }
     t.appendChild(tr);
   });
   p.appendChild(t);
+  if (seb) {
+    const hilang = Object.keys(seb).filter(nm => !isi.some(x => x[0] === nm));
+    if (hilang.length) p.appendChild(el("div", "bantu",
+      "Turun di bawah 1% sejak " + tglID(MILIK.sebelum.tanggal) + ": " +
+      hilang.join(", ") + "."));
+  }
 
   /* komposisi menurut golongan investor */
   const gol = {};
@@ -4021,6 +4054,27 @@ function panelPre5(kode) {
     /* Jumlah rekening dihitung pada tanggal terakhir yang tampil, bukan sepanjang
        bulan: rekening yang sempat ada lalu dikosongkan tetap ikut sebagai baris
        (supaya perpindahannya kelihatan), tapi tidak boleh ikut dihitung. */
+    /* Perubahan sejak tanggal pertama yang tampil. Dihitung dari posisi, bukan
+       dari perpindahan tempat penitipan - pindah buku tidak mengubah jumlah. */
+    const iAwal = kol[0];
+    const g0 = gab[iAwal], g1 = gab[iAkhir];
+    if (g0 !== null && g0 !== undefined && g1 !== null && g1 !== undefined) {
+      const d = g1 - g0, poin = (per[iAkhir] || 0) - (per[iAwal] || 0);
+      const bar = el("div", "bantu");
+      bar.appendChild(el("span", null, "Sejak " + tglID(tgl[iAwal]) + ": "));
+      if (Math.abs(d) < 1) {
+        bar.appendChild(el("span", null, "jumlahnya tidak berubah"));
+      } else {
+        bar.appendChild(el("span", d > 0 ? "naik" : "turun",
+          (d > 0 ? "+" : "\u2212") + sahamPre(Math.abs(d)) + " lembar (" +
+          (d > 0 ? "+" : "\u2212") + nf(Math.abs(g0 ? d / g0 * 100 : 0), 2) + "%)"));
+        bar.appendChild(el("span", null, " \u00b7 porsi " + nf(per[iAwal] || 0, 2) +
+          "% \u2192 " + nf(per[iAkhir] || 0, 2) + "% (" +
+          (poin >= 0 ? "+" : "\u2212") + nf(Math.abs(poin), 2) + " poin)"));
+      }
+      p.appendChild(bar);
+    }
+
     const nAktif = rek.filter(r => r.v[iAkhir] !== null && r.v[iAkhir] !== undefined).length;
     p.appendChild(el("div", "bantu", "Posisi " + sahamPre(gab[iAkhir]) + " lembar · " +
       nf(per[iAkhir] || 0, 2) + "% · " + nAktif + " rekening efek pada " + tglID(tgl[iAkhir]) +
@@ -4287,6 +4341,17 @@ function panelMutasi(kode) {
     sb.onchange = () => { PRE = null; preBulan = sb.value; halCari(); };
     bb.appendChild(sb); jb.appendChild(bb); p.appendChild(jb);
   }
+  /* Nama bulan saja tidak memberi tahu pengumumannya terbit tanggal berapa
+     saja - dan jumlahnya beda-beda tiap bulan. Rentangnya ditulis apa adanya
+     dari daftar tanggal di berkas pre bulan itu. */
+  const tgPre = (PRE && PRE.tanggal) || [];
+  if (tgPre.length) {
+    const t1 = tgPre[0], t2 = tgPre[tgPre.length - 1];
+    p.appendChild(el("div", "bantu",
+      tglID(t1) + (t1.slice(0, 4) === t2.slice(0, 4) ? "" : " " + t1.slice(0, 4)) +
+      " \u2013 " + tglID(t2) + " " + t2.slice(0, 4) +
+      "  \u00b7  " + tgPre.length + " hari pengumuman"));
+  }
 
   const m = cariMutasi(kode);
   p.appendChild(el("div", "bantu", m.length
@@ -4469,6 +4534,17 @@ function panelPemilik(kode) {
     sb.onchange = () => { PRE = null; preBulan = sb.value; halCari(); };
     bb.appendChild(sb); jb.appendChild(bb); p.appendChild(jb);
   }
+  /* Nama bulan saja tidak memberi tahu pengumumannya terbit tanggal berapa
+     saja - dan jumlahnya beda-beda tiap bulan. Rentangnya ditulis apa adanya
+     dari daftar tanggal di berkas pre bulan itu. */
+  const tgPre = (PRE && PRE.tanggal) || [];
+  if (tgPre.length) {
+    const t1 = tgPre[0], t2 = tgPre[tgPre.length - 1];
+    p.appendChild(el("div", "bantu",
+      tglID(t1) + (t1.slice(0, 4) === t2.slice(0, 4) ? "" : " " + t1.slice(0, 4)) +
+      " \u2013 " + tglID(t2) + " " + t2.slice(0, 4) +
+      "  \u00b7  " + tgPre.length + " hari pengumuman"));
+  }
 
   const tgl = (PRE && PRE.tanggal) || [];
   if (tgl.length > 3) {
@@ -4524,7 +4600,7 @@ function warnaTema(nama) {
    Berkas harga bulanan yang disinkronkan aplikasi kini ikut membawa harga
    pembukaan, jadi candle bisa digambar tanpa mengunduh berkas tambahan apa
    pun. Riwayatnya sepanjang yang tersimpan di HP (13 bulan terakhir). */
-function deretHarga(kode, hariDiminta) {
+function deretHarga(kode) {
   const hari = [];
   daftarHari.forEach(r => {
     const b = r.baris && r.baris[kode];
@@ -4536,32 +4612,50 @@ function deretHarga(kode, hariDiminta) {
                v: b.v || 0, f: (b.fb || 0) - (b.fs || 0)});
   });
   hari.sort((x, y) => x.t < y.t ? -1 : x.t > y.t ? 1 : 0);
-  const adaOHLC = hari.some(x => x.o !== x.c || x.h !== x.c || x.l !== x.c);
-  return {hari: hari.slice(-hariDiminta), ohlc: adaOHLC};
+  return {hari: hari};
 }
 
 /* ---- panel grafik ---- */
-let cariHari = 120;              /* rentang yang sedang tampil */
+/* Rentang tanggal grafik. null = ikut data terbaru: begitu ada hari bursa
+   baru, "sampai" bergeser sendiri tanpa perlu disetel ulang. Setelah user
+   memilih tanggal sendiri, pilihannya dipakai apa adanya sampai ditekan
+   tombol "Terbaru". */
+let cariDari = null, cariSampai = null;
 let cariAsing = "harian";        /* "harian" atau "kumulatif" */
+const HARI_BAWAAN = 120;         /* kira-kira enam bulan bursa */
 
 function panelChart(kode) {
   const p = el("div", "panel");
   p.appendChild(el("h2", null, "Grafik harga"));
 
+  const semua = deretHarga(kode).hari;
+  if (!semua.length) {
+    p.appendChild(el("div", "bantu", "Belum ada data harga " + kode +
+      " tersimpan di HP. Buka tab PERBARUI dulu."));
+    return p;
+  }
+  const adaAwal = semua[0].t, adaAkhir = semua[semua.length - 1].t;
+  const bawaan = semua[Math.max(0, semua.length - HARI_BAWAAN)].t;
+  let dari = cariDari || bawaan, sampai = cariSampai || adaAkhir;
+  if (dari > sampai) { const x = dari; dari = sampai; sampai = x; }
+
   const alat = el("div", "alat");
-  /* Tombol rentang yang lebih panjang dari data yang ada cuma membingungkan -
-     ditekan pun hasilnya sama. Yang ditampilkan hanya yang benar-benar bisa
-     dipenuhi, ditambah "Semua". */
-  const adaHari = deretHarga(kode, 99999).hari.length;
-  if (cariHari !== 99999 && cariHari > adaHari) cariHari = 99999;
-  const bRentang = [[20, "1B"], [60, "3B"], [120, "6B"], [240, "1T"], [1200, "5T"],
-                    [99999, "Semua"]].filter(([n]) => n === 99999 || n <= adaHari);
-  bRentang.forEach(([n, teks]) => {
-    const b = el("button", cariHari === n ? "aktif" : null, teks);
-    b.style.padding = "5px 10px"; b.style.fontSize = "12px";
-    b.onclick = () => { cariHari = n; halCari(); };
-    alat.appendChild(b);
-  });
+  function kotakTgl(nilai, ubah) {
+    const i = el("input", "cari");
+    i.type = "date"; i.value = nilai; i.min = adaAwal; i.max = adaAkhir;
+    i.onchange = () => { ubah(i.value || null); halCari(); };
+    return i;
+  }
+  const lDari = el("label", "bantu", "Dari ");
+  lDari.appendChild(kotakTgl(dari, v => cariDari = v));
+  const lSampai = el("label", "bantu", " sampai ");
+  lSampai.appendChild(kotakTgl(sampai, v => cariSampai = v));
+  alat.appendChild(lDari);
+  alat.appendChild(lSampai);
+  const bBaru = el("button", (cariDari || cariSampai) ? null : "aktif", "Terbaru");
+  bBaru.style.padding = "5px 10px"; bBaru.style.fontSize = "12px";
+  bBaru.onclick = () => { cariDari = null; cariSampai = null; halCari(); };
+  alat.appendChild(bBaru);
   p.appendChild(alat);
 
   const alat2 = el("div", "alat");
@@ -4575,7 +4669,7 @@ function panelChart(kode) {
 
   const rk = el("div", "bantu", "");
   p.appendChild(rk);
-  const ket = el("div", "bantu", "Memuat harga…");
+  const ket = el("div", "bantu", "");
   p.appendChild(ket);
   const kan = document.createElement("canvas");
   kan.style.width = "100%"; kan.style.display = "block"; kan.style.marginTop = "6px";
@@ -4584,27 +4678,24 @@ function panelChart(kode) {
     "Candle harga harian, batang volume dengan rata-rata 20 hari, dan arus asing bersih " +
     "(foreign buy dikurangi foreign sell). Hari tanpa transaksi dilewati."));
 
-  /* Gambar sesudah kanvas masuk halaman, supaya lebarnya sudah terukur. */
-  setTimeout(() => {
-    const hasil = deretHarga(kode, cariHari);
-    if (!hasil.hari.length) {
-      ket.textContent = "Belum ada data harga " + kode + " tersimpan di HP. " +
-        "Buka tab PERBARUI dulu.";
-      kan.style.display = "none";
-      return;
-    }
-    const t1 = hasil.hari[0].t, t2 = hasil.hari[hasil.hari.length - 1].t;
-    const seTahun = t1.slice(0, 4) === t2.slice(0, 4);
-    rk.textContent = tglID(t1) + (seTahun ? "" : " " + t1.slice(0, 4)) + " – " +
-      tglID(t2) + " " + t2.slice(0, 4) + "  ·  " + hasil.hari.length + " hari bursa";
-    if (!hasil.ohlc) {
-      p.insertBefore(el("div", "bantu",
-        "Harga pembukaan belum ikut tersimpan, jadi candle-nya masih rata. " +
-        "Buka tab PERBARUI sekali untuk menariknya."), kan);
-    }
-    gambarChart(kan, hasil.hari, ket);
-  }, 0);
+  const hari = semua.filter(x => x.t >= dari && x.t <= sampai);
+  const adaOHLC = hari.some(x => x.o !== x.c || x.h !== x.c || x.l !== x.c);
 
+  rk.textContent = hari.length
+    ? tglID(hari[0].t) + " " + hari[0].t.slice(0, 4) + " – " +
+      tglID(hari[hari.length - 1].t) + " " + hari[hari.length - 1].t.slice(0, 4) +
+      "  ·  " + hari.length + " hari bursa"
+    : "Tidak ada hari bursa di rentang itu.";
+
+  if (!hari.length) return p;
+  if (!adaOHLC) {
+    p.insertBefore(el("div", "bantu",
+      "Harga pembukaan belum ikut tersimpan, jadi candle-nya masih rata. " +
+      "Buka tab PERBARUI sekali untuk menariknya."), kan);
+  }
+
+  /* Gambar sesudah kanvas masuk halaman, supaya lebarnya sudah terukur. */
+  setTimeout(() => gambarChart(kan, hari, ket), 0);
   return p;
 }
 
