@@ -1250,7 +1250,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-03-01";
+const VERSI_APP = "2026-09-04-01";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -2139,7 +2139,7 @@ async function imporBerkas(files) {
 }
 
 /* ---------- cadangan: satu berkas berisi semua tanggal yang sudah diimpor ---------- */
-const KUNCI = ["c", "p", "v", "n", "fs", "fb", "ls", "nm"];
+const KUNCI = ["c", "p", "v", "n", "o", "h", "l", "fs", "fb", "ls", "nm"];
 function berkasCadangan() {
   return {
     app: "TITEN VEKTOR", versi: 1, dibuat: new Date().toISOString().slice(0, 10),
@@ -4496,6 +4496,16 @@ function panelPemilik(kode) {
   return w;
 }
 
+/* Satu rekaman harian dianggap sudah punya OHLC kalau ada emiten yang
+   harga pembukaannya terisi. Dipakai sinkron untuk tahu bulan mana yang
+   masih tersimpan dalam bentuk lama. */
+function punyaOHLC(r) {
+  const b = (r && r.baris) || {};
+  const k = Object.keys(b);
+  for (let i = 0; i < k.length && i < 8; i++) if (b[k[i]] && b[k[i]].o > 0) return true;
+  return false;
+}
+
 /* ================= HALAMAN CARI (emiten) =================
    Delapan tab: CHART, KEYSTATS, FINANSIAL, BANDING, AKSI, PEMILIK,
    MUTASI, PROFIL. Enam yang pertama mengikuti susunan Stockbit;
@@ -4510,59 +4520,24 @@ function warnaTema(nama) {
   return getComputedStyle(document.documentElement).getPropertyValue(nama).trim();
 }
 
-/* ---- harga per emiten per tahun: data/harga/<KODE>-<TAHUN>.json ----
-   Berkas bulanan (harga-YYYY-MM.json) memuat semua emiten dan tidak
-   menyimpan harga pembukaan, jadi tidak bisa dipakai menggambar candle.
-   Berkas ini kebalikannya: satu emiten satu tahun, sekitar 15 KB. */
-const simpanHarga = {};          /* "AADI-2026" -> isi berkas / null kalau tidak ada */
-
-async function ambilHargaTahun(kode, tahun) {
-  const kunci = kode + "-" + tahun;
-  if (kunci in simpanHarga) return simpanHarga[kunci];
-  const versi = (manifestGudang && manifestGudang.harga_emiten &&
-                 manifestGudang.harga_emiten.versi) || "";
-  try {
-    const r = await fetch(GUDANG + "harga/" + kunci + ".json" + (versi ? "?v=" + versi : ""),
-                          {cache: "force-cache"});
-    simpanHarga[kunci] = r.ok ? await r.json() : null;
-  } catch (e) { simpanHarga[kunci] = null; }
-  return simpanHarga[kunci];
-}
-
-/* tahun berapa saja yang tersedia untuk emiten ini, menurut manifest */
-function tahunHarga(kode) {
-  const h = manifestGudang && manifestGudang.harga_emiten;
-  if (!h || !h.emiten) return null;
-  const i = h.emiten.indexOf(kode);
-  if (i < 0) return [];
-  const a = [];
-  for (let t = h.dari[i]; t <= h.sampai[i]; t++) a.push(t);
-  return a;
-}
-
-/* gabung beberapa tahun jadi satu deret hari, urut naik */
-async function deretHarga(kode, hariDiminta) {
-  const semua = tahunHarga(kode);
-  if (!semua || !semua.length) return {siap: semua !== null, hari: []};
-  const perTahun = Math.ceil(hariDiminta / 240) + 1;
-  const dipakai = semua.slice(-Math.min(semua.length, perTahun));
-  const isi = await Promise.all(dipakai.map(t => ambilHargaTahun(kode, t)));
+/* ---- deret harga untuk grafik, diambil dari data yang SUDAH ADA di HP ----
+   Berkas harga bulanan yang disinkronkan aplikasi kini ikut membawa harga
+   pembukaan, jadi candle bisa digambar tanpa mengunduh berkas tambahan apa
+   pun. Riwayatnya sepanjang yang tersimpan di HP (13 bulan terakhir). */
+function deretHarga(kode, hariDiminta) {
   const hari = [];
-  isi.forEach(j => {
-    if (!j || !j.tanggal) return;
-    for (let i = 0; i < j.tanggal.length; i++) {
-      /* Hari saham tidak diperdagangkan: IDX mengisi 0. Kalau penutupannya
-         pun 0 hari itu dilewati sama sekali; kalau penutupan ada tapi OHLC
-         nol, candle digambar rata di harga penutupan. */
-      const c = j.c[i] || 0;
-      if (!c) continue;
-      const o = j.o[i] || c, h = j.h[i] || c, l = j.l[i] || c;
-      hari.push({t: j.tanggal[i], o: o, h: Math.max(h, o, c), l: Math.min(l || c, o, c), c: c,
-                 v: j.v[i] || 0, f: (j.fb[i] || 0) - (j.fs[i] || 0)});
-    }
+  daftarHari.forEach(r => {
+    const b = r.baris && r.baris[kode];
+    if (!b) return;
+    const c = b.c || 0;
+    if (!c) return;               /* saham tidak diperdagangkan hari itu */
+    const o = b.o || c, h = b.h || c, l = b.l || c;
+    hari.push({t: r.tgl, o: o, h: Math.max(h, o, c), l: Math.min(l, o, c), c: c,
+               v: b.v || 0, f: (b.fb || 0) - (b.fs || 0)});
   });
-  hari.sort((a, b) => a.t < b.t ? -1 : a.t > b.t ? 1 : 0);
-  return {siap: true, hari: hari.slice(-hariDiminta)};
+  hari.sort((x, y) => x.t < y.t ? -1 : x.t > y.t ? 1 : 0);
+  const adaOHLC = hari.some(x => x.o !== x.c || x.h !== x.c || x.l !== x.c);
+  return {hari: hari.slice(-hariDiminta), ohlc: adaOHLC};
 }
 
 /* ---- panel grafik ---- */
@@ -4601,15 +4576,12 @@ function panelChart(kode) {
     "Candle harga harian, batang volume dengan rata-rata 20 hari, dan arus asing bersih " +
     "(foreign buy dikurangi foreign sell). Hari tanpa transaksi dilewati."));
 
-  deretHarga(kode, cariHari).then(hasil => {
-    if (!hasil.siap) {
-      ket.textContent = "Berkas harga per emiten belum ada di server. " +
-        "Jalankan ekspor.py di komputer, lalu unggah folder data/harga/ ke repo.";
-      kan.style.display = "none";
-      return;
-    }
+  /* Gambar sesudah kanvas masuk halaman, supaya lebarnya sudah terukur. */
+  setTimeout(() => {
+    const hasil = deretHarga(kode, cariHari);
     if (!hasil.hari.length) {
-      ket.textContent = "Belum ada data harga untuk " + kode + ".";
+      ket.textContent = "Belum ada data harga " + kode + " tersimpan di HP. " +
+        "Buka tab PERBARUI dulu.";
       kan.style.display = "none";
       return;
     }
@@ -4621,9 +4593,14 @@ function panelChart(kode) {
     ket.appendChild(el("span", sls >= 0 ? "naik" : "turun",
       (sls >= 0 ? "+" : "") + rp(sls) + " (" + (sls >= 0 ? "+" : "") +
       (a.o ? (sls / a.o * 100).toFixed(2) : "0.00") + "%)"));
-    ket.appendChild(el("span", null, "   · " + tglID(a.t)));
+    ket.appendChild(el("span", null, "   \u00b7 " + tglID(a.t)));
+    if (!hasil.ohlc) {
+      p.insertBefore(el("div", "bantu",
+        "Harga pembukaan belum ikut tersimpan, jadi candle-nya masih rata. " +
+        "Buka tab PERBARUI sekali untuk menariknya."), kan);
+    }
     gambarChart(kan, hasil.hari);
-  });
+  }, 0);
 
   return p;
 }
@@ -5068,8 +5045,15 @@ async function sinkron(diam) {
     const blnBrk = [...new Set((man.tanggal_broker || [])
       .filter(t => bolehBrk.has(bulanDari(t)) && !adaBrk.has(t)).map(bulanDari))];
     const adaHrg = new Set(daftarHari.map(r => r.tgl).concat(ASLI.tglVol || []));
+    /* Data harian yang tersimpan sebelum grafik candle ada tidak menyimpan
+       harga pembukaan. Bulan-bulan itu diunduh ulang sekali supaya candle
+       bisa digambar; sesudah tersimpan lengkap, tidak diulang lagi. */
+    const blnTanpaOHLC = new Set(daftarHari
+      .filter(r => !punyaOHLC(r)).map(r => bulanDari(r.tgl)));
     const blnHrg = [...new Set((man.tanggal_harga || [])
-      .filter(t => bolehHrg.has(bulanDari(t)) && !adaHrg.has(t)).map(bulanDari))];
+      .filter(t => bolehHrg.has(bulanDari(t)) &&
+                   (!adaHrg.has(t) || blnTanpaOHLC.has(bulanDari(t))))
+      .map(bulanDari))];
 
     if (!blnBrk.length && !blnHrg.length) {
       tulisStatus("Sudah paling baru \u2014 broker s/d " + tglID(akhirBrk) + ", harga s/d " + tglID(akhirHrg) + ".");
@@ -5107,10 +5091,11 @@ async function sinkron(diam) {
       const perTgl = {};
       for (let i = 0; i < j.t.length; i++) {
         const t = j.tanggal[j.t[i]];
-        if (adaHrg.has(t)) continue;
+        if (adaHrg.has(t) && !blnTanpaOHLC.has(bulanDari(t))) continue;
         if (!perTgl[t]) perTgl[t] = {};
         perTgl[t][j.emiten[j.e[i]]] = {
           c: j.c[i], p: j.prev[i], v: j.v[i], n: j.val[i],
+          o: (j.o || [])[i] || 0, h: (j.h || [])[i] || 0, l: (j.l || [])[i] || 0,
           fs: j.fs[i], fb: j.fb[i], ls: (j.ls || [])[i] || null,
           nrv: (j.nrv || [])[i] || 0, nrn: (j.nrn || [])[i] || 0,
           nm: (j.nama || [])[j.e[i]] || ""};
