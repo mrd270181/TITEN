@@ -1250,7 +1250,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-04-02";
+const VERSI_APP = "2026-09-04-04";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -4549,7 +4549,13 @@ function panelChart(kode) {
   p.appendChild(el("h2", null, "Grafik harga"));
 
   const alat = el("div", "alat");
-  const bRentang = [[20, "1B"], [60, "3B"], [120, "6B"], [240, "1T"], [1200, "5T"], [99999, "Semua"]];
+  /* Tombol rentang yang lebih panjang dari data yang ada cuma membingungkan -
+     ditekan pun hasilnya sama. Yang ditampilkan hanya yang benar-benar bisa
+     dipenuhi, ditambah "Semua". */
+  const adaHari = deretHarga(kode, 99999).hari.length;
+  if (cariHari !== 99999 && cariHari > adaHari) cariHari = 99999;
+  const bRentang = [[20, "1B"], [60, "3B"], [120, "6B"], [240, "1T"], [1200, "5T"],
+                    [99999, "Semua"]].filter(([n]) => n === 99999 || n <= adaHari);
   bRentang.forEach(([n, teks]) => {
     const b = el("button", cariHari === n ? "aktif" : null, teks);
     b.style.padding = "5px 10px"; b.style.fontSize = "12px";
@@ -4567,6 +4573,8 @@ function panelChart(kode) {
   });
   p.appendChild(alat2);
 
+  const rk = el("div", "bantu", "");
+  p.appendChild(rk);
   const ket = el("div", "bantu", "Memuat harga…");
   p.appendChild(ket);
   const kan = document.createElement("canvas");
@@ -4585,6 +4593,10 @@ function panelChart(kode) {
       kan.style.display = "none";
       return;
     }
+    const t1 = hasil.hari[0].t, t2 = hasil.hari[hasil.hari.length - 1].t;
+    const seTahun = t1.slice(0, 4) === t2.slice(0, 4);
+    rk.textContent = tglID(t1) + (seTahun ? "" : " " + t1.slice(0, 4)) + " – " +
+      tglID(t2) + " " + t2.slice(0, 4) + "  ·  " + hasil.hari.length + " hari bursa";
     if (!hasil.ohlc) {
       p.insertBefore(el("div", "bantu",
         "Harga pembukaan belum ikut tersimpan, jadi candle-nya masih rata. " +
@@ -4735,18 +4747,43 @@ function gambarChart(kan, d, ket) {
         g.globalAlpha = 1;
       });
     } else {
+      /* Kumulatif dihitung dari nol pada hari pertama yang terlihat, jadi yang
+         berarti adalah ARAHNYA, bukan ketinggiannya. Skalanya mengikuti isi
+         panel sendiri (bukan simetris) supaya bentuk garisnya terbaca, dan
+         garis nol digambar di tempatnya yang sebenarnya. */
+      let kMin = 0, kMax = 0;
+      kumArr.forEach(v => { kMin = Math.min(kMin, v); kMax = Math.max(kMax, v); });
+      const bantal = (kMax - kMin) * 0.12 || 1;
+      const bawahK = kMin - bantal, atasK = kMax + bantal;
+      const Yk = v => yF + tF - ((v - bawahK) / (atasK - bawahK)) * tF;
+      const yNol = Math.round(Yk(0)) + 0.5;
+      g.setLineDash([3, 3]); g.strokeStyle = cGaris; g.lineWidth = 1;
+      g.beginPath(); g.moveTo(kiri, yNol); g.lineTo(kiri + lebarPlot, yNol); g.stroke();
+      g.setLineDash([]);
       g.strokeStyle = kumArr[kumArr.length - 1] >= 0 ? cNaik : cTurun;
       g.lineWidth = 1.8; g.beginPath();
       d.forEach((b, i) => {
-        const y = y0 - (kumArr[i] / asMaks) * (tF / 2);
+        const y = Yk(kumArr[i]);
         if (i === 0) g.moveTo(X(i), y); else g.lineTo(X(i), y);
       });
       g.stroke();
+      g.fillStyle = cInk3; g.textAlign = "left";
+      g.fillText("0", kiri + lebarPlot + 5, yNol);
     }
-    g.fillStyle = cInk3; g.textAlign = "left";
-    g.fillText(cariAsing === "harian" ? "Asing bersih harian" : "Asing bersih kumulatif",
-               kiri + 2, yF + 8);
-    g.fillText("±" + ringkasAngka(asMaks), kiri + lebarPlot + 5, yF + 8);
+    /* Angka skala ditaruh menempel judul panelnya. Waktu berdiri sendiri di
+       tepi kanan, dia terbaca seperti angka volume padahal milik panel asing. */
+    g.textAlign = "left";
+    const judulF = cariAsing === "harian"
+      ? "Asing bersih harian · maks ±" + ringkasAngka(asMaks)
+      : "Asing bersih kumulatif · ujung ";
+    g.fillStyle = cInk3;
+    g.fillText(judulF, kiri + 2, yF + 8);
+    if (cariAsing !== "harian") {
+      const akhirKum = kumArr[kumArr.length - 1];
+      g.fillStyle = akhirKum >= 0 ? cNaik : cTurun;
+      g.fillText((akhirKum >= 0 ? "+" : "\u2212") + ringkasAngka(Math.abs(akhirKum)),
+                 kiri + 2 + g.measureText(judulF).width, yF + 8);
+    }
 
     g.fillStyle = cInk3; g.textAlign = "center";
     let bln = -1;
