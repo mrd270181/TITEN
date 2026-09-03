@@ -1250,7 +1250,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-04-01";
+const VERSI_APP = "2026-09-04-02";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -4585,21 +4585,12 @@ function panelChart(kode) {
       kan.style.display = "none";
       return;
     }
-    const a = hasil.hari[hasil.hari.length - 1];
-    const sls = a.c - a.o;
-    ket.innerHTML = "";
-    ket.appendChild(el("span", null,
-      "O " + rp(a.o) + "   H " + rp(a.h) + "   L " + rp(a.l) + "   C " + rp(a.c) + "   "));
-    ket.appendChild(el("span", sls >= 0 ? "naik" : "turun",
-      (sls >= 0 ? "+" : "") + rp(sls) + " (" + (sls >= 0 ? "+" : "") +
-      (a.o ? (sls / a.o * 100).toFixed(2) : "0.00") + "%)"));
-    ket.appendChild(el("span", null, "   \u00b7 " + tglID(a.t)));
     if (!hasil.ohlc) {
       p.insertBefore(el("div", "bantu",
         "Harga pembukaan belum ikut tersimpan, jadi candle-nya masih rata. " +
         "Buka tab PERBARUI sekali untuk menariknya."), kan);
     }
-    gambarChart(kan, hasil.hari);
+    gambarChart(kan, hasil.hari, ket);
   }, 0);
 
   return p;
@@ -4618,131 +4609,207 @@ function ringkasAngka(x) {
 const BULAN_PENDEK = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun",
                       "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
 
-function gambarChart(kan, d) {
-  const lebar = kan.parentElement.clientWidth || 340;
-  const tinggi = Math.max(320, Math.min(520, Math.round(lebar * 0.95)));
-  const dpr = window.devicePixelRatio || 1;
-  kan.width = lebar * dpr; kan.height = tinggi * dpr;
-  kan.style.height = tinggi + "px";
-  const g = kan.getContext("2d");
-  g.setTransform(dpr, 0, 0, dpr, 0, 0);
-  g.clearRect(0, 0, lebar, tinggi);
+function gambarChart(kan, d, ket) {
+  let sorot = null;                /* indeks hari yang sedang ditunjuk kursor */
+  let geo = null;                  /* ukuran terakhir, dipakai kursor */
 
-  const cGaris = warnaTema("--garis"), cInk3 = warnaTema("--ink-3"),
-        cNaik = warnaTema("--naik"), cTurun = warnaTema("--turun"),
-        cMerek = warnaTema("--merek"), cDasar = warnaTema("--surface-1");
-
-  const kananLabel = 52, kiri = 4, atas = 6, bawah = 18;
-  const lebarPlot = lebar - kiri - kananLabel;
-  const sisa = tinggi - atas - bawah - 16;
-  const tH = Math.round(sisa * 0.56), tV = Math.round(sisa * 0.22),
-        tF = sisa - tH - tV;
-  const yH = atas, yV = yH + tH + 8, yF = yV + tV + 8;
-
-  let lo = Infinity, hi = -Infinity, volMaks = 0, asMaks = 0, kum = 0;
-  const kumArr = [];
-  d.forEach(b => { lo = Math.min(lo, b.l); hi = Math.max(hi, b.h);
-                   volMaks = Math.max(volMaks, b.v); kum += b.f; kumArr.push(kum); });
-  d.forEach((b, i) => { asMaks = Math.max(asMaks,
-    Math.abs(cariAsing === "harian" ? b.f : kumArr[i])); });
-  if (!(hi > lo)) { hi = lo + 1; }
-  const pad = (hi - lo) * 0.08; lo -= pad; hi += pad;
-  if (!volMaks) volMaks = 1;
-  if (!asMaks) asMaks = 1;
-
-  const w = lebarPlot / d.length;
-  const badan = Math.max(1, Math.min(9, w * 0.62));
-  const X = i => kiri + i * w + w / 2;
-  const Y = v => yH + tH - ((v - lo) / (hi - lo)) * tH;
-
-  g.font = "10px system-ui, sans-serif";
-  g.textBaseline = "middle";
-
-  const kasar = (hi - lo) / 4;
-  const pangkat = Math.pow(10, Math.floor(Math.log(kasar) / Math.LN10));
-  const step = Math.max(1, Math.ceil(kasar / pangkat) * pangkat);
-  for (let v = Math.ceil(lo / step) * step; v < hi; v += step) {
-    const y = Math.round(Y(v)) + 0.5;
-    g.strokeStyle = cGaris; g.lineWidth = 1;
-    g.beginPath(); g.moveTo(kiri, y); g.lineTo(kiri + lebarPlot, y); g.stroke();
-    g.fillStyle = cInk3; g.textAlign = "left";
-    g.fillText(rp(v), kiri + lebarPlot + 5, Y(v));
+  function tulisInfo(i) {
+    if (!ket) return;
+    const a = d[i == null ? d.length - 1 : i];
+    const sls = a.c - a.o;
+    ket.innerHTML = "";
+    ket.appendChild(el("span", null, tglID(a.t) + "   "));
+    ket.appendChild(el("span", null,
+      "O " + rp(a.o) + "  H " + rp(a.h) + "  L " + rp(a.l) + "  C " + rp(a.c) + "  "));
+    ket.appendChild(el("span", sls >= 0 ? "naik" : "turun",
+      (sls >= 0 ? "+" : "") + rp(sls) + " (" + (sls >= 0 ? "+" : "") +
+      (a.o ? (sls / a.o * 100).toFixed(2) : "0.00") + "%)"));
+    ket.appendChild(el("span", null, "   Vol " + ringkasAngka(a.v) + "   Asing "));
+    ket.appendChild(el("span", a.f >= 0 ? "naik" : "turun",
+      (a.f >= 0 ? "+" : "−") + ringkasAngka(Math.abs(a.f))));
   }
 
-  d.forEach((b, i) => {
-    const naik = b.c >= b.o;
-    g.strokeStyle = g.fillStyle = naik ? cNaik : cTurun;
-    g.lineWidth = 1;
-    const x = Math.round(X(i)) + 0.5;
-    g.beginPath(); g.moveTo(x, Y(b.h)); g.lineTo(x, Y(b.l)); g.stroke();
-    const yo = Y(b.o), yc = Y(b.c);
-    g.fillRect(X(i) - badan / 2, Math.min(yo, yc), badan, Math.max(1, Math.abs(yc - yo)));
-  });
+  function gambar() {
+    const lebar = kan.parentElement.clientWidth || 340;
+    const tinggi = Math.max(320, Math.min(520, Math.round(lebar * 0.95)));
+    const dpr = window.devicePixelRatio || 1;
+    kan.width = lebar * dpr; kan.height = tinggi * dpr;
+    kan.style.height = tinggi + "px";
+    const g = kan.getContext("2d");
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, lebar, tinggi);
 
-  const akhir = d[d.length - 1], yA = Y(akhir.c);
-  g.setLineDash([3, 3]); g.strokeStyle = cMerek; g.lineWidth = 1;
-  g.beginPath(); g.moveTo(kiri, Math.round(yA) + 0.5);
-  g.lineTo(kiri + lebarPlot, Math.round(yA) + 0.5); g.stroke();
-  g.setLineDash([]);
-  g.fillStyle = cMerek; g.fillRect(kiri + lebarPlot + 2, yA - 8, kananLabel - 4, 16);
-  g.fillStyle = cDasar; g.textAlign = "center";
-  g.fillText(rp(akhir.c), kiri + lebarPlot + 2 + (kananLabel - 4) / 2, yA);
+    const cGaris = warnaTema("--garis"), cInk3 = warnaTema("--ink-3"),
+          cInk1 = warnaTema("--ink-1"),
+          cNaik = warnaTema("--naik"), cTurun = warnaTema("--turun"),
+          cMerek = warnaTema("--merek"), cDasar = warnaTema("--surface-1");
 
-  d.forEach((b, i) => {
-    const h = (b.v / volMaks) * tV;
-    g.fillStyle = b.c >= b.o ? cNaik : cTurun; g.globalAlpha = 0.55;
-    g.fillRect(X(i) - badan / 2, yV + tV - h, badan, h);
-    g.globalAlpha = 1;
-  });
-  g.strokeStyle = cMerek; g.lineWidth = 1.4; g.beginPath();
-  d.forEach((b, i) => {
-    if (i < 19) return;
-    let s = 0; for (let k = i - 19; k <= i; k++) s += d[k].v;
-    const y = yV + tV - (s / 20 / volMaks) * tV;
-    if (i === 19) g.moveTo(X(i), y); else g.lineTo(X(i), y);
-  });
-  g.stroke();
-  g.fillStyle = cInk3; g.textAlign = "left";
-  g.fillText("Volume · MA20", kiri + 2, yV + 8);
+    const kananLabel = 52, kiri = 4, atas = 6, bawah = 18;
+    const lebarPlot = lebar - kiri - kananLabel;
+    const sisa = tinggi - atas - bawah - 16;
+    const tH = Math.round(sisa * 0.56), tV = Math.round(sisa * 0.22),
+          tF = sisa - tH - tV;
+    const yH = atas, yV = yH + tH + 8, yF = yV + tV + 8;
 
-  const y0 = yF + tF / 2;
-  g.strokeStyle = cGaris; g.lineWidth = 1;
-  g.beginPath(); g.moveTo(kiri, Math.round(y0) + 0.5);
-  g.lineTo(kiri + lebarPlot, Math.round(y0) + 0.5); g.stroke();
-  if (cariAsing === "harian") {
+    let lo = Infinity, hi = -Infinity, volMaks = 0, asMaks = 0, kum = 0;
+    const kumArr = [];
+    d.forEach(b => { lo = Math.min(lo, b.l); hi = Math.max(hi, b.h);
+                     volMaks = Math.max(volMaks, b.v); kum += b.f; kumArr.push(kum); });
+    d.forEach((b, i) => { asMaks = Math.max(asMaks,
+      Math.abs(cariAsing === "harian" ? b.f : kumArr[i])); });
+    if (!(hi > lo)) hi = lo + 1;
+    const pad = (hi - lo) * 0.08; lo -= pad; hi += pad;
+    if (!volMaks) volMaks = 1;
+    if (!asMaks) asMaks = 1;
+
+    const w = lebarPlot / d.length;
+    /* Batas 9 piksel terlalu kurus waktu harinya sedikit: pada rentang 1 bulan
+       tiap hari dapat puluhan piksel, dan candle setipis lidi kelihatan salah.
+       Batasnya dinaikkan supaya badan candle ikut melebar sampai sewajarnya. */
+    const badan = Math.max(1, Math.min(22, w * 0.62));
+    const X = i => kiri + i * w + w / 2;
+    const Y = v => yH + tH - ((v - lo) / (hi - lo)) * tH;
+    geo = {kiri: kiri, lebarPlot: lebarPlot, w: w, X: X, Y: Y, yH: yH, tH: tH,
+           yF: yF, tF: tF, kananLabel: kananLabel, lo: lo, hi: hi,
+           tinggi: tinggi, lebar: lebar, cDasar: cDasar, cInk1: cInk1, cGaris: cGaris};
+
+    g.font = "10px system-ui, sans-serif";
+    g.textBaseline = "middle";
+
+    const kasar = (hi - lo) / 4;
+    const pangkat = Math.pow(10, Math.floor(Math.log(kasar) / Math.LN10));
+    const step = Math.max(1, Math.ceil(kasar / pangkat) * pangkat);
+    for (let v = Math.ceil(lo / step) * step; v < hi; v += step) {
+      const y = Math.round(Y(v)) + 0.5;
+      g.strokeStyle = cGaris; g.lineWidth = 1;
+      g.beginPath(); g.moveTo(kiri, y); g.lineTo(kiri + lebarPlot, y); g.stroke();
+      g.fillStyle = cInk3; g.textAlign = "left";
+      g.fillText(rp(v), kiri + lebarPlot + 5, Y(v));
+    }
+
     d.forEach((b, i) => {
-      const h = (b.f / asMaks) * (tF / 2);
-      g.fillStyle = b.f >= 0 ? cNaik : cTurun; g.globalAlpha = 0.8;
-      g.fillRect(X(i) - badan / 2, h >= 0 ? y0 - h : y0, badan, Math.max(1, Math.abs(h)));
+      const naik = b.c >= b.o;
+      g.strokeStyle = g.fillStyle = naik ? cNaik : cTurun;
+      g.lineWidth = 1;
+      const x = Math.round(X(i)) + 0.5;
+      g.beginPath(); g.moveTo(x, Y(b.h)); g.lineTo(x, Y(b.l)); g.stroke();
+      const yo = Y(b.o), yc = Y(b.c);
+      g.fillRect(X(i) - badan / 2, Math.min(yo, yc), badan, Math.max(1, Math.abs(yc - yo)));
+    });
+
+    const akhir = d[d.length - 1], yA = Y(akhir.c);
+    g.setLineDash([3, 3]); g.strokeStyle = cMerek; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(kiri, Math.round(yA) + 0.5);
+    g.lineTo(kiri + lebarPlot, Math.round(yA) + 0.5); g.stroke();
+    g.setLineDash([]);
+    g.fillStyle = cMerek; g.fillRect(kiri + lebarPlot + 2, yA - 8, kananLabel - 4, 16);
+    g.fillStyle = cDasar; g.textAlign = "center";
+    g.fillText(rp(akhir.c), kiri + lebarPlot + 2 + (kananLabel - 4) / 2, yA);
+
+    d.forEach((b, i) => {
+      const h = (b.v / volMaks) * tV;
+      g.fillStyle = b.c >= b.o ? cNaik : cTurun; g.globalAlpha = 0.55;
+      g.fillRect(X(i) - badan / 2, yV + tV - h, badan, h);
       g.globalAlpha = 1;
     });
-  } else {
-    g.strokeStyle = kumArr[kumArr.length - 1] >= 0 ? cNaik : cTurun;
-    g.lineWidth = 1.8; g.beginPath();
+    g.strokeStyle = cMerek; g.lineWidth = 1.4; g.beginPath();
     d.forEach((b, i) => {
-      const y = y0 - (kumArr[i] / asMaks) * (tF / 2);
-      if (i === 0) g.moveTo(X(i), y); else g.lineTo(X(i), y);
+      if (i < 19) return;
+      let s = 0; for (let k = i - 19; k <= i; k++) s += d[k].v;
+      const y = yV + tV - (s / 20 / volMaks) * tV;
+      if (i === 19) g.moveTo(X(i), y); else g.lineTo(X(i), y);
     });
     g.stroke();
-  }
-  g.fillStyle = cInk3; g.textAlign = "left";
-  g.fillText(cariAsing === "harian" ? "Asing bersih harian" : "Asing bersih kumulatif",
-             kiri + 2, yF + 8);
-  g.fillText("±" + ringkasAngka(asMaks), kiri + lebarPlot + 5, yF + 8);
+    g.fillStyle = cInk3; g.textAlign = "left";
+    g.fillText("Volume · MA20", kiri + 2, yV + 8);
 
-  g.fillStyle = cInk3; g.textAlign = "center";
-  let bln = -1;
-  d.forEach((b, i) => {
-    const m = parseInt(String(b.t).slice(5, 7), 10) - 1;
-    if (m !== bln && i > 2 && i < d.length - 2) {
-      bln = m;
-      g.fillText(BULAN_PENDEK[m] + (m === 0 ? " " + String(b.t).slice(2, 4) : ""),
-                 X(i), tinggi - 6);
-      g.strokeStyle = cGaris; g.lineWidth = 1;
-      g.beginPath(); g.moveTo(Math.round(X(i)) + 0.5, yH);
-      g.lineTo(Math.round(X(i)) + 0.5, yF + tF); g.stroke();
+    const y0 = yF + tF / 2;
+    g.strokeStyle = cGaris; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(kiri, Math.round(y0) + 0.5);
+    g.lineTo(kiri + lebarPlot, Math.round(y0) + 0.5); g.stroke();
+    if (cariAsing === "harian") {
+      d.forEach((b, i) => {
+        const h = (b.f / asMaks) * (tF / 2);
+        g.fillStyle = b.f >= 0 ? cNaik : cTurun; g.globalAlpha = 0.8;
+        g.fillRect(X(i) - badan / 2, h >= 0 ? y0 - h : y0, badan, Math.max(1, Math.abs(h)));
+        g.globalAlpha = 1;
+      });
+    } else {
+      g.strokeStyle = kumArr[kumArr.length - 1] >= 0 ? cNaik : cTurun;
+      g.lineWidth = 1.8; g.beginPath();
+      d.forEach((b, i) => {
+        const y = y0 - (kumArr[i] / asMaks) * (tF / 2);
+        if (i === 0) g.moveTo(X(i), y); else g.lineTo(X(i), y);
+      });
+      g.stroke();
     }
-  });
+    g.fillStyle = cInk3; g.textAlign = "left";
+    g.fillText(cariAsing === "harian" ? "Asing bersih harian" : "Asing bersih kumulatif",
+               kiri + 2, yF + 8);
+    g.fillText("±" + ringkasAngka(asMaks), kiri + lebarPlot + 5, yF + 8);
+
+    g.fillStyle = cInk3; g.textAlign = "center";
+    let bln = -1;
+    d.forEach((b, i) => {
+      const m = parseInt(String(b.t).slice(5, 7), 10) - 1;
+      if (m !== bln && i > 2 && i < d.length - 2) {
+        bln = m;
+        g.fillText(BULAN_PENDEK[m] + (m === 0 ? " " + String(b.t).slice(2, 4) : ""),
+                   X(i), tinggi - 6);
+        g.strokeStyle = cGaris; g.lineWidth = 1;
+        g.beginPath(); g.moveTo(Math.round(X(i)) + 0.5, yH);
+        g.lineTo(Math.round(X(i)) + 0.5, yF + tF); g.stroke();
+      }
+    });
+
+    /* ---- garis kursor ---- */
+    if (sorot != null && d[sorot]) {
+      const x = Math.round(X(sorot)) + 0.5;
+      const yc = Math.round(Y(d[sorot].c)) + 0.5;
+      g.save();
+      g.strokeStyle = cInk1; g.globalAlpha = 0.45; g.lineWidth = 1;
+      g.setLineDash([4, 3]);
+      g.beginPath(); g.moveTo(x, yH); g.lineTo(x, yF + tF); g.stroke();
+      g.beginPath(); g.moveTo(kiri, yc); g.lineTo(kiri + lebarPlot, yc); g.stroke();
+      g.restore();
+      /* label harga di sumbu kanan */
+      g.fillStyle = cInk1;
+      g.fillRect(kiri + lebarPlot + 2, yc - 8, kananLabel - 4, 16);
+      g.fillStyle = cDasar; g.textAlign = "center"; g.textBaseline = "middle";
+      g.fillText(rp(d[sorot].c), kiri + lebarPlot + 2 + (kananLabel - 4) / 2, yc);
+      /* label tanggal di sumbu bawah */
+      const teksT = String(d[sorot].t).slice(8, 10) + " " +
+                    BULAN_PENDEK[parseInt(String(d[sorot].t).slice(5, 7), 10) - 1];
+      const lb = g.measureText(teksT).width + 10;
+      const xk = Math.max(kiri, Math.min(kiri + lebarPlot - lb, x - lb / 2));
+      g.fillStyle = cInk1; g.fillRect(xk, tinggi - 14, lb, 14);
+      g.fillStyle = cDasar; g.fillText(teksT, xk + lb / 2, tinggi - 7);
+    }
+  }
+
+  function dariPointer(e) {
+    if (!geo) return null;
+    const kotak = kan.getBoundingClientRect();
+    const px = (e.touches ? e.touches[0].clientX : e.clientX) - kotak.left;
+    const i = Math.round((px - geo.kiri - geo.w / 2) / geo.w);
+    return Math.max(0, Math.min(d.length - 1, i));
+  }
+  function tunjuk(e) {
+    const i = dariPointer(e);
+    if (i === sorot) return;
+    sorot = i; gambar(); tulisInfo(i);
+  }
+  function lepas() { if (sorot == null) return; sorot = null; gambar(); tulisInfo(null); }
+
+  kan.style.touchAction = "pan-y";
+  kan.addEventListener("mousemove", tunjuk);
+  kan.addEventListener("mouseleave", lepas);
+  kan.addEventListener("touchstart", tunjuk, {passive: true});
+  kan.addEventListener("touchmove", tunjuk, {passive: true});
+  kan.addEventListener("touchend", lepas);
+
+  gambar();
+  tulisInfo(null);
 }
 
 /* ---- BANDING: emiten ini vs beberapa emiten lain ---- */
