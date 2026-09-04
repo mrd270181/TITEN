@@ -1250,7 +1250,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-04-08";
+const VERSI_APP = "2026-09-04-10";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -3941,7 +3941,7 @@ function panelPemegang(kode) {
       const c = el("td");
       c.style.textAlign = "right";
       if (kini === null || kini === undefined) {
-        c.textContent = "keluar daftar";
+        c.textContent = "keluar";
         c.style.color = "var(--ink-3)";
       } else if (lalu === null) {
         c.textContent = "baru";
@@ -4654,6 +4654,10 @@ function deretHarga(kode) {
    memilih tanggal sendiri, pilihannya dipakai apa adanya sampai ditekan
    tombol "Terbaru". */
 let cariDari = null, cariSampai = null;
+/* Daftar hasil pencarian ditutup begitu satu emiten dipilih. Teks yang diketik
+   sengaja TIDAK dihapus - kalau ternyata salah pilih, tinggal ketik satu huruf
+   dan daftarnya terbuka lagi dengan kata kunci yang sama. */
+let cariTutup = false;
 let cariAsing = "harian";        /* "harian" atau "kumulatif" */
 const HARI_BAWAAN = 120;         /* kira-kira enam bulan bursa */
 
@@ -5093,7 +5097,7 @@ function halCari() {
   pc.appendChild(el("h2", null, "Cari emiten"));
   const inp = el("input");
   inp.type = "search"; inp.placeholder = "Ketik kode atau nama emiten"; inp.value = cariTeks;
-  inp.oninput = () => { cariTeks = inp.value; isiHasil(); };
+  inp.oninput = () => { cariTeks = inp.value; cariTutup = false; isiHasil(); };
   pc.appendChild(inp);
   const hasil = el("div");
   pc.appendChild(hasil);
@@ -5101,6 +5105,7 @@ function halCari() {
 
   function isiHasil() {
     hasil.innerHTML = "";
+    if (cariTutup) return;
     const q = cariTeks.trim().toUpperCase();
     if (!q) { hasil.appendChild(el("div", "bantu", "Ketik minimal satu huruf.")); return; }
     const cocok = DATA.scr
@@ -5110,7 +5115,7 @@ function halCari() {
     cocok.forEach(b => {
       const t = el("button", "tambah", b[0] + " — " + (b[1] || ""));
       t.style.display = "block"; t.style.width = "100%"; t.style.textAlign = "left";
-      t.onclick = () => { cariKode = b[0]; halCari(); window.scrollTo(0, 0); };
+      t.onclick = () => { cariKode = b[0]; cariTutup = true; halCari(); window.scrollTo(0, 0); };
       hasil.appendChild(t);
     });
   }
