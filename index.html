@@ -1250,7 +1250,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-04-07";
+const VERSI_APP = "2026-09-04-08";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -3902,55 +3902,88 @@ function panelPemegang(kode) {
       "di laptop, lalu ekspor dan unggah ulang."));
     return p;
   }
-  /* Posisi sebulan sebelumnya ikut diekspor supaya perubahannya bisa dihitung
-     di sini. Kalau berkasnya masih versi lama (tanpa bagian "sebelum"), kolom
-     perubahan disembunyikan, bukan diisi nol - nol dan "tidak tahu" berbeda. */
-  const seb = (MILIK.sebelum && MILIK.sebelum.data && MILIK.sebelum.data[kode]) || null;
-  p.appendChild(el("div", "bantu", "Posisi " + tglID(MILIK.tanggal) +
-    (seb ? ", dibandingkan " + tglID(MILIK.sebelum.tanggal) : "") + "."));
+  /* Riwayat beberapa pengumuman terakhir ikut diekspor (milik_lalu.py), jadi
+     kepemilikan bisa ditampilkan berkolom per bulan seperti tampilan >=5% -
+     bukan cuma satu potret. Kalau berkasnya masih versi lama tanpa "riwayat",
+     tabel satu tanggal yang dipakai. */
+  const rw = MILIK.riwayat && MILIK.riwayat.data && MILIK.riwayat.data[kode]
+    ? MILIK.riwayat : null;
 
-  const t = el("table"), th = el("tr");
-  ["Nama", "Golongan", "Saham", "%"].concat(seb ? ["Perubahan"] : [])
-    .forEach(x => th.appendChild(el("th", null, x)));
-  t.appendChild(th);
-  isi.forEach(([nama, gol, la, saham, persen]) => {
-    const tr = el("tr");
-    tr.appendChild(el("td", null, nama + (la === "F" ? " (asing)" : "")));
-    tr.appendChild(el("td", null, gol));
-    /* format sama dengan tab ≥5% supaya dua sumber itu bisa dibandingkan sekilas */
-    const a = el("td", null, ringkas(saham));
-    a.style.textAlign = "right"; tr.appendChild(a);
-    const b = el("td", null, persen.toFixed(2).replace(".", ",") + "%");
-    b.style.textAlign = "right"; tr.appendChild(b);
-    if (seb) {
-      const lalu = seb[nama];
+  if (rw) {
+    const tg = rw.tanggal, n = tg.length;
+    const judulBulan = t => BULAN_PENDEK[parseInt(t.slice(5, 7), 10) - 1] + " " + t.slice(2, 4);
+    p.appendChild(el("div", "bantu", n + " pengumuman: " + tglID(tg[0]) + " " +
+      tg[0].slice(0, 4) + " s/d " + tglID(tg[n - 1]) + " " + tg[n - 1].slice(0, 4) +
+      ". Angka dalam kolom bulan adalah persentase kepemilikan."));
+
+    const t = el("table"), th = el("tr");
+    th.appendChild(el("th", null, "Nama"));
+    tg.forEach(x => th.appendChild(el("th", null, judulBulan(x))));
+    th.appendChild(el("th", null, "Perubahan"));
+    t.appendChild(th);
+
+    rw.data[kode].forEach(b => {
+      const sh = bukaDeret(b.s, n), pr = bukaDeret(b.p, n);
+      const tr = el("tr");
+      tr.appendChild(el("td", null, b.n + (b.la === "F" ? " (asing)" : "")));
+      pr.forEach(v => {
+        const c = el("td", null, v === null || v === undefined ? "—" : nf(v, 2) + "%");
+        c.style.textAlign = "right";
+        if (v === null || v === undefined) c.style.color = "var(--ink-3)";
+        tr.appendChild(c);
+      });
+      /* Pembanding adalah posisi TERAKHIR yang tercatat sebelum bulan terakhir -
+         bukan kolom pertama - supaya pemegang yang baru muncul di tengah tetap
+         punya perubahan yang masuk akal. */
+      let iLalu = -1;
+      for (let i = n - 2; i >= 0; i--) if (sh[i] !== null && sh[i] !== undefined) { iLalu = i; break; }
+      const kini = sh[n - 1], lalu = iLalu >= 0 ? sh[iLalu] : null;
       const c = el("td");
       c.style.textAlign = "right";
-      if (!lalu) {
+      if (kini === null || kini === undefined) {
+        c.textContent = "keluar daftar";
+        c.style.color = "var(--ink-3)";
+      } else if (lalu === null) {
         c.textContent = "baru";
         c.style.color = "var(--ink-3)";
       } else {
-        const d = saham - lalu[0];
+        const d = kini - lalu;
         if (Math.abs(d) < 1) {
           c.textContent = "tetap";
           c.style.color = "var(--ink-3)";
         } else {
-          const pd = lalu[0] ? d / lalu[0] * 100 : 0;
           c.textContent = (d > 0 ? "+" : "\u2212") + ringkas(Math.abs(d)) +
-            "  (" + (d > 0 ? "+" : "\u2212") + nf(Math.abs(pd), 2) + "%)";
+            "  (" + (d > 0 ? "+" : "\u2212") + nf(Math.abs(lalu ? d / lalu * 100 : 0), 2) + "%)";
           c.className = d > 0 ? "naik" : "turun";
         }
       }
       tr.appendChild(c);
-    }
-    t.appendChild(tr);
-  });
-  p.appendChild(t);
-  if (seb) {
-    const hilang = Object.keys(seb).filter(nm => !isi.some(x => x[0] === nm));
-    if (hilang.length) p.appendChild(el("div", "bantu",
-      "Turun di bawah 1% sejak " + tglID(MILIK.sebelum.tanggal) + ": " +
-      hilang.join(", ") + "."));
+      t.appendChild(tr);
+    });
+    const gulir = el("div");
+    gulir.style.overflowX = "auto";
+    gulir.appendChild(t);
+    p.appendChild(gulir);
+    p.appendChild(el("div", "bantu",
+      "Kolom Perubahan membandingkan pengumuman terakhir dengan pengumuman " +
+      "terakhir sebelumnya bagi pemegang itu. Tanda \u2014 berarti namanya tidak " +
+      "ada di daftar \u22651% bulan tersebut, bukan nol."));
+  } else {
+    p.appendChild(el("div", "bantu", "Posisi " + tglID(MILIK.tanggal) + "."));
+    const t = el("table"), th = el("tr");
+    ["Nama", "Golongan", "Saham", "%"].forEach(x => th.appendChild(el("th", null, x)));
+    t.appendChild(th);
+    isi.forEach(([nama, gol, la, saham, persen]) => {
+      const tr = el("tr");
+      tr.appendChild(el("td", null, nama + (la === "F" ? " (asing)" : "")));
+      tr.appendChild(el("td", null, gol));
+      const aa = el("td", null, ringkas(saham));
+      aa.style.textAlign = "right"; tr.appendChild(aa);
+      const bb = el("td", null, persen.toFixed(2).replace(".", ",") + "%");
+      bb.style.textAlign = "right"; tr.appendChild(bb);
+      t.appendChild(tr);
+    });
+    p.appendChild(t);
   }
 
   /* komposisi menurut golongan investor */
@@ -4316,7 +4349,7 @@ function cariMutasi(kode) {
 function panelMutasi(kode) {
   const w = el("div");
   const p = el("div", "panel");
-  p.appendChild(el("h2", null, "Mutasi tempat penitipan"));
+  p.appendChild(el("h2", null, "Mutasi tempat penitipan \u2014 pemegang \u22655%"));
 
   if (!PRE && !preGagal) {
     if (!preSedang) {
