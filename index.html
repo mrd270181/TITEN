@@ -1256,7 +1256,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-06-3";
+const VERSI_APP = "2026-09-06-4";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -2856,21 +2856,31 @@ function panelTransaksi(w) {
   const baris = Object.keys(agg).map(k => {
     const a = agg[k];
     const gross = punyaGross ? a.beli + a.jual : null;
+    /* %Net memakai SISI YANG LEBIH BESAR sebagai pembagi, sama seperti di halaman
+       %NET - bukan Gross Lot di sebelahnya. Dua rumus berbeda untuk kolom bernama
+       sama membuat broker yang sama tampil 11% di sini dan 20% di sana. Dengan
+       pembagi sisi terbesar, %Net dan %Crossing selalu berjumlah tepat 100%. */
+    const besar = Math.max(a.beli, a.jual);
+    const pnet = (punyaGross && besar)
+      ? Math.round((a.beli - a.jual) / besar * 100) : null;
     return {broker: k, nama: namaBroker(k), beli: a.beli,
             avgB: a.beli ? Math.round(a.nilaiB / a.beli / 100) : 0,
             jual: a.jual,
             avgJ: a.jual ? Math.round(a.nilaiJ / a.jual / 100) : 0,
             gross: gross,
             net: a.beli - a.jual,
-            pnet: gross ? Math.round((a.beli - a.jual) / gross * 100) : null,
+            pnet: pnet,
+            pputar: pnet === null ? null : 100 - Math.abs(pnet),
             nilai: Math.round(a.nilaiB - a.nilaiJ)};
   });
   const catatanGross = punyaGross
     ? "Gross Lot = beli + jual, seluruh lot yang lewat broker itu. " +
-      "%Net = Net Lot dibagi Gross Lot. Mendekati ±100% berarti broker itu bergerak " +
-      "satu arah — benar-benar menyerap atau melepas barang. Mendekati 0% (ditandai ≈ " +
-      "dan dibuat kelabu) berarti beli dan jualnya hampir seimbang: barangnya cuma " +
-      "diputar bolak-balik, ciri khas crossing. Ketuk judul %Net untuk mengurutkan."
+      "%Net = Net Lot dibagi SISI YANG LEBIH BESAR, bukan dibagi Gross Lot — sama " +
+      "seperti di halaman %NET. Contoh: beli 100 jual 90 berarti %Net 10% dan " +
+      "%Crossing 90%; keduanya selalu berjumlah 100%. Mendekati ±100% berarti broker " +
+      "itu bergerak satu arah, benar-benar menyerap atau melepas barang; mendekati 0% " +
+      "(ditandai ≈) berarti barangnya cuma diputar bolak-balik. " +
+      "Ketuk judul %Net untuk mengurutkan."
     : cekG.campur
     ? "Gross Lot dan %Net dikosongkan karena rentang tanggal ini mencampur dua jenis " +
       "data: " + cekG.gross + " blok berisi tabel GROSS dan " + cekG.net + " blok " +
@@ -2897,6 +2907,7 @@ function panelTransaksi(w) {
     {judul: "Gross Lot", kunci: "gross", angka: true},
     {judul: "Net Lot", kunci: "net", angka: true, warna: true},
     {judul: "%Net", kunci: "pnet", angka: true, persen: true, silang: true},
+    {judul: "%Crossing", kunci: "pputar", angka: true, persen: true},
     {judul: "Net Value", kunci: "nilai", angka: true, warna: true},
   ], baris, "net"));
   p.appendChild(el("div", "bantu", catatanGross));
