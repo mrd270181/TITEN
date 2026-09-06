@@ -1256,7 +1256,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-06-1";
+const VERSI_APP = "2026-09-06-3";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -2688,17 +2688,19 @@ function tabelUrut(kepala, baris, kunciAwal) {
                     : nilai.toLocaleString("id-ID"));
       if (k.warna && typeof nilai === "number")
         td.style.color = nilai > 0 ? "var(--naik)" : nilai < 0 ? "var(--turun)" : "";
-      /* Kolom %Net: yang menarik justru angka KECIL - beli dan jual hampir sama
-         besar, ciri transaksi bolak-balik (crossing), bukan akumulasi sungguhan.
-         Karena itu yang di bawah ambang dibuat kelabu dan diberi tanda, bukan
-         diwarnai hijau/merah seperti kolom net biasa. */
+      /* Kolom %Net punya dua hal untuk disampaikan sekaligus: ARAH (bersih membeli
+         atau bersih menjual) dan BESARNYA (kecil berarti beli dan jual hampir
+         seimbang - ciri transaksi bolak-balik, bukan akumulasi sungguhan).
+
+         Dulu yang kecil dibuat kelabu, dan itu keliru: arahnya ikut hilang, padahal
+         net +3% tetap berarti broker itu bersih membeli. Sekarang warnanya selalu
+         mengikuti arah seperti kolom net lain, dan yang kecil cukup diberi tanda ≈
+         beserta keterangan saat disentuh. */
       if (k.silang && typeof nilai === "number") {
+        td.style.color = nilai > 0 ? "var(--naik)" : nilai < 0 ? "var(--turun)" : "";
         if (Math.abs(nilai) < 15) {
-          td.style.color = "var(--ink-3)";
           td.textContent = "≈ " + td.textContent;
           td.title = "Beli dan jual hampir seimbang — kemungkinan crossing";
-        } else {
-          td.style.color = nilai > 0 ? "var(--naik)" : "var(--turun)";
         }
       }
       tr.appendChild(td);
@@ -3390,6 +3392,19 @@ function panelDashboard(w) {
     rp(gross - net) + " lot (" +
     (gross ? ((gross - net) / gross * 100).toFixed(1).replace(".", ",") : "0") + "%)");
   p1.appendChild(ket1);
+  let topBr = "", topPutar = 0;
+  Object.keys(agg).forEach(k => {
+    const m = Math.min(agg[k].beli, agg[k].jual);
+    if (m > topPutar) { topPutar = m; topBr = k; }
+  });
+  /* Jumlah sisi terkecil seluruh broker selalu tepat sama dengan gross dikurangi net,
+     jadi porsi ini benar-benar bagian dari crossing yang sama, bukan ukuran lain. */
+  if (topBr && gross - net > 0) {
+    p1.appendChild(el("div", "bantu",
+      "Perputaran terbesar: " + topBr + " (" + namaBroker(topBr) + ") " +
+      rp(topPutar) + " lot, " +
+      Math.round(topPutar / (gross - net) * 100) + "% dari seluruh crossing emiten ini."));
+  }
   p1.appendChild(el("div", "bantu",
     "Biru = lot yang benar-benar berpindah antar broker. Kelabu = lot yang cuma " +
     "berputar di broker yang sama. Saham likuid biasanya punya porsi berpindah yang " +
@@ -3402,11 +3417,14 @@ function panelDashboard(w) {
     const a = agg[k];
     const besar = Math.max(a.beli, a.jual);
     const putar = Math.min(a.beli, a.jual);
+    /* %Net dan %Crossing memakai DASAR YANG SAMA - sisi yang lebih besar - supaya
+       keduanya dijumlah tepat 100%. Contoh: beli 100 jual 90 berarti net 10% dan
+       crossing 90%. %Crossing dihitung dari %Net yang sudah dibulatkan, bukan
+       dihitung sendiri, supaya pembulatan tidak membuat jumlahnya jadi 99 atau 101. */
+    const pnet = besar ? Math.round((a.beli - a.jual) / besar * 100) : null;
     return {broker: k, nama: namaBroker(k), beli: a.beli, jual: a.jual,
-            net: a.beli - a.jual,
-            pnet: besar ? Math.round((a.beli - a.jual) / besar * 100) : null,
-            putar: putar,
-            pputar: gross ? Math.round(putar * 2 / gross * 1000) / 10 : null};
+            net: a.beli - a.jual, pnet: pnet, putar: putar,
+            pputar: pnet === null ? null : 100 - Math.abs(pnet)};
   });
   const p2 = el("div", "panel");
   p2.appendChild(el("h2", null, "Rasio tiap broker"));
@@ -3421,12 +3439,12 @@ function panelDashboard(w) {
     {judul: "%Crossing", kunci: "pputar", angka: true, persen: true},
   ], baris, "putar"));
   p2.appendChild(el("div", "bantu",
-    "Contoh: CC beli 100 jual 90 berarti %Net CC cuma 10% — sembilan puluh persennya " +
-    "bolak-balik. Kolom Diputar = sisi yang lebih kecil, yaitu lot yang masuk dan " +
-    "keluar lewat broker yang sama. %Crossing = porsi perputaran itu terhadap seluruh " +
-    "volume emiten. Urutkan menurun untuk melihat siapa yang paling banyak memutar; " +
-    "kalau satu broker memegang sebagian besarnya, itu jauh lebih patut dicurigai " +
-    "daripada perputaran yang tersebar merata."));
+    "Contoh: CC beli 100 jual 90 berarti %Net 10% dan %Crossing 90% — keduanya selalu " +
+    "berjumlah 100%, karena dihitung dari sisi yang sama. Kolom Diputar adalah sisi " +
+    "yang lebih kecil dalam satuan lot, yaitu barang yang masuk lalu keluar lagi lewat " +
+    "broker yang sama. Urutkan Diputar menurun untuk melihat siapa yang paling banyak " +
+    "memutar: kalau satu broker memegang sebagian besar perputaran seluruh emiten, itu " +
+    "jauh lebih patut dicurigai daripada perputaran yang tersebar merata."));
   w.appendChild(p2);
 
   /* ---------- 3. satu broker, hari per hari ---------- */
