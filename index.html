@@ -1256,7 +1256,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-06-5";
+const VERSI_APP = "2026-09-06-6";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -3007,11 +3007,30 @@ function panelBrokerHarian(w) {
     }
   }));
 
+  /* Di nego dan tunai, transaksi selalu berpasangan dan jumlah pesertanya sedikit.
+     Karena itu lawan transaksinya bisa disebutkan: kalau broker ini membeli, yang
+     dicantumkan adalah broker-broker yang menjual hari itu, dan sebaliknya. Sangat
+     memudahkan mencocokkan kembali ke layar IPOT. Di pasar reguler hal ini tidak
+     bisa dilakukan - pesertanya puluhan dan tidak ada pasangan yang bisa ditunjuk. */
+  function lawan(tgl, papan, arah) {
+    const isi = [];
+    (trx[papan] || []).forEach(r => {
+      if (r.em !== pilih.emiten || r.tgl !== tgl || r.br === pilih.hrBroker) return;
+      const lot = arah > 0 ? r.jual : r.beli;
+      if (lot > 0) isi.push([r.br, lot]);
+    });
+    isi.sort((a, b) => b[1] - a[1]);
+    return isi.slice(0, 4).map(x => x[0] + " " + rp(x[1])).join(", ")
+           + (isi.length > 4 ? ", …" : "");
+  }
+
   const baris = Object.keys(per).sort().reverse().map(t => {
     const a = per[t];
     return {tanggal: tglID(t) + " " + t.slice(0, 4),
             reg: a.REG, avg: a.lot ? Math.round(a.nilai / a.lot / 100) : null,
-            nego: a.NEGO, tunai: a.TUNAI, total: a.REG + a.NEGO + a.TUNAI};
+            nego: a.NEGO, lwNego: a.NEGO ? lawan(t, "NEGO", a.NEGO) : "",
+            tunai: a.TUNAI, lwTunai: a.TUNAI ? lawan(t, "TUNAI", a.TUNAI) : "",
+            total: a.REG + a.NEGO + a.TUNAI};
   });
 
   p.appendChild(el("div", "bantu",
@@ -3029,7 +3048,9 @@ function panelBrokerHarian(w) {
     {judul: "Net REG", kunci: "reg", angka: true, warna: true},
     {judul: "Avg REG", kunci: "avg", angka: true},
     {judul: "Net NEGO", kunci: "nego", angka: true, warna: true},
+    {judul: "Lawan NEGO", kunci: "lwNego"},
     {judul: "Net TUNAI", kunci: "tunai", angka: true, warna: true},
+    {judul: "Lawan TUNAI", kunci: "lwTunai"},
     {judul: "Net TOTAL", kunci: "total", angka: true, warna: true},
   ], baris, "tanggal"));
 
@@ -3045,7 +3066,10 @@ function panelBrokerHarian(w) {
   p.appendChild(el("div", "bantu",
     "Avg REG adalah harga rata-rata seluruh lot broker itu di pasar reguler hari " +
     "tersebut, beli dan jual digabung — jadi bisa dibandingkan dengan harga penutupan " +
-    "untuk melihat dia bergerak di harga atas atau bawah."));
+    "untuk melihat dia bergerak di harga atas atau bawah. Kolom Lawan menyebut broker " +
+    "di sisi seberang pada hari itu: kalau " + pilih.hrBroker + " membeli di nego, yang " +
+    "tercantum adalah yang menjual. Hanya untuk nego dan tunai, karena di pasar reguler " +
+    "pesertanya puluhan dan tidak ada pasangan yang bisa ditunjuk."));
   w.appendChild(p);
 }
 
@@ -3581,16 +3605,12 @@ function panelDashboard(w) {
     {judul: "Jual", kunci: "jual", angka: true},
     {judul: "Net Lot", kunci: "net", angka: true, warna: true},
     {judul: "%Net", kunci: "pnet", angka: true, persen: true, silang: true},
-    {judul: "Diputar", kunci: "putar", angka: true},
     {judul: "%Crossing", kunci: "pputar", angka: true, persen: true},
-  ], baris, "putar"));
+  ], baris, "pputar"));
   p2.appendChild(el("div", "bantu",
     "Contoh: CC beli 100 jual 90 berarti %Net 10% dan %Crossing 90% — keduanya selalu " +
-    "berjumlah 100%, karena dihitung dari sisi yang sama. Kolom Diputar adalah sisi " +
-    "yang lebih kecil dalam satuan lot, yaitu barang yang masuk lalu keluar lagi lewat " +
-    "broker yang sama. Urutkan Diputar menurun untuk melihat siapa yang paling banyak " +
-    "memutar: kalau satu broker memegang sebagian besar perputaran seluruh emiten, itu " +
-    "jauh lebih patut dicurigai daripada perputaran yang tersebar merata."));
+    "berjumlah 100%, karena dihitung dari sisi yang sama. Urutkan %Crossing menurun " +
+    "untuk melihat siapa yang paling banyak memutar barang di tempat."));
   w.appendChild(p2);
 
   /* ---------- 3. satu broker, hari per hari ---------- */
@@ -5077,6 +5097,11 @@ let cariAsing = "harian";        /* "harian" atau "kumulatif" */
 /* Panel bawah grafik bisa dimatikan satu-satu. Di layar HP, empat panel sekaligus
    membuat masing-masing terlalu pendek untuk dibaca. */
 let cariPanel = {volume: true, asing: true, pnet: true};
+/* Sumbu harga logaritmik. Perlu untuk emiten yang pernah stock split: DSSA turun
+   dari puluhan ribu ke seribuan, dan pada skala biasa seluruh riwayat terbarunya
+   gepeng menempel di dasar grafik. Pada skala log, jarak yang sama berarti
+   persentase yang sama, jadi bentuk pergerakannya kembali terbaca. */
+let cariLog = false;
 const HARI_BAWAAN = 120;         /* kira-kira enam bulan bursa */
 
 function panelChart(kode) {
@@ -5134,6 +5159,10 @@ function panelChart(kode) {
   bSemua.style.padding = "5px 10px"; bSemua.style.fontSize = "12px";
   bSemua.onclick = () => { cariPanel = {volume: true, asing: true, pnet: true}; halCari(); };
   alat3.appendChild(bSemua);
+  const bLog = el("button", cariLog ? "aktif" : null, "Skala log");
+  bLog.style.padding = "5px 10px"; bLog.style.fontSize = "12px";
+  bLog.onclick = () => { cariLog = !cariLog; halCari(); };
+  alat3.appendChild(bLog);
   p.appendChild(alat3);
 
   const rk = el("div", "bantu", "");
@@ -5263,7 +5292,18 @@ function gambarChart(kan, d, ket) {
     d.forEach((b, i) => { asMaks = Math.max(asMaks,
       Math.abs(cariAsing === "harian" ? b.f : kumArr[i])); });
     if (!(hi > lo)) hi = lo + 1;
-    const pad = (hi - lo) * 0.08; lo -= pad; hi += pad;
+    /* Pada skala log, ruang kosong atas-bawah juga harus dalam PERSEN, bukan
+       dalam rupiah - kalau tidak, batas bawahnya bisa jatuh ke nol atau minus
+       dan logaritmanya tidak terdefinisi. */
+    const pakaiLog = cariLog && lo > 0;
+    if (pakaiLog) {
+      const f = Math.pow(hi / lo, 0.04);
+      lo = lo / f; hi = hi * f;
+    } else {
+      const pad = (hi - lo) * 0.08; lo -= pad; hi += pad;
+    }
+    const lgLo = pakaiLog ? Math.log(lo) : 0;
+    const lgHi = pakaiLog ? Math.log(hi) : 1;
     if (!volMaks) volMaks = 1;
     if (!asMaks) asMaks = 1;
 
@@ -5273,7 +5313,9 @@ function gambarChart(kan, d, ket) {
        Batasnya dinaikkan supaya badan candle ikut melebar sampai sewajarnya. */
     const badan = Math.max(1, Math.min(22, w * 0.62));
     const X = i => kiri + i * w + w / 2;
-    const Y = v => yH + tH - ((v - lo) / (hi - lo)) * tH;
+    const Y = v => pakaiLog
+      ? yH + tH - ((Math.log(Math.max(v, 1e-9)) - lgLo) / (lgHi - lgLo)) * tH
+      : yH + tH - ((v - lo) / (hi - lo)) * tH;
     geo = {kiri: kiri, lebarPlot: lebarPlot, w: w, X: X, Y: Y, yH: yH, tH: tH,
            yF: yF, tF: tF, kananLabel: kananLabel, lo: lo, hi: hi,
            tinggi: tinggi, lebar: lebar, cDasar: cDasar, cInk1: cInk1, cGaris: cGaris};
@@ -5281,16 +5323,28 @@ function gambarChart(kan, d, ket) {
     g.font = "10px system-ui, sans-serif";
     g.textBaseline = "middle";
 
-    const kasar = (hi - lo) / 4;
-    const pangkat = Math.pow(10, Math.floor(Math.log(kasar) / Math.LN10));
-    const step = Math.max(1, Math.ceil(kasar / pangkat) * pangkat);
-    for (let v = Math.ceil(lo / step) * step; v < hi; v += step) {
+    const garisHarga = [];
+    if (pakaiLog) {
+      /* Pada skala log jarak antar garis tidak boleh tetap dalam rupiah. Enam
+         titik dibagi rata dalam ruang logaritma lalu dibulatkan ke dua angka
+         berarti, dan yang kembar dibuang. */
+      for (let i = 0; i <= 5; i++) {
+        const v = Number(Math.exp(lgLo + (lgHi - lgLo) * i / 5).toPrecision(2));
+        if (v > lo && v < hi && garisHarga.indexOf(v) < 0) garisHarga.push(v);
+      }
+    } else {
+      const kasar = (hi - lo) / 4;
+      const pangkat = Math.pow(10, Math.floor(Math.log(kasar) / Math.LN10));
+      const step = Math.max(1, Math.ceil(kasar / pangkat) * pangkat);
+      for (let v = Math.ceil(lo / step) * step; v < hi; v += step) garisHarga.push(v);
+    }
+    garisHarga.forEach(v => {
       const y = Math.round(Y(v)) + 0.5;
       g.strokeStyle = cGaris; g.lineWidth = 1;
       g.beginPath(); g.moveTo(kiri, y); g.lineTo(kiri + lebarPlot, y); g.stroke();
       g.fillStyle = cInk3; g.textAlign = "left";
       g.fillText(rp(v), kiri + lebarPlot + 5, Y(v));
-    }
+    });
 
     d.forEach((b, i) => {
       const naik = b.c >= b.o;
@@ -5811,20 +5865,26 @@ async function sinkron(diam) {
         const a = b[x.br] || (b[x.br] = {beli: 0, jual: 0});
         a.beli += x.beli; a.jual += x.jual;
       })));
-    const blnGross = new Set(), blnAda = new Set();
+    /* Diperiksa per TANGGAL, bukan per bulan. Satu bulan bisa bercampur: 3-24
+       Agustus masih data nett lama sementara 26-31 Agustus sudah gross. Kalau
+       dinilai per bulan, adanya beberapa hari gross membuat seluruh Agustus
+       dianggap sudah benar dan tanggal nett-nya tidak pernah tergantikan. */
+    const tglGross = new Set(), tglAda = new Set();
     Object.keys(blokBrk).forEach(k => {
-      const bl = bulanDari(k.slice(0, 10));
+      const t = k.slice(0, 10);
       const br = blokBrk[k];
       const kode = Object.keys(br);
-      if (kode.length >= 6) blnAda.add(bl);
-      if (kode.some(x => br[x].beli > 0 && br[x].jual > 0)) blnGross.add(bl);
+      if (kode.length >= 6) tglAda.add(t);
+      if (kode.some(x => br[x].beli > 0 && br[x].jual > 0)) tglGross.add(t);
     });
-    const blnNett = new Set([...blnAda].filter(
-      bl => !blnGross.has(bl) && !sudahSegar.has(bl)));
+    const tglNett = new Set([...tglAda].filter(t => !tglGross.has(t)));
+    const blnNett = new Set([...tglNett].map(bulanDari)
+      .filter(bl => !sudahSegar.has(bl)));
+    if (!blnNett.size) tglNett.clear();     /* bulannya sudah pernah disegarkan */
 
     const blnBrk = [...new Set((man.tanggal_broker || [])
       .filter(t => bolehBrk.has(bulanDari(t)) &&
-                   (!adaBrk.has(t) || blnNett.has(bulanDari(t)))).map(bulanDari))];
+                   (!adaBrk.has(t) || tglNett.has(t))).map(bulanDari))];
     const adaHrg = new Set(daftarHari.map(r => r.tgl).concat(ASLI.tglVol || []));
     /* Data harian yang tersimpan sebelum grafik candle ada tidak menyimpan
        harga pembukaan. Bulan-bulan itu diunduh ulang sekali supaya candle
@@ -5853,7 +5913,7 @@ async function sinkron(diam) {
       const tulisUlang = blnNett.has(bl);
       for (let i = 0; i < j.t.length; i++) {
         const t = j.tanggal[j.t[i]];
-        if (adaBrk.has(t) && !tulisUlang) continue;
+        if (adaBrk.has(t) && !tglNett.has(t)) continue;
         if (!perTgl[t]) perTgl[t] = {REG: [], NEGO: [], TUNAI: []};
         perTgl[t][PAPAN_GUDANG[j.p[i]]].push({
           tgl: t, em: kamusGudang.emiten[j.e[i]], br: kamusGudang.broker[j.b[i]],
