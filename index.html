@@ -1256,7 +1256,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-06-4";
+const VERSI_APP = "2026-09-06-5";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -2587,7 +2587,8 @@ function saldoAwal(emiten, pasar) {
 const pilih = {emiten: "", pasar: "ALL MARKET", dari: "", sampai: "",
                urut: "posisi", arah: -1, sub: "posisi", subPos: "posisi",
                kalBroker: "", kalBulan: "", brSiap: false,
-               mode: "net", pnetBroker: "", tglAkhir: ""};
+               mode: "net", pnetBroker: "", tglAkhir: "",
+               hrBroker: "", hrBulan: ""};
 
 function siapkanPilihan() {
   const tgl = tanggalTersedia();
@@ -2717,9 +2718,18 @@ function tombolMode(p) {
      sekarang", GROSS menjawab "berapa banyak barang yang lewat". Selisih keduanya
      itulah yang cuma berputar di tempat. */
   const alat = el("div", "alat");
+  /* Dua tampilan ini isinya berbeda jauh, jadi yang sedang aktif harus terlihat
+     sekilas - bukan cuma dari tebal tidaknya tombol. NET hijau seperti warna
+     tema, GROSS biru-hijau supaya tidak tertukar dengan naik/turun. */
+  const WARNA_MODE = {net: "var(--merek)", gross: "#0d9488"};
   [["net", "NET"], ["gross", "GROSS"]].forEach(([k, teks]) => {
     const b = el("button", pilih.mode === k ? "aktif" : null, teks);
-    b.style.padding = "5px 12px"; b.style.fontSize = "12px";
+    b.style.padding = "5px 14px"; b.style.fontSize = "12px";
+    if (pilih.mode === k) {
+      b.style.background = WARNA_MODE[k];
+      b.style.borderColor = WARNA_MODE[k];
+      b.style.color = "#fff";
+    }
     b.onclick = () => { pilih.mode = k; halBroker(); };
     alat.appendChild(b);
   });
@@ -2911,6 +2921,131 @@ function panelTransaksi(w) {
     {judul: "Net Value", kunci: "nilai", angka: true, warna: true},
   ], baris, "net"));
   p.appendChild(el("div", "bantu", catatanGross));
+  w.appendChild(p);
+}
+
+/* ---------- sub-halaman: broker harian (satu broker, tabel per tanggal) ---------- */
+/* Isinya sama dengan yang digambar di KALENDER, tapi berupa angka. Kalender bagus
+   untuk melihat POLA sepintas; tabel ini untuk membaca angkanya satu per satu, dan
+   memisahkan reguler, nego, dan tunai supaya kelihatan lewat papan mana barangnya
+   berpindah. */
+function panelBrokerHarian(w) {
+  const p = el("div", "panel");
+  p.appendChild(el("h2", null, "Broker harian — " + pilih.emiten));
+
+  const semuaTgl = tanggalTersedia();
+  const bulanAda = [...new Set(semuaTgl.map(t => t.slice(0, 7)))].sort();
+  if (!pilih.hrBulan || bulanAda.indexOf(pilih.hrBulan) < 0)
+    pilih.hrBulan = bulanAda[bulanAda.length - 1] || "";
+
+  /* broker yang benar-benar bertransaksi di emiten & bulan itu saja */
+  const trx = semuaTrx();
+  const adaBr = new Set();
+  PAPAN.forEach(pp => (trx[pp] || []).forEach(r => {
+    if (r.em === pilih.emiten && r.tgl.slice(0, 7) === pilih.hrBulan) adaBr.add(r.br);
+  }));
+  const daftarBr = [...adaBr].sort();
+  if (!pilih.hrBroker || daftarBr.indexOf(pilih.hrBroker) < 0) {
+    /* bawaan: broker dengan perputaran terbesar bulan itu */
+    const putar = {};
+    PAPAN.forEach(pp => (trx[pp] || []).forEach(r => {
+      if (r.em !== pilih.emiten || r.tgl.slice(0, 7) !== pilih.hrBulan) return;
+      const a = putar[r.br] || (putar[r.br] = {b: 0, j: 0});
+      a.b += r.beli; a.j += r.jual;
+    }));
+    let top = "", nilai = -1;
+    Object.keys(putar).forEach(k => {
+      const v = putar[k].b + putar[k].j;
+      if (v > nilai) { nilai = v; top = k; }
+    });
+    pilih.hrBroker = top || daftarBr[0] || "";
+  }
+
+  const alat = el("div", "alat");
+  const selBl = el("select", "cari");
+  bulanAda.slice().reverse().forEach(b => {
+    const o = el("option", null, bulanID(b + "-01") + " " + b.slice(0, 4));
+    o.value = b;
+    if (b === pilih.hrBulan) o.selected = true;
+    selBl.appendChild(o);
+  });
+  selBl.onchange = () => { pilih.hrBulan = selBl.value; pilih.hrBroker = ""; halBroker(); };
+  alat.appendChild(selBl);
+
+  const dl = el("datalist"); dl.id = "daftarBrHarian";
+  daftarBr.forEach(k => {
+    const o = el("option"); o.value = k; o.textContent = namaBroker(k); dl.appendChild(o);
+  });
+  alat.appendChild(dl);
+  const inp = el("input", "cari"); inp.value = pilih.hrBroker;
+  inp.placeholder = "Kode broker"; inp.setAttribute("list", "daftarBrHarian");
+  inp.autocapitalize = "characters";
+  inp.onchange = () => {
+    const v = inp.value.trim().toUpperCase();
+    if (daftarBr.indexOf(v) >= 0) { pilih.hrBroker = v; halBroker(); }
+    else inp.value = pilih.hrBroker;
+  };
+  alat.appendChild(inp);
+  p.appendChild(alat);
+
+  if (!pilih.hrBroker) {
+    p.appendChild(el("div", "bantu",
+      "Tidak ada transaksi broker untuk " + pilih.emiten + " pada bulan itu."));
+    w.appendChild(p); return;
+  }
+
+  /* net lot per papan, dan harga rata-rata reguler (ditimbang lot, dua sisi) */
+  const per = {};
+  PAPAN.forEach(pp => (trx[pp] || []).forEach(r => {
+    if (r.em !== pilih.emiten || r.br !== pilih.hrBroker) return;
+    if (r.tgl.slice(0, 7) !== pilih.hrBulan) return;
+    const a = per[r.tgl] || (per[r.tgl] = {REG: 0, NEGO: 0, TUNAI: 0, lot: 0, nilai: 0});
+    a[pp] += r.beli - r.jual;
+    if (pp === "REG") {
+      a.lot += r.beli + r.jual;
+      a.nilai += r.beli * r.avgB * 100 + r.jual * r.avgJ * 100;
+    }
+  }));
+
+  const baris = Object.keys(per).sort().reverse().map(t => {
+    const a = per[t];
+    return {tanggal: tglID(t) + " " + t.slice(0, 4),
+            reg: a.REG, avg: a.lot ? Math.round(a.nilai / a.lot / 100) : null,
+            nego: a.NEGO, tunai: a.TUNAI, total: a.REG + a.NEGO + a.TUNAI};
+  });
+
+  p.appendChild(el("div", "bantu",
+    pilih.hrBroker + " — " + namaBroker(pilih.hrBroker) + " · " +
+    bulanID(pilih.hrBulan + "-01") + " " + pilih.hrBulan.slice(0, 4) + " · " +
+    baris.length + " hari bertransaksi"));
+
+  if (!baris.length) {
+    p.appendChild(el("div", "bantu", "Broker ini tidak bertransaksi bulan itu."));
+    w.appendChild(p); return;
+  }
+
+  p.appendChild(tabelUrut([
+    {judul: "Tanggal", kunci: "tanggal"},
+    {judul: "Net REG", kunci: "reg", angka: true, warna: true},
+    {judul: "Avg REG", kunci: "avg", angka: true},
+    {judul: "Net NEGO", kunci: "nego", angka: true, warna: true},
+    {judul: "Net TUNAI", kunci: "tunai", angka: true, warna: true},
+    {judul: "Net TOTAL", kunci: "total", angka: true, warna: true},
+  ], baris, "tanggal"));
+
+  let tReg = 0, tNego = 0, tTunai = 0;
+  baris.forEach(r => { tReg += r.reg; tNego += r.nego; tTunai += r.tunai; });
+  const tot = tReg + tNego + tTunai;
+  p.appendChild(el("div", "bantu",
+    "Sebulan: reguler " + (tReg >= 0 ? "+" : "−") + rp(Math.abs(tReg)) +
+    " lot, nego " + (tNego >= 0 ? "+" : "−") + rp(Math.abs(tNego)) +
+    " lot, tunai " + (tTunai >= 0 ? "+" : "−") + rp(Math.abs(tTunai)) +
+    " lot — total " + (tot >= 0 ? "+" : "−") + rp(Math.abs(tot)) + " lot, " +
+    (tot > 0 ? "mengumpulkan." : tot < 0 ? "melepas." : "seimbang.")));
+  p.appendChild(el("div", "bantu",
+    "Avg REG adalah harga rata-rata seluruh lot broker itu di pasar reguler hari " +
+    "tersebut, beli dan jual digabung — jadi bisa dibandingkan dengan harga penutupan " +
+    "untuk melihat dia bergerak di harga atas atau bawah."));
   w.appendChild(p);
 }
 
@@ -3559,13 +3694,18 @@ function halBroker() {
   });
   w.appendChild(tab);
 
-  w.appendChild(kotakKontrol({tanggal: pilih.sub !== "kalender"}));
+  /* BROKER HARIAN memakai pilihan bulan sendiri, sama seperti KALENDER, jadi
+     kotak Dari/Sampai disembunyikan supaya tidak terlihat seperti mengatur
+     sesuatu padahal tidak dipakai. */
+  w.appendChild(kotakKontrol({tanggal: pilih.sub !== "kalender" &&
+    !(pilih.sub === "posisi" && pilih.subPos === "harian")}));
 
   if (pilih.sub === "posisi") {
     /* tiga panel posisi dulu ditumpuk ke bawah dan halamannya jadi panjang sekali;
        sekarang dipilih satu per satu, seperti di halaman CARI */
     const tab2 = el("div", "sub-tab");
-    [["posisi", "POSISI"], ["saldo", "SALDO AWAL"], ["transaksi", "TRANSAKSI"]]
+    [["posisi", "POSISI"], ["saldo", "SALDO AWAL"], ["transaksi", "TRANSAKSI"],
+     ["harian", "BROKER HARIAN"]]
       .forEach(([k, judul]) => {
         const b = el("button", pilih.subPos === k ? "aktif" : null, judul);
         b.onclick = () => { pilih.subPos = k; halBroker(); };
@@ -3574,6 +3714,7 @@ function halBroker() {
     w.appendChild(tab2);
     if (pilih.subPos === "saldo") panelSaldo(w);
     else if (pilih.subPos === "transaksi") panelTransaksi(w);
+    else if (pilih.subPos === "harian") panelBrokerHarian(w);
     else panelPosisi(w);
   }
   else if (pilih.sub === "kalender") panelKalender(w);
@@ -5198,6 +5339,11 @@ function gambarChart(kan, d, ket) {
       let grMaks = 0;
       d.forEach(b => { if (b.gr) grMaks = Math.max(grMaks, b.gr); });
       if (!grMaks) grMaks = 1;
+      /* Angka ditulis hanya kalau batangnya cukup lebar. Pada rentang enam bulan
+         satu batang cuma belasan piksel - tulisan "8,6%" perlu lebih dari itu dan
+         akan saling menimpa. Untuk rentang panjang, angkanya tetap terbaca dengan
+         menggeser kursor. */
+      const muatAngka = badan >= 24;
       d.forEach((b, i) => {
         if (!b.gr) return;
         const h = (b.gr / grMaks) * tN;
@@ -5207,6 +5353,15 @@ function gambarChart(kan, d, ket) {
         g.globalAlpha = 1;
         g.fillStyle = cMerek;
         g.fillRect(X(i) - badan / 2, yN + tN - hn, badan, Math.max(1, hn));
+        if (muatAngka) {
+          const pn = b.nt / b.gr * 100;
+          g.save();
+          g.font = "9px system-ui, sans-serif";
+          g.textAlign = "center"; g.textBaseline = "bottom";
+          g.fillStyle = cInk1;
+          g.fillText(Math.round(pn) + "%", X(i), yN + tN - h - 2);
+          g.restore();
+        }
       });
       let sGr = 0, sNt = 0;
       d.forEach(b => { if (b.gr) { sGr += b.gr; sNt += b.nt; } });
@@ -5630,8 +5785,46 @@ async function sinkron(diam) {
     const adaBrk = new Set();
     daftarHariBroker.forEach(r => PAPAN.forEach(p =>
       (r.isi[p] || []).forEach(x => adaBrk.add(x.tgl))));
+
+    /* Bulan yang tersimpan di HP masih berisi tabel NETT diunduh ULANG sekali.
+
+       Sebabnya: sinkron menyimpan per TANGGAL dan melewati tanggal yang sudah ada,
+       jadi begitu berkas di server diganti dari nett ke gross, tanggal lama di HP
+       tidak ikut berubah. Akibatnya di grafik %Net separuh rentang tampak 100%
+       (nett: tiap broker cuma di satu sisi) dan separuhnya wajar — angka rata-rata
+       jadi tidak berarti.
+
+       Cirinya: pada data GROSS pasti ada broker yang muncul di sisi beli DAN jual
+       pada (tanggal, papan) yang sama. Blok dengan sedikit broker tidak dinilai —
+       wajar tidak ada yang kebetulan dua arah.
+
+       Bulan yang sudah pernah diunduh ulang dicatat di localStorage supaya tidak
+       diulang tiap sinkron: kalau di server memang data nett, hasilnya akan tetap
+       nett dan pengulangannya tidak ada habisnya. */
+    const sudahSegar = new Set(JSON.parse(
+      localStorage.getItem("titenBrokerGross") || "[]"));
+    const blokBrk = {};
+    daftarHariBroker.forEach(r => PAPAN.forEach(p =>
+      (r.isi[p] || []).forEach(x => {
+        const k = x.tgl + "|" + p;
+        const b = blokBrk[k] || (blokBrk[k] = {});
+        const a = b[x.br] || (b[x.br] = {beli: 0, jual: 0});
+        a.beli += x.beli; a.jual += x.jual;
+      })));
+    const blnGross = new Set(), blnAda = new Set();
+    Object.keys(blokBrk).forEach(k => {
+      const bl = bulanDari(k.slice(0, 10));
+      const br = blokBrk[k];
+      const kode = Object.keys(br);
+      if (kode.length >= 6) blnAda.add(bl);
+      if (kode.some(x => br[x].beli > 0 && br[x].jual > 0)) blnGross.add(bl);
+    });
+    const blnNett = new Set([...blnAda].filter(
+      bl => !blnGross.has(bl) && !sudahSegar.has(bl)));
+
     const blnBrk = [...new Set((man.tanggal_broker || [])
-      .filter(t => bolehBrk.has(bulanDari(t)) && !adaBrk.has(t)).map(bulanDari))];
+      .filter(t => bolehBrk.has(bulanDari(t)) &&
+                   (!adaBrk.has(t) || blnNett.has(bulanDari(t)))).map(bulanDari))];
     const adaHrg = new Set(daftarHari.map(r => r.tgl).concat(ASLI.tglVol || []));
     /* Data harian yang tersimpan sebelum grafik candle ada tidak menyimpan
        harga pembukaan. Bulan-bulan itu diunduh ulang sekali supaya candle
@@ -5657,9 +5850,10 @@ async function sinkron(diam) {
     for (const bl of blnBrk) {
       const j = await ambilGudang("broker-" + bl + ".json");
       const perTgl = {};
+      const tulisUlang = blnNett.has(bl);
       for (let i = 0; i < j.t.length; i++) {
         const t = j.tanggal[j.t[i]];
-        if (adaBrk.has(t)) continue;
+        if (adaBrk.has(t) && !tulisUlang) continue;
         if (!perTgl[t]) perTgl[t] = {REG: [], NEGO: [], TUNAI: []};
         perTgl[t][PAPAN_GUDANG[j.p[i]]].push({
           tgl: t, em: kamusGudang.emiten[j.e[i]], br: kamusGudang.broker[j.b[i]],
@@ -5671,6 +5865,13 @@ async function sinkron(diam) {
         await dbSimpan({tgl: t, berkas: "sinkron", jumlah: jml, waktu: Date.now(),
                         tanggal: [t], isi: isi}, "broker");
         masuk++;
+      }
+      if (tulisUlang) {
+        sudahSegar.add(bl);
+        try {
+          localStorage.setItem("titenBrokerGross",
+                               JSON.stringify([...sudahSegar]));
+        } catch (e) {}
       }
     }
 
