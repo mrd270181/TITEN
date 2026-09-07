@@ -1256,7 +1256,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-06-7";
+const VERSI_APP = "2026-09-06-8";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -2459,6 +2459,27 @@ function halData() {
       tbody.appendChild(tr);
     });
     t.appendChild(tbody); tb.appendChild(t); bp.appendChild(tb);
+
+    /* Jalan keluar manual. Sinkron menyimpan per TANGGAL dan melewati tanggal
+       yang sudah ada, jadi kalau berkas di server diganti (mis. dari tabel NETT
+       ke GROSS) tanggal lama di HP tidak ikut berubah. Deteksinya memang otomatis,
+       tapi bulan yang pernah dinilai sudah segar dicatat di localStorage dan tidak
+       dinilai lagi - tombol ini menghapus catatan itu sekaligus seluruh tanggal
+       broker, supaya semuanya ditarik ulang dari server. */
+    const ulang = el("button", "tambah lawan", "Unduh ulang semua data broker");
+    ulang.onclick = async () => {
+      if (!confirm("Hapus " + daftarHariBroker.length + " tanggal broker di HP ini " +
+                   "lalu unduh ulang dari server?")) return;
+      ulang.disabled = true; ulang.textContent = "Mengunduh\u2026";
+      try { localStorage.removeItem("titenBrokerGross"); } catch (e) {}
+      await dbKosong("broker");
+      catatanImpor = [];
+      await muatDanTerapkan();
+      await sinkron(false);
+      await muatDanTerapkan();
+      gambarUlang();
+    };
+    bp.appendChild(ulang);
   }
   w.appendChild(bp);
 
