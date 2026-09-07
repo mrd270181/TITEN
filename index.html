@@ -1256,7 +1256,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-06-6";
+const VERSI_APP = "2026-09-06-7";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -3969,11 +3969,13 @@ function periodeLK(kode) {
    itu SALDO pada satu tanggal - mengurangkan aset akhir Juni dari aset akhir Maret
    tidak berarti apa-apa. Karena itu pos neraca selalu diambil sebagai saldo akhir
    periode yang dipilih. "kas_akhir" di arus kas juga saldo, bukan aliran. */
-const MODE_PERIODE = [["Q1", "Q1"], ["Q2", "Q2"], ["Q3", "Q3"], ["Q4", "Q4"],
-                      ["FY", "Tahunan"], ["TTM", "TTM"], ["YTD", "YTD"]];
-const NAMA_MODE = {Q1: "Q1 (Jan-Mar)", Q2: "Q2 (Apr-Jun)", Q3: "Q3 (Jul-Sep)",
+const MODE_PERIODE = [["QALL", "Kuartal"], ["Q1", "Q1"], ["Q2", "Q2"], ["Q3", "Q3"],
+                      ["Q4", "Q4"], ["FY", "Tahunan"], ["TTM", "TTM"], ["YTD", "YTD"]];
+const NAMA_MODE = {QALL: "semua kuartal berjajar, terbaru di kiri",
+                   Q1: "Q1 (Jan-Mar)", Q2: "Q2 (Apr-Jun)", Q3: "Q3 (Jul-Sep)",
                    Q4: "Q4 (Okt-Des)", FY: "setahun penuh", TTM: "12 bulan terakhir",
                    YTD: "kumulatif sejak awal tahun, apa adanya seperti laporan IDX"};
+const KUARTAL_TAMPIL = 8;      /* dua tahun kuartalan - cukup untuk membandingkan */
 const POS_STOK = new Set(POS_NERACA.map(x => x[0]).concat(["kas_akhir"]));
 const URUT_KUM = ["TW1", "TW2", "TW3", "FY"];
 const NAMA_LAPORAN = {TW1: "kuartal I (TW1)", TW2: "tengah tahun (TW2)",
@@ -3997,7 +3999,33 @@ function kuartalTerakhir(k) {
 }
 
 /* satu kolom per tahun, isinya sudah disesuaikan dengan mode yang dipilih */
+/* Semua kuartal berjajar sebagai kolom sendiri-sendiri: Q2 2026, Q1 2026,
+   Q4 2025, dan seterusnya - seperti tampilan Quarter di Stockbit. Dulu kuartalnya
+   harus dipilih satu per satu, jadi membandingkan Q1 dengan Q2 berarti bolak-balik
+   mengganti pilihan dan mengingat angkanya sendiri.
+
+   Perhitungan tiap kuartal tidak diulang di sini: kolomPeriode dipanggil sekali
+   untuk tiap Q1..Q4 lalu hasilnya digabung dan diurutkan. Dengan begitu rumus
+   pengurangan laporan kumulatif IDX cuma ada di satu tempat. */
+function kolomKuartal(kode, banyak) {
+  const semua = [];
+  ["Q1", "Q2", "Q3", "Q4"].forEach(q => {
+    kolomPeriode(kode, q, 99).forEach(c => {
+      const d = {};
+      Object.keys(c).forEach(k => d[k] = c[k]);
+      d.tahun = +c.judul;
+      d.kuartal = +q.slice(1);
+      d.judul = q + " " + c.judul;
+      d.jenis = q;
+      semua.push(d);
+    });
+  });
+  semua.sort((a, b) => (b.tahun - a.tahun) || (b.kuartal - a.kuartal));
+  return semua.slice(0, banyak || KUARTAL_TAMPIL);
+}
+
 function kolomPeriode(kode, mode, banyak) {
+  if (mode === "QALL") return kolomKuartal(kode, banyak);
   const peta = petaTahun(kode);
   const keluar = [];
   Object.keys(peta).sort().reverse().forEach(t => {
@@ -4101,7 +4129,13 @@ function tabelLK(periode, daftarPos) {
     });
     t.appendChild(tr);
   });
-  return t;
+  /* Mode "Kuartal" bisa menghasilkan delapan kolom. Tanpa pembungkus yang bisa
+     digeser, tabelnya melebar melewati layar HP dan seluruh halaman ikut bergeser
+     ke samping. */
+  const bungkus = el("div", "tbl-bungkus");
+  bungkus.style.overflowX = "auto";
+  bungkus.appendChild(t);
+  return bungkus;
 }
 
 const METRIK_KS = [["laba_bersih", "Net Income"], ["eps", "EPS"], ["pendapatan", "Revenue"]];
@@ -5589,7 +5623,7 @@ function panelBanding(kode, periode) {
 
   const isi = {};
   kolom.forEach(k => {
-    const per = kolomPeriode(k, cariMode, 1);
+    const per = kolomPeriode(k, cariMode === "QALL" ? "TTM" : cariMode, 1);
     isi[k] = (per && per.length) ? (per[per.length - 1].pos || {}) : {};
   });
 
@@ -5687,7 +5721,8 @@ function halCari() {
 
   if (!cariKode) return;
 
-  const periode = kolomPeriode(cariKode, cariMode, 3);
+  const periode = kolomPeriode(cariKode, cariMode,
+                               cariMode === "QALL" ? KUARTAL_TAMPIL : 3);
 
   /* ---- kepala emiten + rel tab ---- */
   const ph = el("div", "panel");
@@ -5739,8 +5774,8 @@ function halCari() {
     const c = periode.map(x => x.catatan).filter(Boolean)[0];
     ph.appendChild(el("div", "bantu", (NAMA_MODE[cariMode] || cariMode) +
       (c ? " · " + c : "") +
-      (["Q2", "Q3", "Q4"].indexOf(cariMode) >= 0
-        ? " · dihitung dari selisih dua laporan kumulatif IDX" : "")));
+      (["Q2", "Q3", "Q4", "QALL"].indexOf(cariMode) >= 0
+        ? " · Q2, Q3, dan Q4 dihitung dari selisih dua laporan kumulatif IDX" : "")));
   }
   w.appendChild(ph);
 
@@ -5857,10 +5892,14 @@ async function sinkron(diam) {
        nett dan pengulangannya tidak ada habisnya. */
     const sudahSegar = new Set(JSON.parse(
       localStorage.getItem("titenBrokerGross") || "[]"));
+    /* Dikelompokkan per (tanggal, papan, EMITEN). Tanpa emiten, transaksi seluruh
+       82 emiten tertumpuk jadi satu: broker yang membeli saham A dan menjual saham B
+       di hari yang sama tampak "dua sisi", sehingga hampir setiap tanggal terlihat
+       gross walaupun datanya nett - dan penarikan ulang tidak pernah terpicu. */
     const blokBrk = {};
     daftarHariBroker.forEach(r => PAPAN.forEach(p =>
       (r.isi[p] || []).forEach(x => {
-        const k = x.tgl + "|" + p;
+        const k = x.tgl + "|" + p + "|" + x.em;
         const b = blokBrk[k] || (blokBrk[k] = {});
         const a = b[x.br] || (b[x.br] = {beli: 0, jual: 0});
         a.beli += x.beli; a.jual += x.jual;
