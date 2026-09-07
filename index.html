@@ -1256,7 +1256,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-06-8";
+const VERSI_APP = "2026-09-06-9";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -2524,6 +2524,17 @@ function halData() {
     "Semua tersimpan di HP ini saja, sampai " + BATAS_HARI + " hari bursa terakhir.";
   r.appendChild(isi);
   w.appendChild(r);
+
+  /* Nomor versi ditampilkan supaya bisa dipastikan berkas baru benar-benar
+     sudah sampai di HP. Batang "Versi baru tersedia" tidak selalu terlihat:
+     kalau bedanya ketahuan dalam sepuluh detik pertama, app memuat ulang
+     dirinya sendiri tanpa bertanya, jadi tidak ada yang perlu ditekan. */
+  const v = el("div", "bantu", "Versi app " + VERSI_APP + " \u00b7 data broker s/d " +
+    (daftarHariBroker.length ? tglID(daftarHariBroker[0].tgl) : "\u2013"));
+  v.style.textAlign = "center";
+  v.style.color = "var(--ink-2)";
+  v.style.margin = "18px 0 4px";
+  w.appendChild(v);
 }
 
 
