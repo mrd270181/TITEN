@@ -1256,7 +1256,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-06-9";
+const VERSI_APP = "2026-09-06-10";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -2620,7 +2620,8 @@ const pilih = {emiten: "", pasar: "ALL MARKET", dari: "", sampai: "",
                urut: "posisi", arah: -1, sub: "posisi", subPos: "posisi",
                kalBroker: "", kalBulan: "", brSiap: false,
                mode: "net", pnetBroker: "", tglAkhir: "",
-               hrBroker: "", hrBulan: ""};
+               hrBroker: "", hrBulan: "",
+               subNet: "rasio", tierD1: "", tierS1: "", tierD2: "", tierS2: ""};
 
 function siapkanPilihan() {
   const tgl = tanggalTersedia();
@@ -2633,6 +2634,8 @@ function siapkanPilihan() {
     pilih.tglAkhir = akhir;
     pilih.dari = akhir; pilih.sampai = akhir;
     pilih.kalBulan = akhir.slice(0, 7);
+    /* dua rentang pembanding tier disusun ulang juga - lihat panelTier */
+    pilih.tierD1 = pilih.tierS1 = pilih.tierD2 = pilih.tierS2 = "";
   }
   if (!pilih.dari) pilih.dari = akhir;
   if (!pilih.sampai) pilih.sampai = akhir;
@@ -3562,6 +3565,174 @@ function batangRasio(net, gross) {
   return b;
 }
 
+/* ---------- tier broker ---------- */
+/* Tier semata-mata urutan besarnya GROSS di rentang itu, bukan nilai mutlak:
+   peringkat 1-3 S, 4-8 A, 9-15 B, sisanya C. Yang dicari bukan "broker ini besar",
+   melainkan "broker ini naik/turun kelas dibanding rentang sebelumnya". */
+const BATAS_TIER = [[3, "S"], [8, "A"], [15, "B"]];
+const WARNA_TIER = {S: "#dc2626", A: "#ea580c", B: "#0d9488", C: "var(--ink-2)"};
+
+function tierUrutan(urutan) {
+  for (let i = 0; i < BATAS_TIER.length; i++)
+    if (urutan <= BATAS_TIER[i][0]) return BATAS_TIER[i][1];
+  return "C";
+}
+
+/* Gross di sini = beli + jual, yaitu SELURUH lot yang lewat broker itu — ukuran
+   sibuknya, tanpa peduli arah. Net = beli − jual, dipakai hanya untuk membaca
+   arah; net tidak pernah ikut menentukan tier. Perhatikan bedanya dengan gross
+   tingkat emiten di halaman RASIO, yang memakai jumlah sisi beli saja supaya
+   sama dengan volume reguler IDX. */
+function daftarTier(emiten, pasar, dari, sampai) {
+  const agg = kumpulkan(emiten, pasar, dari, sampai);
+  const baris = Object.keys(agg).map(k => ({
+    broker: k, nama: namaBroker(k),
+    gross: agg[k].beli + agg[k].jual,
+    net: agg[k].beli - agg[k].jual}));
+  baris.sort((a, b) => (b.gross - a.gross) || (a.broker < b.broker ? -1 : 1));
+  baris.forEach((r, i) => { r.urutan = i + 1; r.tier = tierUrutan(i + 1); });
+  return baris;
+}
+
+function selTier(td, tier) {
+  td.textContent = tier;
+  td.style.color = WARNA_TIER[tier];
+  td.style.fontWeight = "600";
+}
+
+function panelTier(w) {
+  const semuaTgl = tanggalTersedia();
+  const p = el("div", "panel");
+  p.appendChild(el("h2", null, "Tier tiap broker — " + pilih.emiten));
+
+  if (semuaTgl.length < 2) {
+    p.appendChild(el("div", "kosong", "Belum cukup tanggal untuk dibandingkan."));
+    w.appendChild(p); return;
+  }
+
+  /* Rentang awal: seluruh tanggal yang ada dibelah dua — separuh lama di kiri,
+     separuh baru di kanan. Dengan begitu tabelnya sudah ada isinya begitu dibuka,
+     berapa pun panjang datanya, dan tinggal digeser sesuai kebutuhan. */
+  if (!pilih.tierD1 || !pilih.tierD2) {
+    const tengah = Math.floor(semuaTgl.length / 2);
+    pilih.tierD1 = semuaTgl[0];
+    pilih.tierS1 = semuaTgl[Math.max(tengah - 1, 0)];
+    pilih.tierD2 = semuaTgl[tengah];
+    pilih.tierS2 = semuaTgl[semuaTgl.length - 1];
+  }
+
+  /* Dua rentang berdiri sendiri, tidak ada hubungannya dengan Dari/Sampai di
+     halaman RASIO — memang itu maksudnya: membandingkan dua potongan waktu. */
+  const kotak = el("div", "alat");
+  kotak.style.flexWrap = "wrap";
+  [["Rentang 1 (kiri)", "tierD1", "tierS1"],
+   ["Rentang 2 (kanan)", "tierD2", "tierS2"]].forEach(([judul, kd, ks]) => {
+    const g = el("div");
+    g.style.cssText = "display:flex;align-items:center;gap:6px;flex-wrap:wrap;" +
+                      "margin-right:14px";
+    const lb = el("span", "bantu", judul + ":");
+    lb.style.margin = "0"; g.appendChild(lb);
+    g.appendChild(kotakTanggal(pilih[kd], semuaTgl, t => { pilih[kd] = t; halBroker(); }));
+    const sp = el("span", "bantu", "–"); sp.style.margin = "0"; g.appendChild(sp);
+    g.appendChild(kotakTanggal(pilih[ks], semuaTgl, t => { pilih[ks] = t; halBroker(); }));
+    kotak.appendChild(g);
+  });
+  p.appendChild(kotak);
+
+  const kiri = daftarTier(pilih.emiten, pilih.pasar, pilih.tierD1, pilih.tierS1);
+  const kanan = daftarTier(pilih.emiten, pilih.pasar, pilih.tierD2, pilih.tierS2);
+  const tierKiri = {}; kiri.forEach(r => { tierKiri[r.broker] = r.tier; });
+
+  const judulKiri = tglID(pilih.tierD1) + " – " + tglID(pilih.tierS1) + " " +
+                    (pilih.tierS1 || "").slice(0, 4);
+  const judulKanan = tglID(pilih.tierD2) + " – " + tglID(pilih.tierS2) + " " +
+                     (pilih.tierS2 || "").slice(0, 4);
+
+  if (!kiri.length && !kanan.length) {
+    p.appendChild(el("div", "kosong",
+      "Tidak ada transaksi " + pilih.emiten + " di kedua rentang itu."));
+    w.appendChild(p); return;
+  }
+
+  const bungkus = el("div", "tbl-bungkus");
+  const t = el("table");
+  const thead = el("thead");
+
+  const tr1 = el("tr");
+  const th1 = el("th", null, judulKiri); th1.colSpan = 4;
+  th1.style.borderRight = "2px solid var(--garis)";
+  const th2 = el("th", null, judulKanan); th2.colSpan = 4;
+  tr1.appendChild(th1); tr1.appendChild(th2); thead.appendChild(tr1);
+
+  const tr2 = el("tr");
+  ["Broker", "Gross Lot", "Net Lot", "Tier", "Broker", "Gross Lot", "Net Lot", "Tier"]
+    .forEach((j, i) => {
+      const th = el("th", null, j);
+      if (i === 3) th.style.borderRight = "2px solid var(--garis)";
+      tr2.appendChild(th);
+    });
+  thead.appendChild(tr2); t.appendChild(thead);
+
+  const tbody = el("tbody");
+  const jml = Math.max(kiri.length, kanan.length);
+  for (let i = 0; i < jml; i++) {
+    const tr = el("tr");
+    [[kiri[i], true], [kanan[i], false]].forEach(([r, sisiKiri]) => {
+      if (!r) {
+        for (let c = 0; c < 4; c++) {
+          const td = el("td", null, "");
+          if (sisiKiri && c === 3) td.style.borderRight = "2px solid var(--garis)";
+          tr.appendChild(td);
+        }
+        return;
+      }
+      const tdB = el("td", null, r.broker);
+      tdB.title = r.nama;
+      tr.appendChild(tdB);
+      tr.appendChild(el("td", "num", rp(r.gross)));
+      const tdN = el("td", "num", (r.net > 0 ? "+" : r.net < 0 ? "−" : "") +
+                                  rp(Math.abs(r.net)));
+      tdN.style.color = r.net > 0 ? "var(--naik)" : r.net < 0 ? "var(--turun)" : "";
+      tr.appendChild(tdN);
+      const tdT = el("td");
+      selTier(tdT, r.tier);
+      /* Di sisi kanan ditambahkan tier lamanya kalau berubah — itulah yang dicari:
+         broker yang naik atau turun kelas antara dua rentang. */
+      if (!sisiKiri) {
+        const lama = tierKiri[r.broker];
+        if (lama === undefined) {
+          const s2 = el("span", null, " baru");
+          s2.style.cssText = "color:var(--ink-2);font-weight:400;font-size:11px";
+          tdT.appendChild(s2);
+        } else if (lama !== r.tier) {
+          const naik = "SABC".indexOf(r.tier) < "SABC".indexOf(lama);
+          const s2 = el("span", null, (naik ? " ▲" : " ▼") + lama);
+          s2.style.cssText = "font-weight:400;font-size:11px;color:" +
+            (naik ? "var(--naik)" : "var(--turun)");
+          s2.title = "Rentang 1 tier " + lama + ", rentang 2 tier " + r.tier;
+          tdT.appendChild(s2);
+        }
+      } else {
+        tdT.style.borderRight = "2px solid var(--garis)";
+      }
+      tr.appendChild(tdT);
+    });
+    tbody.appendChild(tr);
+  }
+  t.appendChild(tbody); bungkus.appendChild(t); p.appendChild(bungkus);
+
+  p.appendChild(el("div", "bantu",
+    "Tier ditentukan urutan Gross Lot saja: peringkat 1–3 S, 4–8 A, " +
+    "9–15 B, 16 ke bawah C. Gross Lot = beli + jual, seluruh lot yang lewat " +
+    "broker itu — ukuran sibuknya, bukan arahnya. Net Lot = beli − jual, " +
+    "cuma untuk membaca arah; net tidak ikut menentukan tier."));
+  p.appendChild(el("div", "bantu",
+    "Tanda ▲ atau ▼ di kolom Tier kanan berarti broker itu berpindah kelas, " +
+    "dan huruf di sebelahnya adalah tiernya di rentang 1. “Baru” berarti " +
+    "broker itu sama sekali tidak bertransaksi di rentang 1."));
+  w.appendChild(p);
+}
+
 function panelDashboard(w) {
   const agg = kumpulkan(pilih.emiten, pilih.pasar, pilih.dari, pilih.sampai);
   const cekG = periksaGross(pilih.emiten, pilih.pasar, pilih.dari, pilih.sampai);
@@ -3750,7 +3921,8 @@ function halBroker() {
      kotak Dari/Sampai disembunyikan supaya tidak terlihat seperti mengatur
      sesuatu padahal tidak dipakai. */
   w.appendChild(kotakKontrol({tanggal: pilih.sub !== "kalender" &&
-    !(pilih.sub === "posisi" && pilih.subPos === "harian")}));
+    !(pilih.sub === "posisi" && pilih.subPos === "harian") &&
+    !(pilih.sub === "dashboard" && pilih.subNet === "tier")}));
 
   if (pilih.sub === "posisi") {
     /* tiga panel posisi dulu ditumpuk ke bawah dan halamannya jadi panjang sekali;
@@ -3770,7 +3942,20 @@ function halBroker() {
     else panelPosisi(w);
   }
   else if (pilih.sub === "kalender") panelKalender(w);
-  else panelDashboard(w);
+  else {
+    /* %NET berisi dua cara memandang yang berbeda: RASIO menilai satu rentang
+       tanggal, TIER membandingkan dua rentang. Keduanya tidak muat ditumpuk,
+       lagipula TIER memakai rentang tanggalnya sendiri. */
+    const tab3 = el("div", "sub-tab");
+    [["rasio", "RASIO"], ["tier", "TIER"]].forEach(([k, judul]) => {
+      const b = el("button", pilih.subNet === k ? "aktif" : null, judul);
+      b.onclick = () => { pilih.subNet = k; halBroker(); };
+      tab3.appendChild(b);
+    });
+    w.appendChild(tab3);
+    if (pilih.subNet === "tier") panelTier(w);
+    else panelDashboard(w);
+  }
 }
 
 /* ---------- impor berkas broker (susunan vertikal) ---------- */
