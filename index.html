@@ -1620,7 +1620,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-07-8";
+const VERSI_APP = "2026-09-07-9";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -3145,7 +3145,7 @@ function panelPosisiGross(w) {
     const a = agg[k];
     const besar = Math.max(a.beli, a.jual);
     return {broker: k, nama: namaBroker(k), beli: a.beli, jual: a.jual,
-            krosing: Math.min(a.beli, a.jual), net: a.beli - a.jual,
+            net: a.beli - a.jual,
             pnet: besar ? Math.round((a.beli - a.jual) / besar * 100) : null};
   });
   const p = el("div", "panel");
@@ -3158,20 +3158,18 @@ function panelPosisiGross(w) {
     {judul: "Nama", kunci: "nama"},
     {judul: "Beli", kunci: "beli", angka: true},
     {judul: "Jual", kunci: "jual", angka: true},
-    {judul: "Krosing Lot", kunci: "krosing", angka: true},
     {judul: "Net Lot", kunci: "net", angka: true, warna: true},
     {judul: "%Net", kunci: "pnet", angka: true, persen: true, silang: true},
-  ], baris, "krosing", true));
+  ], baris, "beli", true));
   p.appendChild(el("div", "bantu", cekG.semuaGross
-    ? "Krosing Lot = sisi yang lebih KECIL antara Beli dan Jual \u2014 lot yang " +
-      "dibeli lalu dijual lagi oleh broker yang sama, jadi cuma berputar. " +
-      "Sisi yang lebih BESAR persis sama dengan |Net Lot| + Krosing Lot, dan " +
-      "%Net dihitung dari sisi terbesar itu. Contoh: beli 100 jual 90 berarti " +
-      "krosing 90, net 10, %Net 10%. Mendekati 0% (ditandai \u2248) berarti hampir " +
-      "seluruh yang lewat cuma berputar, bukan dikumpulkan atau dilepas."
+    ? "%Net = Net Lot dibagi sisi yang lebih BESAR antara Beli dan Jual. Sisi yang " +
+      "lebih kecil itulah lot yang cuma berputar \u2014 dibeli lalu dijual lagi oleh " +
+      "broker yang sama \u2014 dan tidak perlu kolom sendiri karena angkanya sudah " +
+      "ada di kolom Beli atau Jual. Contoh: beli 100 jual 90 berarti 90 lot berputar, " +
+      "10 lot bersih, %Net 10%. Mendekati 0% (ditandai \u2248) berarti hampir seluruh " +
+      "yang lewat cuma berputar, bukan dikumpulkan atau dilepas."
     : "Data pada rentang ini bukan tabel GROSS IPOT: tiap broker hanya muncul di satu " +
-      "sisi, sehingga Krosing Lot selalu nol dan %Net selalu \u00b1100%. Untuk " +
-      "rentang ini pakai tampilan NET."));
+      "sisi, sehingga %Net selalu \u00b1100%. Untuk rentang ini pakai tampilan NET."));
   w.appendChild(p);
 }
 
@@ -3270,9 +3268,8 @@ function panelTransaksi(w) {
   const punyaGross = cekG.semuaGross;
   const baris = Object.keys(agg).map(k => {
     const a = agg[k];
-    const krosing = punyaGross ? Math.min(a.beli, a.jual) : null;
     /* %Net memakai SISI YANG LEBIH BESAR sebagai pembagi, sama seperti di halaman
-       %NET - bukan Krosing Lot di sebelahnya. Dua rumus berbeda untuk kolom bernama
+       %NET. Dua rumus berbeda untuk kolom bernama
        sama membuat broker yang sama tampil 11% di sini dan 20% di sana. Dengan
        pembagi sisi terbesar, %Net dan %Crossing selalu berjumlah tepat 100%. */
     const besar = Math.max(a.beli, a.jual);
@@ -3282,32 +3279,29 @@ function panelTransaksi(w) {
             avgB: a.beli ? Math.round(a.nilaiB / a.beli / 100) : 0,
             jual: a.jual,
             avgJ: a.jual ? Math.round(a.nilaiJ / a.jual / 100) : 0,
-            krosing: krosing,
             net: a.beli - a.jual,
             pnet: pnet,
             pputar: pnet === null ? null : 100 - Math.abs(pnet),
             nilai: Math.round(a.nilaiB - a.nilaiJ)};
   });
   const catatanGross = punyaGross
-    ? "Krosing Lot = sisi yang lebih KECIL antara Vol Beli dan Vol Jual, yaitu lot " +
-      "yang dibeli lalu dijual lagi oleh broker yang sama. " +
-      "%Net = Net Lot dibagi SISI YANG LEBIH BESAR (Vol Beli atau Vol Jual, " +
-      "yang lebih besar) \u2014 dan sisi terbesar itu tepat sama dengan " +
-      "|Net Lot| + Krosing Lot, jadi seluruh baris bisa diperiksa sendiri. Sama " +
-      "seperti di halaman %NET. Contoh: beli 100 jual 90 berarti %Net 10% dan " +
+    ? "%Net = Net Lot dibagi SISI YANG LEBIH BESAR antara Vol Beli dan Vol Jual, " +
+      "sama seperti di halaman %NET \u2014 pembaginya ada di baris yang sama, tinggal " +
+      "dilihat. Sisi yang lebih kecil itulah lot yang cuma berputar. " +
+      "Contoh: beli 100 jual 90 berarti %Net 10% dan " +
       "%Crossing 90%; keduanya selalu berjumlah 100%. Mendekati ±100% berarti broker " +
       "itu bergerak satu arah, benar-benar menyerap atau melepas barang; mendekati 0% " +
       "(ditandai ≈) berarti barangnya cuma diputar bolak-balik. " +
       "Ketuk judul %Net untuk mengurutkan."
     : cekG.campur
-    ? "Krosing Lot dan %Net dikosongkan karena rentang tanggal ini mencampur dua jenis " +
+    ? "%Net dan %Crossing dikosongkan karena rentang tanggal ini mencampur dua jenis " +
       "data: " + cekG.gross + " blok berisi tabel GROSS dan " + cekG.net + " blok " +
       "berisi tabel NETT. Mencampur keduanya menghasilkan angka yang tidak berarti. " +
       "Persempit rentangnya ke tanggal yang sejenis saja. Kolom Net Lot dan Net Value " +
       "tetap benar untuk seluruh rentang."
-    : "Krosing Lot dan %Net kosong karena data yang tersimpan berasal dari tabel NETT " +
-      "IPOT — tiap broker cuma muncul di satu sisi, jadi krosingnya selalu nol " +
-      "walau kenyataannya tidak. Untuk mengisinya, yang " +
+    : "%Net dan %Crossing kosong karena data yang tersimpan berasal dari tabel NETT " +
+      "IPOT — tiap broker cuma muncul di satu sisi, jadi perputarannya tidak " +
+      "terlihat sama sekali. Untuk mengisinya, yang " +
       "ditempel ke DATA BROKER VERTIKAL harus tabel GROSS IPOT (broker yang sama " +
       "boleh muncul di sisi beli dan sisi jual). Kolom Net Lot dan Net Value di sini " +
       "tetap benar.";
@@ -3322,7 +3316,6 @@ function panelTransaksi(w) {
     {judul: "Avg Beli", kunci: "avgB", angka: true},
     {judul: "Vol Jual", kunci: "jual", angka: true},
     {judul: "Avg Jual", kunci: "avgJ", angka: true},
-    {judul: "Krosing Lot", kunci: "krosing", angka: true},
     {judul: "Net Lot", kunci: "net", angka: true, warna: true},
     {judul: "%Net", kunci: "pnet", angka: true, persen: true, silang: true},
     {judul: "%Crossing", kunci: "pputar", angka: true, persen: true},
