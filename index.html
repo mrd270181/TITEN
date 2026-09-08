@@ -721,8 +721,11 @@ function hitungFavorit(dari, sampai) {
       const x = b[k];
       if (!x || !x.c) return;
       const a = hrg[k] || (hrg[k] = {vol: 0, asing: 0, akhir: 0, awal: 0,
-                                     tglAwal: "", nama: x.nm || ""});
-      if (!a.akhir) a.akhir = x.c;          /* rekaman pertama = tanggal terbaru */
+                                     tglAwal: "", tglAkhir: "", nama: x.nm || ""});
+      /* Rekaman pertama = tanggal terbaru. Tanggalnya ikut disimpan, bukan cuma
+         harganya: emiten yang tidak sempat transaksi di hari terakhir akan
+         memakai harga hari sebelumnya, dan tanpa tanggal itu tidak kelihatan. */
+      if (!a.akhir) { a.akhir = x.c; a.tglAkhir = h.tgl; }
       if (h.tgl < dari || h.tgl > sampai) return;
       a.vol += x.v || 0;
       /* Foreign buy/sell di Ringkasan Saham IDX satuannya LEMBAR, sama seperti
@@ -753,7 +756,7 @@ function hitungFavorit(dari, sampai) {
     const h = hrg[em] || {};
     return {
       kode: em, nama: nama[em] || h.nama || "",
-      harga: h.akhir || 0,
+      harga: h.akhir || 0, tglHarga: h.tglAkhir || "",
       ubah: (h.awal && h.akhir) ? (h.akhir - h.awal) / h.awal * 100 : null,
       vol: Math.round((h.vol || 0) / 100),   /* volume disimpan per lembar */
       net: net, gross: gross,
@@ -915,12 +918,30 @@ function panelFavorit(w) {
     {kunci: "jual3", judul: "3 Broker Net JUAL"},
   ];
 
+  /* Tanggal harga yang benar-benar dipakai, bukan tanggal "sampai" pada
+     rentang. Keduanya sering sama, tapi tidak selalu: data harga hari ini baru
+     ada setelah berkas terbaru diunggah, sedangkan rentangnya sudah bergerak.
+     Diambil yang TERBARU di antara baris hasil - itu yang berlaku untuk
+     hampir semua baris; baris yang tertinggal ditandai sendiri di selnya. */
+  const tglHargaUmum = hasil.reduce(
+    (a, r) => (r.tglHarga > a ? r.tglHarga : a), "");
+
   const bungkus = el("div", "tbl-bungkus tbl-kunci");
   const t = el("table");
   const thead = el("thead"); const trh = el("tr");
   KOLOM_FAV.forEach((k, i) => {
     const th = el("th", null, k.judul +
       (favUrut === k.kunci ? (favArah < 0 ? " ▼" : " ▲") : ""));
+    /* Kolom harga diberi tanggalnya supaya tidak terbaca sebagai harga pada
+       tanggal akhir rentang. */
+    if (k.kunci === "harga" && tglHargaUmum) {
+      const tg = el("div", null, tglID(tglHargaUmum) + " " +
+                                 tglHargaUmum.slice(0, 4));
+      tg.style.fontSize = "10px";
+      tg.style.fontWeight = "400";
+      tg.style.opacity = ".75";
+      th.appendChild(tg);
+    }
     if (k.angka || k.kunci === "kode") {
       th.style.cursor = "pointer";
       th.onclick = () => {
@@ -970,8 +991,18 @@ function panelFavorit(w) {
         " " + (r.ubah > 0 ? "▲" : r.ubah < 0 ? "▼" : "▬") +
         Math.abs(r.ubah).toFixed(1).replace(".", ",") + "%");
       u.style.fontSize = "10.5px";
-      u.title = "Perubahan sejak " + tglID(favDari);
+      u.title = "Perubahan " + tglID(favDari) + " → " +
+                (r.tglHarga ? tglID(r.tglHarga) : "harga terakhir");
       ch.appendChild(u);
+    }
+    /* Emiten yang tidak diperdagangkan di tanggal kepala tabel memakai harga
+       hari sebelumnya. Tanggalnya dimunculkan supaya tidak dikira harga
+       tanggal yang sama dengan baris lain. */
+    if (r.tglHarga && tglHargaUmum && r.tglHarga !== tglHargaUmum) {
+      const tg = el("div", null, tglID(r.tglHarga));
+      tg.style.fontSize = "10px";
+      tg.style.opacity = ".7";
+      ch.appendChild(tg);
     }
     tr.appendChild(ch);
 
@@ -995,8 +1026,10 @@ function panelFavorit(w) {
     "sama seperti Volume dan Net Lot, jadi ketiganya bisa langsung dibandingkan. " +
     "Kepala tabel dan kolom Emiten sama-sama beku, jadi tetap terbaca " +
     "waktu digulir ke bawah maupun digeser ke samping. " +
-    "Harga selalu yang terbaru, " +
-    "tidak ikut rentang - persentase di sebelahnya perubahan sejak awal rentang."));
+    "Harga selalu yang TERBARU dan tidak ikut rentang, jadi tanggalnya " +
+    "ditulis di kepala kolom - kalau data hari ini belum diunggah, yang " +
+    "muncul tanggal kemarin. Persentase di sebelahnya perubahan dari awal " +
+    "rentang sampai tanggal itu."));
   hs.appendChild(el("div", "bantu",
     "Net Lot dihitung dari beli dan jual tiap broker yang SUDAH dijumlahkan " +
     "sepanjang rentang, bukan dari penjumlahan net harian. Broker yang beli " +
@@ -1620,7 +1653,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-07-9";
+const VERSI_APP = "2026-09-08-1";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
