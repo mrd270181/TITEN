@@ -666,7 +666,7 @@ const METRIK_FAV = [
   ["vol",   "Volume (lot)"],
   ["net",   "Net Lot"],
   ["pnet",  "% Net thd Gross"],
-  ["asing", "Net Foreign (Rp juta)"],
+  ["asing", "Net Foreign (lot)"],
 ];
 let subScr = "saringan";
 let favDari = "", favSampai = "", favAkhir = "";
@@ -714,6 +714,9 @@ function hitungFavorit(dari, sampai) {
       if (!a.akhir) a.akhir = x.c;          /* rekaman pertama = tanggal terbaru */
       if (h.tgl < dari || h.tgl > sampai) return;
       a.vol += x.v || 0;
+      /* Foreign buy/sell di Ringkasan Saham IDX satuannya LEMBAR, sama seperti
+         volume - bukan rupiah. Buktinya rumus volume domestik di halaman VOLUME:
+         vol - (fb + fs), pengurangan yang cuma masuk akal kalau satuannya sama. */
       a.asing += (x.fb || 0) - (x.fs || 0);
       if (!a.tglAwal || h.tgl <= a.tglAwal) { a.tglAwal = h.tgl; a.awal = x.c; }
     });
@@ -744,7 +747,7 @@ function hitungFavorit(dari, sampai) {
       vol: Math.round((h.vol || 0) / 100),   /* volume disimpan per lembar */
       net: net, gross: gross,
       pnet: gross ? net / gross * 100 : null,
-      asing: h.asing || 0,
+      asing: Math.round((h.asing || 0) / 100),   /* lembar -> lot */
       beli3: daftar.filter(x => x.net > 0).slice(0, 3),
       jual3: daftar.filter(x => x.net < 0).slice(-3).reverse(),
     };
@@ -755,9 +758,7 @@ function lolosFav(baris, k) {
   if (k.nilai === null || k.nilai === undefined) return null;
   let v = baris[k.metrik];
   if (typeof v !== "number") return false;
-  /* Net Foreign diketik dalam JUTA rupiah - mengetik 1500000000 tiap kali
-     menyaring itu tidak masuk akal di layar HP. */
-  const n = k.metrik === "asing" ? k.nilai * 1e6 : k.nilai;
+  const n = k.nilai;
   switch (k.op) {
     case ">": return v > n; case ">=": return v >= n; case "<": return v < n;
     case "<=": return v <= n; case "=": return v === n; case "<>": return v !== n;
@@ -898,7 +899,7 @@ function panelFavorit(w) {
     {kunci: "vol",   judul: "Volume (lot)", angka: true},
     {kunci: "net",   judul: "Net Lot", angka: true},
     {kunci: "pnet",  judul: "%Net", angka: true},
-    {kunci: "asing", judul: "Net Foreign", angka: true},
+    {kunci: "asing", judul: "Net Foreign (lot)", angka: true},
     {kunci: "beli3", judul: "3 Broker Net BELI"},
     {kunci: "jual3", judul: "3 Broker Net JUAL"},
   ];
@@ -965,8 +966,8 @@ function panelFavorit(w) {
     tr.appendChild(el("td", "num", rp(r.net)));
     tr.appendChild(el("td", "num", r.pnet === null ? "–"
       : r.pnet.toFixed(1).replace(".", ",") + "%"));
-    const ca = el("td", "num", (r.asing >= 0 ? "+" : "−") +
-      nilaiSingkat(Math.abs(r.asing)));
+    const ca = el("td", "num", (r.asing >= 0 ? "+" : "\u2212") +
+      rp(Math.abs(r.asing)));
     ca.style.color = r.asing > 0 ? "var(--naik)" : r.asing < 0 ? "var(--turun)" : "";
     tr.appendChild(ca);
     tr.appendChild(selBroker(r.beli3, true));
@@ -977,7 +978,9 @@ function panelFavorit(w) {
 
   hs.appendChild(el("div", "bantu",
     "Volume, Net Lot, dan Net Foreign dijumlahkan sepanjang rentang tanggal; " +
-    "%Net dihitung dari hasil penjumlahan itu. Harga selalu yang terbaru, " +
+    "%Net dihitung dari hasil penjumlahan itu. Net Foreign satuannya LOT, " +
+    "sama seperti Volume dan Net Lot, jadi ketiganya bisa langsung dibandingkan. " +
+    "Harga selalu yang terbaru, " +
     "tidak ikut rentang - persentase di sebelahnya perubahan sejak awal rentang."));
   hs.appendChild(el("div", "bantu",
     "Net Lot dihitung dari beli dan jual tiap broker yang SUDAH dijumlahkan " +
@@ -1602,7 +1605,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-07-1";
+const VERSI_APP = "2026-09-07-2";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
