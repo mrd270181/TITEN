@@ -79,6 +79,17 @@ input[type=date]{-webkit-appearance:none;appearance:none;min-height:38px;
   display:flex;align-items:center;text-align:left}
 .baris{display:flex;gap:7px}.baris>*{flex:1;min-width:0}
 .tbl-bungkus{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -10px;padding:0 10px}
+/* Baris kepala hanya bisa membeku kalau tabelnya punya WADAH BERGULIR SENDIRI.
+   Aturan th{position:sticky;top:0} sudah ada sejak lama, tapi tidak pernah
+   kelihatan: .tbl-bungkus cuma bergulir mendatar, jadi tidak ada gulungan tegak
+   yang bisa dijadikan patokan - kepalanya menempel pada wadah yang memang tidak
+   pernah bergerak. Dengan max-height, wadahnya ikut bergulir tegak dan kepalanya
+   baru benar-benar diam di tempat. */
+/* margin/padding negatif milik .tbl-bungkus sengaja dibatalkan di sini: sisa
+   padding 10px di kiri berada DI LUAR sel yang beku, sehingga isi kolom lain
+   sempat menyembul di celah itu waktu tabel digeser. */
+.tbl-kunci{max-height:70vh;overflow:auto;-webkit-overflow-scrolling:touch;
+  margin:0;padding:0}
 table{border-collapse:collapse;width:100%;font-size:12px}
 th{
   background:var(--merek);color:#fff;font-weight:600;font-size:10.5px;
@@ -904,7 +915,7 @@ function panelFavorit(w) {
     {kunci: "jual3", judul: "3 Broker Net JUAL"},
   ];
 
-  const bungkus = el("div", "tbl-bungkus");
+  const bungkus = el("div", "tbl-bungkus tbl-kunci");
   const t = el("table");
   const thead = el("thead"); const trh = el("tr");
   KOLOM_FAV.forEach((k, i) => {
@@ -921,9 +932,11 @@ function panelFavorit(w) {
     /* Kolom emiten dibekukan di kiri: delapan kolom pasti digeser, dan tanpa
        ini kode emitennya hilang duluan begitu digeser sedikit. */
     if (i === 0) {
+      /* Sel sudut: beku ke ATAS (dari aturan th umum) sekaligus ke KIRI, jadi
+         lapisannya harus di atas kepala biasa maupun sel emiten yang beku. */
       th.style.position = "sticky";
       th.style.left = "0";
-      th.style.zIndex = "3";
+      th.style.zIndex = "4";
     }
     trh.appendChild(th);
   });
@@ -980,6 +993,8 @@ function panelFavorit(w) {
     "Volume, Net Lot, dan Net Foreign dijumlahkan sepanjang rentang tanggal; " +
     "%Net dihitung dari hasil penjumlahan itu. Net Foreign satuannya LOT, " +
     "sama seperti Volume dan Net Lot, jadi ketiganya bisa langsung dibandingkan. " +
+    "Kepala tabel dan kolom Emiten sama-sama beku, jadi tetap terbaca " +
+    "waktu digulir ke bawah maupun digeser ke samping. " +
     "Harga selalu yang terbaru, " +
     "tidak ikut rentang - persentase di sebelahnya perubahan sejak awal rentang."));
   hs.appendChild(el("div", "bantu",
@@ -1605,7 +1620,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-07-2";
+const VERSI_APP = "2026-09-07-4";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
