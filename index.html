@@ -655,8 +655,354 @@ const OPERATOR = [">", ">=", "<", "<=", "=", "<>"];
 let kriteria = [{gab: "DAN", metrik: "PER (x)", op: "<", nilai: 10},
                 {gab: "DAN", metrik: "ROE (%)", op: ">", nilai: 15}];
 
+/* ---------- ANALISA FAVORIT ----------
+   Saringan kedua di halaman SCREENER. Bedanya dengan KRITERIA SARINGAN:
+   yang ini menyaring atas data TRANSAKSI sepanjang rentang tanggal, bukan
+   atas metrik fundamental yang nilainya satu titik waktu.
+
+   Semestanya cuma emiten yang punya data broker (isi pantau.txt), bukan
+   seluruh emiten - tanpa data broker, Net Lot dan %Net tidak ada artinya. */
+const METRIK_FAV = [
+  ["vol",   "Volume (lot)"],
+  ["net",   "Net Lot"],
+  ["pnet",  "% Net thd Gross"],
+  ["asing", "Net Foreign (Rp juta)"],
+];
+let subScr = "saringan";
+let favDari = "", favSampai = "", favAkhir = "";
+let favKriteria = [{gab: "DAN", metrik: "vol", op: ">", nilai: null}];
+let favUrut = "vol", favArah = -1;
+
+function siapkanFavorit() {
+  const tgl = tanggalTersedia();
+  const akhir = tgl[tgl.length - 1] || "";
+  /* Rentang selalu ikut data terbaru, sama seperti di halaman BROKER: begitu
+     ada tanggal baru masuk, "sampai" melompat sendiri ke sana. Bawaannya satu
+     bulan ke belakang, bukan sehari - rentang sehari membuat %Net selalu
+     tampak besar karena belum sempat kelihatan siapa yang bolak-balik. */
+  if (akhir && akhir !== favAkhir) {
+    favAkhir = akhir;
+    favSampai = akhir;
+    const d = new Date(akhir + "T00:00:00");
+    d.setMonth(d.getMonth() - 1);
+    const mulai = d.toISOString().slice(0, 10);
+    favDari = tgl.filter(t => t >= mulai)[0] || tgl[0] || akhir;
+  }
+}
+
+/* Satu kali jalan untuk SELURUH emiten sekaligus. Memanggil kumpulkan() per
+   emiten berarti menyapu ulang seluruh transaksi 75 kali - di HP itu terasa. */
+function hitungFavorit(dari, sampai) {
+  const trx = semuaTrx();
+  const perEm = {};
+  (trx.REG || []).forEach(r => {
+    if (r.tgl < dari || r.tgl > sampai) return;
+    const e = perEm[r.em] || (perEm[r.em] = {});
+    const a = e[r.br] || (e[r.br] = {beli: 0, jual: 0});
+    a.beli += r.beli; a.jual += r.jual;
+  });
+
+  /* harga, volume, dan asing dari data harian */
+  const hrg = {};
+  daftarHari.forEach(h => {                 /* daftarHari terbaru dulu */
+    const b = h.baris || {};
+    Object.keys(b).forEach(k => {
+      const x = b[k];
+      if (!x || !x.c) return;
+      const a = hrg[k] || (hrg[k] = {vol: 0, asing: 0, akhir: 0, awal: 0,
+                                     tglAwal: "", nama: x.nm || ""});
+      if (!a.akhir) a.akhir = x.c;          /* rekaman pertama = tanggal terbaru */
+      if (h.tgl < dari || h.tgl > sampai) return;
+      a.vol += x.v || 0;
+      a.asing += (x.fb || 0) - (x.fs || 0);
+      if (!a.tglAwal || h.tgl <= a.tglAwal) { a.tglAwal = h.tgl; a.awal = x.c; }
+    });
+  });
+
+  const nama = {};
+  (DATA.scr || []).forEach(b => { nama[b[0]] = b[1] || ""; });
+
+  return Object.keys(perEm).map(em => {
+    const br = perEm[em];
+    let gross = 0, net = 0;
+    const daftar = [];
+    Object.keys(br).forEach(k => {
+      const a = br[k];
+      gross += a.beli;
+      const nt = a.beli - a.jual;
+      /* Net emiten = jumlah SISI POSITIF saja. Sisi negatifnya sama besar,
+         jadi kalau dua-duanya dijumlah hasilnya selalu nol. */
+      if (nt > 0) net += nt;
+      if (nt !== 0) daftar.push({br: k, net: nt});
+    });
+    daftar.sort((a, b) => b.net - a.net);
+    const h = hrg[em] || {};
+    return {
+      kode: em, nama: nama[em] || h.nama || "",
+      harga: h.akhir || 0,
+      ubah: (h.awal && h.akhir) ? (h.akhir - h.awal) / h.awal * 100 : null,
+      vol: Math.round((h.vol || 0) / 100),   /* volume disimpan per lembar */
+      net: net, gross: gross,
+      pnet: gross ? net / gross * 100 : null,
+      asing: h.asing || 0,
+      beli3: daftar.filter(x => x.net > 0).slice(0, 3),
+      jual3: daftar.filter(x => x.net < 0).slice(-3).reverse(),
+    };
+  });
+}
+
+function lolosFav(baris, k) {
+  if (k.nilai === null || k.nilai === undefined) return null;
+  let v = baris[k.metrik];
+  if (typeof v !== "number") return false;
+  /* Net Foreign diketik dalam JUTA rupiah - mengetik 1500000000 tiap kali
+     menyaring itu tidak masuk akal di layar HP. */
+  const n = k.metrik === "asing" ? k.nilai * 1e6 : k.nilai;
+  switch (k.op) {
+    case ">": return v > n; case ">=": return v >= n; case "<": return v < n;
+    case "<=": return v <= n; case "=": return v === n; case "<>": return v !== n;
+  }
+  return false;
+}
+
+function judulFav(kode) {
+  const m = METRIK_FAV.find(x => x[0] === kode);
+  return m ? m[1] : kode;
+}
+
+function selBroker(daftar, positif) {
+  const td = el("td");
+  td.style.textAlign = "left";
+  if (!daftar.length) { td.textContent = "–"; return td; }
+  daftar.forEach((x, i) => {
+    if (i) td.appendChild(el("span", null, " · "));
+    const s2 = el("span", null, x.br);
+    s2.style.fontWeight = "700";
+    s2.title = namaBroker(x.br);
+    td.appendChild(s2);
+    const a = el("span", positif ? "naik" : "turun",
+                 " " + (positif ? "+" : "−") + rp(Math.abs(x.net)));
+    td.appendChild(a);
+  });
+  return td;
+}
+
+function panelFavorit(w) {
+  siapkanFavorit();
+  const semuaTgl = tanggalTersedia();
+
+  const p = el("div", "panel");
+  p.appendChild(el("h2", null, "Analisa favorit"));
+  if (!semuaTgl.length) {
+    p.appendChild(el("div", "kosong",
+      "Belum ada data broker di HP ini. Buka tab PERBARUI, tekan Periksa pembaruan."));
+    w.appendChild(p); return;
+  }
+
+  const barisTgl = el("div", "alat");
+  [["Dari", "favDari"], ["Sampai", "favSampai"]].forEach(([lab, kunci]) => {
+    const bungkus = el("label", "bantu", lab + ": ");
+    bungkus.appendChild(kotakTanggal(kunci === "favDari" ? favDari : favSampai,
+      semuaTgl, t => {
+        if (kunci === "favDari") favDari = t; else favSampai = t;
+        halScreener();
+      }));
+    barisTgl.appendChild(bungkus);
+  });
+  p.appendChild(barisTgl);
+
+  const kotak = el("div");
+  p.appendChild(kotak);
+  const tambah = el("button", "tambah", "+ Tambah kriteria");
+  tambah.onclick = () => {
+    favKriteria.push({gab: "DAN", metrik: METRIK_FAV[0][0], op: ">", nilai: null});
+    halScreener();
+  };
+  p.appendChild(tambah);
+
+  favKriteria.forEach((k, i) => {
+    const d = el("div", "kriteria");
+    if (i > 0) {
+      const g = el("select");
+      ["DAN", "ATAU"].forEach(o => {
+        const op = el("option", null, o); op.value = o;
+        if (k.gab === o) op.selected = true; g.appendChild(op);
+      });
+      g.onchange = () => { k.gab = g.value; halScreener(); };
+      d.appendChild(el("label", null, "Gabung dengan kriteria di atas"));
+      d.appendChild(g);
+    }
+    d.appendChild(el("label", null, "Metrik " + (i + 1)));
+    const m = el("select");
+    METRIK_FAV.forEach(([kode, judul]) => {
+      const op = el("option", null, judul); op.value = kode;
+      if (k.metrik === kode) op.selected = true; m.appendChild(op);
+    });
+    m.onchange = () => { k.metrik = m.value; halScreener(); };
+    d.appendChild(m);
+    const b = el("div", "baris");
+    const o = el("select");
+    OPERATOR.forEach(x => {
+      const op = el("option", null, x); op.value = x;
+      if (k.op === x) op.selected = true; o.appendChild(op);
+    });
+    o.onchange = () => { k.op = o.value; halScreener(); };
+    const nn = el("input"); nn.type = "number"; nn.step = "any";
+    nn.placeholder = "Nilai";
+    nn.value = k.nilai === null || k.nilai === undefined ? "" : k.nilai;
+    nn.onchange = () => {
+      k.nilai = nn.value === "" ? null : parseFloat(nn.value);
+      halScreener();
+    };
+    const h = el("button", "hapus", "✕");
+    h.onclick = () => { favKriteria.splice(i, 1); halScreener(); };
+    b.appendChild(o); b.appendChild(nn); b.appendChild(h);
+    d.appendChild(b);
+    kotak.appendChild(d);
+  });
+  w.appendChild(p);
+
+  /* ---------- hasil ---------- */
+  const hs = el("div", "panel");
+  hs.appendChild(el("h2", null, "Hasil saringan"));
+
+  const semua = hitungFavorit(favDari, favSampai);
+  const aktif = favKriteria.filter(k => k.nilai !== null && k.nilai !== undefined);
+  const dan = aktif.filter((k, i) => favKriteria.indexOf(k) === 0 || k.gab === "DAN");
+  const atau = aktif.filter(k => favKriteria.indexOf(k) !== 0 && k.gab === "ATAU");
+  const hasil = semua.filter(b => {
+    if (!aktif.length) return false;
+    const semuaDan = dan.every(k => lolosFav(b, k) === true);
+    const adaAtau = atau.length === 0 || atau.some(k => lolosFav(b, k) === true);
+    return semuaDan && adaAtau;
+  });
+
+  hs.appendChild(el("div", "hitung", aktif.length
+    ? hasil.length + " emiten lolos dari " + semua.length + " yang punya data broker"
+    : "Isi nilai kriteria untuk mulai menyaring."));
+  hs.appendChild(el("div", "bantu",
+    tglID(favDari) + " – " + tglID(favSampai) + " " + favSampai.slice(0, 4) +
+    " · pasar REGULER"));
+
+  if (!hasil.length) {
+    hs.appendChild(el("div", "kosong", aktif.length
+      ? "Tidak ada emiten yang memenuhi kriteria"
+      : "Belum ada kriteria aktif"));
+    w.appendChild(hs);
+    return;
+  }
+
+  const KOLOM_FAV = [
+    {kunci: "kode",  judul: "Emiten"},
+    {kunci: "harga", judul: "Harga", angka: true},
+    {kunci: "vol",   judul: "Volume (lot)", angka: true},
+    {kunci: "net",   judul: "Net Lot", angka: true},
+    {kunci: "pnet",  judul: "%Net", angka: true},
+    {kunci: "asing", judul: "Net Foreign", angka: true},
+    {kunci: "beli3", judul: "3 Broker Net BELI"},
+    {kunci: "jual3", judul: "3 Broker Net JUAL"},
+  ];
+
+  const bungkus = el("div", "tbl-bungkus");
+  const t = el("table");
+  const thead = el("thead"); const trh = el("tr");
+  KOLOM_FAV.forEach((k, i) => {
+    const th = el("th", null, k.judul +
+      (favUrut === k.kunci ? (favArah < 0 ? " ▼" : " ▲") : ""));
+    if (k.angka || k.kunci === "kode") {
+      th.style.cursor = "pointer";
+      th.onclick = () => {
+        if (favUrut === k.kunci) favArah = -favArah;
+        else { favUrut = k.kunci; favArah = k.angka ? -1 : 1; }
+        halScreener();
+      };
+    }
+    /* Kolom emiten dibekukan di kiri: delapan kolom pasti digeser, dan tanpa
+       ini kode emitennya hilang duluan begitu digeser sedikit. */
+    if (i === 0) {
+      th.style.position = "sticky";
+      th.style.left = "0";
+      th.style.zIndex = "3";
+    }
+    trh.appendChild(th);
+  });
+  thead.appendChild(trh); t.appendChild(thead);
+
+  const tbody = el("tbody");
+  const angkaKol = (KOLOM_FAV.find(k => k.kunci === favUrut) || {}).angka;
+  hasil.slice().sort((a, b) => {
+    const x = a[favUrut], y = b[favUrut];
+    if (angkaKol) return ((x === null ? -Infinity : x) -
+                          (y === null ? -Infinity : y)) * favArah;
+    return String(x).localeCompare(String(y)) * favArah;
+  }).forEach((r, i) => {
+    const tr = el("tr");
+
+    const c0 = el("td");
+    c0.appendChild(el("span", "kode", r.kode));
+    c0.appendChild(el("span", "nm", r.nama));
+    /* Latar sel beku harus dicat sendiri; kalau tembus, isi kolom lain
+       terlihat menyeruak di bawahnya waktu tabel digeser. */
+    c0.style.position = "sticky";
+    c0.style.left = "0";
+    c0.style.zIndex = "2";
+    c0.style.background = i % 2 === 0 ? "var(--surface-2)" : "var(--surface-1)";
+    tr.appendChild(c0);
+
+    const ch = el("td", "num");
+    ch.appendChild(el("span", null, rp(r.harga)));
+    if (r.ubah !== null) {
+      const u = el("span", r.ubah > 0 ? "naik" : r.ubah < 0 ? "turun" : "datar",
+        " " + (r.ubah > 0 ? "▲" : r.ubah < 0 ? "▼" : "▬") +
+        Math.abs(r.ubah).toFixed(1).replace(".", ",") + "%");
+      u.style.fontSize = "10.5px";
+      u.title = "Perubahan sejak " + tglID(favDari);
+      ch.appendChild(u);
+    }
+    tr.appendChild(ch);
+
+    tr.appendChild(el("td", "num", rp(r.vol)));
+    tr.appendChild(el("td", "num", rp(r.net)));
+    tr.appendChild(el("td", "num", r.pnet === null ? "–"
+      : r.pnet.toFixed(1).replace(".", ",") + "%"));
+    const ca = el("td", "num", (r.asing >= 0 ? "+" : "−") +
+      nilaiSingkat(Math.abs(r.asing)));
+    ca.style.color = r.asing > 0 ? "var(--naik)" : r.asing < 0 ? "var(--turun)" : "";
+    tr.appendChild(ca);
+    tr.appendChild(selBroker(r.beli3, true));
+    tr.appendChild(selBroker(r.jual3, false));
+    tbody.appendChild(tr);
+  });
+  t.appendChild(tbody); bungkus.appendChild(t); hs.appendChild(bungkus);
+
+  hs.appendChild(el("div", "bantu",
+    "Volume, Net Lot, dan Net Foreign dijumlahkan sepanjang rentang tanggal; " +
+    "%Net dihitung dari hasil penjumlahan itu. Harga selalu yang terbaru, " +
+    "tidak ikut rentang - persentase di sebelahnya perubahan sejak awal rentang."));
+  hs.appendChild(el("div", "bantu",
+    "Net Lot dihitung dari beli dan jual tiap broker yang SUDAH dijumlahkan " +
+    "sepanjang rentang, bukan dari penjumlahan net harian. Broker yang beli " +
+    "lalu jual lagi di rentang yang sama netnya nol, sebagaimana mestinya - " +
+    "karena itu makin panjang rentangnya, makin kecil %Net-nya."));
+  hs.appendChild(el("div", "bantu",
+    "Yang bisa disaring hanya emiten yang punya data broker (" + semua.length +
+    " emiten), bukan seluruh emiten seperti di KRITERIA SARINGAN."));
+  w.appendChild(hs);
+}
+
 function halScreener() {
   const w = $("#hal-screener"); w.innerHTML = "";
+
+  const tab = el("div", "sub-tab");
+  [["saringan", "KRITERIA SARINGAN"], ["favorit", "ANALISA FAVORIT"]]
+    .forEach(([k, judul]) => {
+      const b = el("button", subScr === k ? "aktif" : null, judul);
+      b.onclick = () => { subScr = k; halScreener(); };
+      tab.appendChild(b);
+    });
+  w.appendChild(tab);
+  if (subScr === "favorit") { panelFavorit(w); return; }
+
   const p = el("div", "panel");
   p.appendChild(el("h2", null, "Kriteria saringan"));
   const kotak = el("div"); p.appendChild(kotak);
@@ -1256,7 +1602,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-06-10";
+const VERSI_APP = "2026-09-07-1";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
