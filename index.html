@@ -1620,7 +1620,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-07-6";
+const VERSI_APP = "2026-09-07-7";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -3054,9 +3054,11 @@ function kotakKontrol(opsi) {
   return p;
 }
 
-function tabelUrut(kepala, baris, kunciAwal) {
-  /* kepala: [{judul, kunci, angka}]; baris: array objek */
-  const bungkus = el("div", "tbl-bungkus");
+function tabelUrut(kepala, baris, kunciAwal, bekukan) {
+  /* kepala: [{judul, kunci, angka}]; baris: array objek
+     bekukan: true -> tabel dapat wadah bergulir sendiri, kepalanya diam di atas.
+     Hanya berguna untuk tabel panjang; tabel pendek tidak perlu wadah sendiri. */
+  const bungkus = el("div", bekukan ? "tbl-bungkus tbl-kunci" : "tbl-bungkus");
   const t = el("table");
   const thead = el("thead"); const trh = el("tr");
   kepala.forEach(k => {
@@ -3940,6 +3942,12 @@ function batangRasio(net, gross) {
    peringkat 1-3 S, 4-8 A, 9-15 B, sisanya C. Yang dicari bukan "broker ini besar",
    melainkan "broker ini naik/turun kelas dibanding rentang sebelumnya". */
 const BATAS_TIER = [[3, "S"], [8, "A"], [15, "B"]];
+/* Tebakan awal tinggi satu baris kepala, dipakai sebelum tabel diukur supaya
+   tidak ada kedipan. Angka pastinya diukur dari layout sesudah tabel masuk DOM
+   - dipatok mati tidak bisa: tingginya bergantung font sistem dan penyetelan
+   ukuran teks di peramban, dan meleset 2 piksel saja sudah membuat baris kepala
+   kedua menimpa yang pertama. */
+const TINGGI_KEPALA = 27;
 const WARNA_TIER = {S: "#dc2626", A: "#ea580c", B: "#0d9488", C: "var(--ink-2)"};
 
 function tierUrutan(urutan) {
@@ -4024,7 +4032,7 @@ function panelTier(w) {
     w.appendChild(p); return;
   }
 
-  const bungkus = el("div", "tbl-bungkus");
+  const bungkus = el("div", "tbl-bungkus tbl-kunci");
   const t = el("table");
   const thead = el("thead");
 
@@ -4032,6 +4040,7 @@ function panelTier(w) {
   const th1 = el("th", null, judulKiri); th1.colSpan = 4;
   th1.style.borderRight = "2px solid var(--garis)";
   const th2 = el("th", null, judulKanan); th2.colSpan = 4;
+  [th1, th2].forEach(x => { x.style.top = "0"; x.style.height = TINGGI_KEPALA + "px"; });
   tr1.appendChild(th1); tr1.appendChild(th2); thead.appendChild(tr1);
 
   const tr2 = el("tr");
@@ -4039,6 +4048,7 @@ function panelTier(w) {
    "Broker", "Total Lot (B+J)", "Net Lot", "Tier"]
     .forEach((j, i) => {
       const th = el("th", null, j);
+      th.style.top = TINGGI_KEPALA + "px";     /* di bawah baris rentang tanggal */
       if (i === 3) th.style.borderRight = "2px solid var(--garis)";
       tr2.appendChild(th);
     });
@@ -4091,6 +4101,15 @@ function panelTier(w) {
     tbody.appendChild(tr);
   }
   t.appendChild(tbody); bungkus.appendChild(t); p.appendChild(bungkus);
+
+  /* Kepala TIER dua baris dan dua-duanya beku. Baris kedua harus digeser turun
+     tepat setinggi baris pertama; tingginya diukur sesudah tabel benar-benar
+     tergambar, bukan ditebak. */
+  requestAnimationFrame(() => {
+    const h = tr1.getBoundingClientRect().height;
+    if (h > 0) Array.prototype.forEach.call(tr2.children,
+                                            x => { x.style.top = h + "px"; });
+  });
 
   p.appendChild(el("div", "bantu",
     "Tier ditentukan urutan Total Lot (B+J) saja: peringkat 1\u20133 S, 4\u20138 A, " +
@@ -4187,7 +4206,7 @@ function panelDashboard(w) {
     {judul: "Net Lot", kunci: "net", angka: true, warna: true},
     {judul: "%Net", kunci: "pnet", angka: true, persen: true, silang: true},
     {judul: "%Crossing", kunci: "pputar", angka: true, persen: true},
-  ], baris, "pputar"));
+  ], baris, "pputar", true));
   p2.appendChild(el("div", "bantu",
     "Contoh: CC beli 100 jual 90 berarti %Net 10% dan %Crossing 90% — keduanya selalu " +
     "berjumlah 100%, karena dihitung dari sisi yang sama. Urutkan %Crossing menurun " +
