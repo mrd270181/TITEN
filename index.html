@@ -1620,7 +1620,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-07-4";
+const VERSI_APP = "2026-09-07-5";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -2836,6 +2836,7 @@ function halData() {
                    "lalu unduh ulang dari server?")) return;
       ulang.disabled = true; ulang.textContent = "Mengunduh\u2026";
       try { localStorage.removeItem("titenBrokerGross"); } catch (e) {}
+      kamusGudang = null;          /* paksa kamus ikut diambil ulang */
       await dbKosong("broker");
       catatanImpor = [];
       await muatDanTerapkan();
@@ -6522,7 +6523,20 @@ async function sinkron(diam) {
     }
 
     tulisStatus("Mengunduh data baru\u2026");
-    if (blnBrk.length && !kamusGudang) {
+    /* kamus.json SELALU diambil ulang sebelum berkas broker dibaca, bukan cuma
+       kalau belum ada.
+
+       Sebabnya berkas broker menyimpan emiten dan broker sebagai NOMOR URUT ke
+       dalam daftar di kamus.json, bukan sebagai kode. Begitu ada emiten baru
+       masuk, seluruh nomor urutnya bergeser. Kalau app sudah terbuka sejak
+       sebelum kamus di server berganti, salinan lama masih dipegang sepanjang
+       sesi - dan berkas broker baru diterjemahkan memakai daftar lama, sehingga
+       kode emitennya meleset atau kosong sama sekali. Barisnya masuk, jumlahnya
+       benar, tapi emitennya tidak pernah ketemu waktu dicari.
+
+       Berkasnya cuma ~200 KB dan hanya diambil saat memang ada bulan broker
+       yang perlu diunduh, jadi tidak ada ruginya diambil ulang. */
+    if (blnBrk.length) {
       kamusGudang = await ambilGudang("kamus.json");
       BRK = bangunBRK(kamusGudang);
     }
