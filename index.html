@@ -1620,7 +1620,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-07-5";
+const VERSI_APP = "2026-09-07-6";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -3156,16 +3156,19 @@ function panelPosisiGross(w) {
     {judul: "Nama", kunci: "nama"},
     {judul: "Beli", kunci: "beli", angka: true},
     {judul: "Jual", kunci: "jual", angka: true},
-    {judul: "Gross Lot", kunci: "gross", angka: true},
+    {judul: "Total Lot (B+J)", kunci: "gross", angka: true},
     {judul: "Net Lot", kunci: "net", angka: true, warna: true},
     {judul: "%Net", kunci: "pnet", angka: true, persen: true, silang: true},
   ], baris, "gross"));
   p.appendChild(el("div", "bantu", cekG.semuaGross
-    ? "Gross Lot = beli + jual, seluruh lot yang lewat broker itu. %Net = net dibagi " +
-      "sisi yang lebih besar. Mendekati 0% (ditandai ≈) berarti beli dan jualnya hampir " +
-      "seimbang — barangnya cuma diputar, bukan dikumpulkan atau dilepas."
+    ? "Total Lot (B+J) = beli + jual, seluruh lot yang lewat broker itu. Ini BUKAN " +
+      "\u201cgross\u201d dalam arti volume IDX: volume menghitung tiap lot sekali, " +
+      "sedangkan di sini tiap lot krosing terhitung dua kali. %Net = net dibagi sisi " +
+      "yang lebih besar \u2014 pembaginya kolom Beli atau Jual, yang mana pun yang " +
+      "lebih besar, bukan kolom ini. Mendekati 0% (ditandai \u2248) berarti beli dan " +
+      "jualnya hampir seimbang: barangnya cuma diputar, bukan dikumpulkan atau dilepas."
     : "Data pada rentang ini bukan tabel GROSS IPOT: tiap broker hanya muncul di satu " +
-      "sisi, sehingga Gross Lot cuma sama dengan |net| dan %Net selalu ±100%. Untuk " +
+      "sisi, sehingga Total Lot cuma sama dengan |net| dan %Net selalu \u00b1100%. Untuk " +
       "rentang ini pakai tampilan NET."));
   w.appendChild(p);
 }
@@ -3267,7 +3270,7 @@ function panelTransaksi(w) {
     const a = agg[k];
     const gross = punyaGross ? a.beli + a.jual : null;
     /* %Net memakai SISI YANG LEBIH BESAR sebagai pembagi, sama seperti di halaman
-       %NET - bukan Gross Lot di sebelahnya. Dua rumus berbeda untuk kolom bernama
+       %NET - bukan Total Lot di sebelahnya. Dua rumus berbeda untuk kolom bernama
        sama membuat broker yang sama tampil 11% di sini dan 20% di sana. Dengan
        pembagi sisi terbesar, %Net dan %Crossing selalu berjumlah tepat 100%. */
     const besar = Math.max(a.beli, a.jual);
@@ -3284,20 +3287,22 @@ function panelTransaksi(w) {
             nilai: Math.round(a.nilaiB - a.nilaiJ)};
   });
   const catatanGross = punyaGross
-    ? "Gross Lot = beli + jual, seluruh lot yang lewat broker itu. " +
-      "%Net = Net Lot dibagi SISI YANG LEBIH BESAR, bukan dibagi Gross Lot — sama " +
+    ? "Total Lot (B+J) = beli + jual, seluruh lot yang lewat broker itu \u2014 bukan " +
+      "\u201cgross\u201d dalam arti volume IDX, yang menghitung tiap lot sekali. " +
+      "%Net = Net Lot dibagi SISI YANG LEBIH BESAR (kolom Vol Beli atau Vol Jual, " +
+      "yang lebih besar), bukan dibagi Total Lot \u2014 sama " +
       "seperti di halaman %NET. Contoh: beli 100 jual 90 berarti %Net 10% dan " +
       "%Crossing 90%; keduanya selalu berjumlah 100%. Mendekati ±100% berarti broker " +
       "itu bergerak satu arah, benar-benar menyerap atau melepas barang; mendekati 0% " +
       "(ditandai ≈) berarti barangnya cuma diputar bolak-balik. " +
       "Ketuk judul %Net untuk mengurutkan."
     : cekG.campur
-    ? "Gross Lot dan %Net dikosongkan karena rentang tanggal ini mencampur dua jenis " +
+    ? "Total Lot dan %Net dikosongkan karena rentang tanggal ini mencampur dua jenis " +
       "data: " + cekG.gross + " blok berisi tabel GROSS dan " + cekG.net + " blok " +
       "berisi tabel NETT. Menjumlahkan keduanya menghasilkan angka yang tidak berarti. " +
       "Persempit rentangnya ke tanggal yang sejenis saja. Kolom Net Lot dan Net Value " +
       "tetap benar untuk seluruh rentang."
-    : "Gross Lot dan %Net kosong karena data yang tersimpan berasal dari tabel NETT " +
+    : "Total Lot dan %Net kosong karena data yang tersimpan berasal dari tabel NETT " +
       "IPOT — tiap broker cuma muncul di satu sisi, jadi beli + jual hanya " +
       "menghasilkan |net|, bukan perputaran sebenarnya. Untuk mengisinya, yang " +
       "ditempel ke DATA BROKER VERTIKAL harus tabel GROSS IPOT (broker yang sama " +
@@ -3314,7 +3319,7 @@ function panelTransaksi(w) {
     {judul: "Avg Beli", kunci: "avgB", angka: true},
     {judul: "Vol Jual", kunci: "jual", angka: true},
     {judul: "Avg Jual", kunci: "avgJ", angka: true},
-    {judul: "Gross Lot", kunci: "gross", angka: true},
+    {judul: "Total Lot (B+J)", kunci: "gross", angka: true},
     {judul: "Net Lot", kunci: "net", angka: true, warna: true},
     {judul: "%Net", kunci: "pnet", angka: true, persen: true, silang: true},
     {judul: "%Crossing", kunci: "pputar", angka: true, persen: true},
@@ -4030,7 +4035,8 @@ function panelTier(w) {
   tr1.appendChild(th1); tr1.appendChild(th2); thead.appendChild(tr1);
 
   const tr2 = el("tr");
-  ["Broker", "Gross Lot", "Net Lot", "Tier", "Broker", "Gross Lot", "Net Lot", "Tier"]
+  ["Broker", "Total Lot (B+J)", "Net Lot", "Tier",
+   "Broker", "Total Lot (B+J)", "Net Lot", "Tier"]
     .forEach((j, i) => {
       const th = el("th", null, j);
       if (i === 3) th.style.borderRight = "2px solid var(--garis)";
@@ -4087,10 +4093,12 @@ function panelTier(w) {
   t.appendChild(tbody); bungkus.appendChild(t); p.appendChild(bungkus);
 
   p.appendChild(el("div", "bantu",
-    "Tier ditentukan urutan Gross Lot saja: peringkat 1–3 S, 4–8 A, " +
-    "9–15 B, 16 ke bawah C. Gross Lot = beli + jual, seluruh lot yang lewat " +
-    "broker itu — ukuran sibuknya, bukan arahnya. Net Lot = beli − jual, " +
-    "cuma untuk membaca arah; net tidak ikut menentukan tier."));
+    "Tier ditentukan urutan Total Lot (B+J) saja: peringkat 1\u20133 S, 4\u20138 A, " +
+    "9\u201315 B, 16 ke bawah C. Total Lot = beli + jual, seluruh lot yang lewat " +
+    "broker itu \u2014 ukuran sibuknya, bukan arahnya. Sengaja tidak disebut " +
+    "\u201cgross\u201d: gross di halaman %NET berarti volume emiten, yang menghitung " +
+    "tiap lot sekali, sedangkan di sini tiap lot krosing terhitung dua kali. " +
+    "Net Lot = beli \u2212 jual, cuma untuk membaca arah; net tidak ikut menentukan tier."));
   p.appendChild(el("div", "bantu",
     "Tanda ▲ atau ▼ di kolom Tier kanan berarti broker itu berpindah kelas, " +
     "dan huruf di sebelahnya adalah tiernya di rentang 1. “Baru” berarti " +
@@ -4143,6 +4151,11 @@ function panelDashboard(w) {
       rp(topPutar) + " lot, " +
       Math.round(topPutar / (gross - net) * 100) + "% dari seluruh crossing emiten ini."));
   }
+  p1.appendChild(el("div", "bantu",
+    "Gross di halaman ini = jumlah sisi BELI seluruh broker, yaitu volume emiten " +
+    "itu sendiri: tiap lot dihitung sekali, sama seperti volume IDX (pilih pasar " +
+    "REGULER supaya benar-benar sebanding). Beda dengan kolom Total Lot (B+J) di " +
+    "tabel per broker, yang menghitung tiap lot krosing dua kali."));
   p1.appendChild(el("div", "bantu",
     "Biru = lot yang benar-benar berpindah antar broker. Kelabu = lot yang cuma " +
     "berputar di broker yang sama. Saham likuid biasanya punya porsi berpindah yang " +
