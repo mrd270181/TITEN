@@ -1243,6 +1243,7 @@ let volUrut = "val", volArah = -1;                /* kolom & arah pengurutan tab
 let subVol = "volume";
 let vhTgl = "", vhAkhir = "";
 let vhUrut = "v", vhArah = -1;
+let vhCari = "";                 /* saringan kode/nama emiten di VOLUME HARIAN */
 const LOT = 100;                                  /* 1 lot = 100 lembar */
 const lot = v => Math.round((v || 0) / LOT).toLocaleString("id-ID");
 
@@ -1574,11 +1575,23 @@ function panelVolumeHarian(w) {
   }));
   alat.appendChild(bt);
   const bb = el("div");
-  bb.appendChild(el("label", null, " "));
+  bb.appendChild(el("label", null, " "));
   const btb = el("button", "tambah", "Terbaru");
   btb.onclick = () => { vhTgl = akhir; halVolume(); window.scrollTo(0, 0); };
   bb.appendChild(btb);
   alat.appendChild(bb);
+  /* Kotak cari: daftarnya ratusan emiten, menggulir sampai ketemu itu lama.
+     Sengaja TIDAK memanggil halVolume() tiap ketikan - membangun ulang seluruh
+     halaman membuat kotaknya kehilangan fokus dan huruf berikutnya hilang.
+     Yang digambar ulang hanya isi tabelnya. */
+  const bc = el("div");
+  bc.appendChild(el("label", null, "Cari emiten"));
+  const inCari = el("input");
+  inCari.type = "search";
+  inCari.placeholder = "kode atau nama";
+  inCari.value = vhCari;
+  bc.appendChild(inCari);
+  alat.appendChild(bc);
   p.appendChild(alat);
 
   const hari = daftarHari.find(h => h.tgl === vhTgl);
@@ -1595,15 +1608,15 @@ function panelVolumeHarian(w) {
       ubah: (c && sblm) ? (c - sblm) / sblm * 100 : null,
       v: Math.round((x.v || 0) / LOT),
       n: x.n || 0,
-      /* Frekuensi belum ada di harga-*.json. Dibaca sekarang supaya begitu
-         datanya diekspor, kolomnya terisi sendiri tanpa merilis app lagi. */
-      f: (x.f === undefined || x.f === null) ? null : x.f,
+      /* Frekuensi baru ada di berkas harga setelah ekspor.py diperbarui;
+         sebelum itu isinya null dan kolomnya tampil sebagai tanda pisah. */
+      f: (x.fq === undefined || x.fq === null) ? null : x.fq,
     };
   });
   const adaFreq = data.some(r => r.f !== null);
 
-  p.appendChild(el("div", "hitung",
-    rp(data.length) + " emiten pada " + tglID(vhTgl) + " " + vhTgl.slice(0, 4)));
+  const hitung = el("div", "hitung", "");
+  p.appendChild(hitung);
   p.appendChild(el("div", "bantu",
     "Seluruh emiten yang ada di Ringkasan Saham IDX hari itu, bukan cuma yang " +
     "punya data broker. Volume dalam LOT; nilai dalam rupiah." +
@@ -1646,45 +1659,70 @@ function panelVolumeHarian(w) {
     trh.appendChild(th);
   });
   thead.appendChild(trh); t.appendChild(thead);
-
-  const kolAngka = (KOL_VH.find(c => c.k === vhUrut) || {}).n;
   const tbody = el("tbody");
-  data.slice().sort((a, b) => {
-    const x = a[vhUrut], y = b[vhUrut];
-    if (kolAngka) return ((x === null ? -Infinity : x) -
-                          (y === null ? -Infinity : y)) * vhArah;
-    return String(x).localeCompare(String(y)) * vhArah;
-  }).forEach((r, i) => {
-    const tr = el("tr");
-    const c0 = el("td");
-    c0.appendChild(el("span", "kode", r.kode));
-    c0.appendChild(el("span", "nm", r.nama));
-    c0.style.position = "sticky"; c0.style.left = "0"; c0.style.zIndex = "2";
-    c0.style.background = i % 2 === 0 ? "var(--surface-2)" : "var(--surface-1)";
-    tr.appendChild(c0);
-    tr.appendChild(el("td", "num", r.hi === null ? "–" : rp(r.hi)));
-    tr.appendChild(el("td", "num", r.lo === null ? "–" : rp(r.lo)));
-    tr.appendChild(el("td", "num", r.c === null ? "–" : rp(r.c)));
-    const cu = el("td", "num");
-    if (r.ubah === null) cu.textContent = "–";
-    else {
-      cu.textContent = (r.ubah > 0 ? "▲" : r.ubah < 0 ? "▼" : "▬") +
-        Math.abs(r.ubah).toFixed(2).replace(".", ",") + "%";
-      cu.style.color = r.ubah > 0 ? "var(--naik)"
-                     : r.ubah < 0 ? "var(--turun)" : "";
+
+  function isiBaris() {
+    tbody.innerHTML = "";
+    const cari = vhCari.trim().toUpperCase();
+    const pilih = cari
+      ? data.filter(r => r.kode.toUpperCase().indexOf(cari) >= 0 ||
+                         (r.nama || "").toUpperCase().indexOf(cari) >= 0)
+      : data;
+    hitung.textContent = (cari
+        ? rp(pilih.length) + " dari " + rp(data.length) + " emiten"
+        : rp(data.length) + " emiten") +
+      " pada " + tglID(vhTgl) + " " + vhTgl.slice(0, 4);
+    if (!pilih.length) {
+      const tr = el("tr"), td = el("td", null, "Tidak ada emiten yang cocok");
+      td.colSpan = KOL_VH.length;
+      td.style.textAlign = "left";
+      td.style.color = "var(--ink-2)";
+      tr.appendChild(td); tbody.appendChild(tr);
+      return;
     }
-    tr.appendChild(cu);
-    tr.appendChild(el("td", "num", rp(r.v)));
-    tr.appendChild(el("td", "num", ringkas(r.n)));
-    tr.appendChild(el("td", "num", r.f === null ? "–" : rp(r.f)));
-    tbody.appendChild(tr);
-  });
+    const kolAngka = (KOL_VH.find(c => c.k === vhUrut) || {}).n;
+    pilih.slice().sort((a, b) => {
+      const x = a[vhUrut], y = b[vhUrut];
+      if (kolAngka) return ((x === null ? -Infinity : x) -
+                            (y === null ? -Infinity : y)) * vhArah;
+      return String(x).localeCompare(String(y)) * vhArah;
+    }).forEach((r, i) => {
+      const tr = el("tr");
+      const c0 = el("td");
+      c0.appendChild(el("span", "kode", r.kode));
+      c0.appendChild(el("span", "nm", r.nama));
+      c0.style.position = "sticky"; c0.style.left = "0"; c0.style.zIndex = "2";
+      c0.style.background = i % 2 === 0 ? "var(--surface-2)" : "var(--surface-1)";
+      tr.appendChild(c0);
+      tr.appendChild(el("td", "num", r.hi === null ? "–" : rp(r.hi)));
+      tr.appendChild(el("td", "num", r.lo === null ? "–" : rp(r.lo)));
+      tr.appendChild(el("td", "num", r.c === null ? "–" : rp(r.c)));
+      const cu = el("td", "num");
+      if (r.ubah === null) cu.textContent = "–";
+      else {
+        cu.textContent = (r.ubah > 0 ? "▲" : r.ubah < 0 ? "▼" : "▬") +
+          Math.abs(r.ubah).toFixed(2).replace(".", ",") + "%";
+        cu.style.color = r.ubah > 0 ? "var(--naik)"
+                       : r.ubah < 0 ? "var(--turun)" : "";
+      }
+      tr.appendChild(cu);
+      tr.appendChild(el("td", "num", rp(r.v)));
+      tr.appendChild(el("td", "num", ringkas(r.n)));
+      tr.appendChild(el("td", "num", r.f === null ? "–" : rp(r.f)));
+      tbody.appendChild(tr);
+    });
+  }
+
+  inCari.oninput = () => { vhCari = inCari.value; isiBaris(); };
+  isiBaris();
+
   t.appendChild(tbody); bungkus.appendChild(t); hs.appendChild(bungkus);
   hs.appendChild(el("div", "bantu",
-    "Ketuk kepala kolom untuk mengurutkan. %Ubah dihitung dari penutupan hari " +
-    "bursa sebelumnya, angka yang dibawa IDX sendiri di berkas Ringkasan " +
-    "Saham - bukan dari selisih dua baris di tabel ini, supaya tetap benar " +
-    "untuk emiten yang kemarin tidak diperdagangkan."));
+    "Ketuk kepala kolom untuk mengurutkan. Kotak cari menyaring kode maupun " +
+    "nama emiten. %Ubah dihitung dari penutupan hari bursa sebelumnya, angka " +
+    "yang dibawa IDX sendiri di berkas Ringkasan Saham - bukan dari selisih " +
+    "dua baris di tabel ini, supaya tetap benar untuk emiten yang kemarin " +
+    "tidak diperdagangkan."));
   w.appendChild(hs);
 }
 
@@ -1887,7 +1925,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-09-2";
+const VERSI_APP = "2026-09-09-4";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -5963,6 +6001,16 @@ function punyaOHLC(r) {
   return false;
 }
 
+/* Sama untuk frekuensi. Dipisah dari punyaOHLC karena keduanya ditambahkan di
+   waktu berbeda: ada rekaman yang sudah punya OHLC tapi belum punya frekuensi. */
+function punyaFreq(r) {
+  const b = (r && r.baris) || {};
+  const k = Object.keys(b);
+  for (let i = 0; i < k.length && i < 8; i++)
+    if (b[k[i]] && b[k[i]].fq !== undefined && b[k[i]].fq !== null) return true;
+  return false;
+}
+
 /* ================= HALAMAN CARI (emiten) =================
    Delapan tab: CHART, KEYSTATS, FINANSIAL, BANDING, AKSI, PEMILIK,
    MUTASI, PROFIL. Enam yang pertama mengikuti susunan Stockbit;
@@ -6809,9 +6857,23 @@ async function sinkron(diam) {
        bisa digambar; sesudah tersimpan lengkap, tidak diulang lagi. */
     const blnTanpaOHLC = new Set(daftarHari
       .filter(r => !punyaOHLC(r)).map(r => bulanDari(r.tgl)));
+    /* Sidik tiap berkas dari manifest. Dipakai supaya bulan yang belum punya
+       frekuensi TIDAK diunduh ulang berkali-kali: kalau sidiknya sama dengan
+       waktu terakhir diunduh, berarti server memang belum mengekspor
+       frekuensi dan mengunduh lagi cuma buang kuota. Begitu ekspor.py
+       memperbaruinya, sidiknya berubah dan bulan itu ditarik sekali. */
+    const sidikMan = {};
+    (man.berkas || []).forEach(b => {
+      if (b && b.berkas) sidikMan[b.berkas] = b.sidik;
+    });
+    const sidikBulan = bl => sidikMan["harga-" + bl + ".json"] || "";
+    const blnTanpaFreq = new Set(daftarHari
+      .filter(r => !punyaFreq(r) && r.sd !== sidikBulan(bulanDari(r.tgl)))
+      .map(r => bulanDari(r.tgl)));
+    const blnUlang = new Set([...blnTanpaOHLC, ...blnTanpaFreq]);
     const blnHrg = [...new Set((man.tanggal_harga || [])
       .filter(t => bolehHrg.has(bulanDari(t)) &&
-                   (!adaHrg.has(t) || blnTanpaOHLC.has(bulanDari(t))))
+                   (!adaHrg.has(t) || blnUlang.has(bulanDari(t))))
       .map(bulanDari))];
 
     if (!blnBrk.length && !blnHrg.length) {
@@ -6871,17 +6933,27 @@ async function sinkron(diam) {
       const perTgl = {};
       for (let i = 0; i < j.t.length; i++) {
         const t = j.tanggal[j.t[i]];
-        if (adaHrg.has(t) && !blnTanpaOHLC.has(bulanDari(t))) continue;
+        if (adaHrg.has(t) && !blnUlang.has(bulanDari(t))) continue;
         if (!perTgl[t]) perTgl[t] = {};
         perTgl[t][j.emiten[j.e[i]]] = {
           c: j.c[i], p: j.prev[i], v: j.v[i], n: j.val[i],
           o: (j.o || [])[i] || 0, h: (j.h || [])[i] || 0, l: (j.l || [])[i] || 0,
+          /* null, bukan 0: berkas lama belum memuat frekuensi sama sekali, dan
+             nol akan terbaca sebagai "tidak ada transaksi" padahal artinya
+             "tidak diketahui". */
+          fq: (j.fq && j.fq[i] !== undefined && j.fq[i] !== null)
+                ? j.fq[i] : null,
           fs: j.fs[i], fb: j.fb[i], ls: (j.ls || [])[i] || null,
           nrv: (j.nrv || [])[i] || 0, nrn: (j.nrn || [])[i] || 0,
           nm: (j.nama || [])[j.e[i]] || ""};
       }
       for (const t of Object.keys(perTgl)) {
-        await dbSimpan({tgl: t, berkas: "sinkron", jumlah: Object.keys(perTgl[t]).length,
+        /* sd = sidik berkas sumbernya. Inilah yang mencegah bulan yang belum
+           punya frekuensi diunduh berulang-ulang: sekali dicoba, sidiknya
+           tercatat, dan tidak dicoba lagi sampai berkasnya benar-benar
+           berubah di server. */
+        await dbSimpan({tgl: t, berkas: "sinkron", sd: sidikBulan(bl),
+                        jumlah: Object.keys(perTgl[t]).length,
                         waktu: Date.now(), baris: perTgl[t]});
         masuk++;
       }
