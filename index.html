@@ -96,6 +96,16 @@ input[type=date]{-webkit-appearance:none;appearance:none;min-height:38px;
 .ringkas-brk{background:var(--surface-2);border:1px solid var(--garis);
   border-radius:8px;padding:9px 11px;margin:0 0 10px;font-size:12.5px}
 .ringkas-brk b{color:var(--ink)}
+/* Label emiten terpilih di HARGA & VOL. Dibuat sebagai tombol utuh, bukan
+   teks dengan silang kecil di sampingnya: di layar sentuh, sasaran seukuran
+   huruf terlalu sulit dikenai dan salah tekan menghapus emiten yang salah. */
+.chip{display:inline-flex;align-items:center;gap:6px;background:var(--surface-2);
+  border:1px solid var(--merek);border-radius:999px;padding:3px 6px 3px 10px;
+  font-size:12px;margin:0 6px 6px 0}
+.chip button{background:none;border:0;color:var(--ink-2);font-size:13px;
+  line-height:1;cursor:pointer;padding:2px 5px;border-radius:999px;
+  font-family:inherit}
+.chip button:hover{color:var(--turun)}
 .ringkas-ket{font-size:10.5px;color:var(--ink-2);margin-top:2px}
 table{border-collapse:collapse;width:100%;font-size:12px}
 th{
@@ -693,6 +703,14 @@ let favDari = "", favSampai = "", favAkhir = "";
 let favKriteria = [{gab: "DAN", metrik: "pnet", op: ">", nilai: null}];
 let favUrut = "vol", favArah = -1;
 
+/* ---------- HARGA & VOL ----------
+   Rentang tanggalnya SENDIRI, tidak ikut ANALISA FAVORIT: di sana bawaannya
+   satu hari, sedangkan tabel ini justru butuh sederet hari untuk dibaca. */
+let hvDari = "", hvSampai = "", hvAkhir = "";
+/* Emiten yang dipilih untuk ditampilkan. Kosong = tampilkan semua. */
+let hvPilih = [];
+const HV_HARI = 10;              /* paling banyak 10 hari = 20 kolom angka */
+
 function siapkanFavorit() {
   const tgl = tanggalTersedia();
   const akhir = tgl[tgl.length - 1] || "";
@@ -1122,11 +1140,267 @@ function panelFavorit(w) {
   w.appendChild(hs);
 }
 
+/* Tabel harga & volume sepuluh hari bursa, dua kolom per hari.
+   Semestanya emiten yang punya data broker (BRK.em), sama dengan ANALISA
+   FAVORIT - halaman ini pendamping bacanya, jadi daftarnya harus sama.
+   Angkanya sendiri murni dari Ringkasan Saham IDX, bukan dari data broker. */
+function panelHargaVol(w) {
+  const tgl = daftarHari.map(h => h.tgl).sort();
+  if (!tgl.length) {
+    const p0 = el("div", "panel");
+    p0.appendChild(el("div", "bantu", "Belum ada data harian."));
+    w.appendChild(p0); return;
+  }
+  const akhir = tgl[tgl.length - 1];
+  if (akhir !== hvAkhir) {
+    hvAkhir = akhir;
+    hvSampai = akhir;
+    hvDari = tgl[Math.max(0, tgl.length - HV_HARI)];
+  }
+  if (tgl.indexOf(hvDari) < 0) hvDari = tgl[Math.max(0, tgl.length - HV_HARI)];
+  if (tgl.indexOf(hvSampai) < 0) hvSampai = akhir;
+  if (hvDari > hvSampai) { const x = hvDari; hvDari = hvSampai; hvSampai = x; }
+  /* Kalau rentangnya lebih panjang dari sepuluh hari, yang diambil sepuluh
+     TERAKHIR - bukan sepuluh pertama. Yang dicari orang selalu keadaan
+     terbaru; hari paling lama tinggal digeser sendiri lewat kotak Dari. */
+  let hari = tgl.filter(t => t >= hvDari && t <= hvSampai);
+  if (hari.length > HV_HARI) hari = hari.slice(-HV_HARI);
+
+  const p = el("div", "panel");
+  p.appendChild(el("h2", null, "Harga & volume"));
+  const alat = el("div", "alat");
+  [["Dari", "hvDari"], ["Sampai", "hvSampai"]].forEach(([lab, kunci]) => {
+    const d = el("div");
+    d.appendChild(el("label", null, lab));
+    d.appendChild(kotakTanggal(kunci === "hvDari" ? hvDari : hvSampai, tgl, t => {
+      if (kunci === "hvDari") hvDari = t; else hvSampai = t;
+      halScreener(); window.scrollTo(0, 0);
+    }));
+    alat.appendChild(d);
+  });
+  const dc = el("div");
+  dc.appendChild(el("label", null, "Tambah emiten"));
+  const inCari = el("input");
+  inCari.type = "search";
+  inCari.placeholder = "ketik kode lalu Enter";
+  inCari.setAttribute("list", "daftarEmHV");
+  dc.appendChild(inCari);
+  alat.appendChild(dc);
+  p.appendChild(alat);
+
+  /* Daftar saran memakai datalist bawaan peramban: di HP muncul sebagai
+     daftar yang bisa diketuk, jadi tidak perlu mengetik kode dengan benar. */
+  const dl = el("datalist"); dl.id = "daftarEmHV";
+  (BRK.em || []).forEach(k => { const o = el("option"); o.value = k;
+                                dl.appendChild(o); });
+  p.appendChild(dl);
+
+  const barisChip = el("div");
+  barisChip.style.margin = "2px 0 8px";
+  p.appendChild(barisChip);
+
+  /* baris harian dipetakan sekali saja; mencari ulang di daftarHari untuk tiap
+     emiten berarti menyapu seluruh riwayat 148 kali */
+  const peta = {};
+  hari.forEach(t => {
+    const h = daftarHari.find(x => x.tgl === t);
+    peta[t] = (h && h.baris) || {};
+  });
+  const nm = {};
+  (DATA.scr || []).forEach(b => { nm[b[0]] = b[1] || ""; });
+
+  const semua = (BRK.em || []).map(k => ({
+    kode: k, nama: nm[k] || "",
+    sel: hari.map(t => {
+      const x = peta[t][k];
+      if (!x || !x.c) return null;
+      /* Pembanding diambil dari kolom "sebelumnya" milik IDX, BUKAN dari sel
+         di sebelahnya. Dengan begitu hari bursa paling lama pun tetap punya
+         persentase, dan emiten yang kemarin tidak diperdagangkan tidak
+         dibandingkan dengan hari yang terpaut jauh. */
+      return {c: x.c,
+              ubah: x.p ? (x.c - x.p) / x.p * 100 : null,
+              v: Math.round((x.v || 0) / LOT)};
+    }),
+  })).filter(r => r.sel.some(x => x));
+
+  const hitung = el("div", "hitung", "");
+  p.appendChild(hitung);
+  p.appendChild(el("div", "bantu",
+    hari.length + " hari bursa terakhir dalam rentang \u00b7 terbaru di kiri \u00b7 " +
+    "volume dalam LOT"));
+  w.appendChild(p);
+
+  const hs = el("div", "panel");
+  const bungkus = el("div", "tbl-bungkus tbl-kunci");
+  const t = el("table");
+  const thead = el("thead");
+  const urut = hari.slice().reverse();          /* terbaru di kiri */
+
+  const tr1 = el("tr");
+  const sudut1 = el("th", null, "Emiten");
+  sudut1.style.top = "0"; sudut1.style.left = "0"; sudut1.style.zIndex = "5";
+  tr1.appendChild(sudut1);
+  urut.forEach(t2 => {
+    const th = el("th", null, tglID(t2));
+    th.colSpan = 2;
+    th.style.top = "0";
+    th.style.textAlign = "center";
+    th.style.borderLeft = "2px solid rgba(0,0,0,.35)";
+    th.className = "hv-tgl";
+    tr1.appendChild(th);
+  });
+  thead.appendChild(tr1);
+
+  const tr2 = el("tr");
+  const sudut2 = el("th", null, "");
+  sudut2.style.left = "0"; sudut2.style.zIndex = "5";
+  tr2.appendChild(sudut2);
+  urut.forEach(() => {
+    const a = el("th", null, "Hrg");
+    a.style.borderLeft = "2px solid rgba(0,0,0,.35)";
+    tr2.appendChild(a);
+    tr2.appendChild(el("th", null, "Vol"));
+  });
+  thead.appendChild(tr2);
+  t.appendChild(thead);
+
+  const tbody = el("tbody");
+
+  function gambarChip() {
+    barisChip.innerHTML = "";
+    if (!hvPilih.length) {
+      const t0 = el("span", "bantu",
+        "Belum ada emiten dipilih \u2014 seluruh " + rp(semua.length) +
+        " emiten ditampilkan. Ketik kode di atas lalu Enter untuk mempersempit.");
+      t0.style.margin = "0";
+      barisChip.appendChild(t0);
+      return;
+    }
+    hvPilih.forEach(k => {
+      const c = el("span", "chip");
+      c.appendChild(el("span", null, k));
+      const x = el("button", null, "\u00d7");
+      x.type = "button";
+      x.title = "Buang " + k;
+      x.onclick = () => {
+        hvPilih = hvPilih.filter(y => y !== k);
+        gambarChip(); isiBaris();
+      };
+      c.appendChild(x);
+      barisChip.appendChild(c);
+    });
+    const kos = el("button", "tambah", "Kosongkan");
+    kos.type = "button";
+    kos.onclick = () => { hvPilih = []; gambarChip(); isiBaris(); };
+    barisChip.appendChild(kos);
+  }
+
+  function tambahEm(teks) {
+    const q = (teks || "").trim().toUpperCase();
+    if (!q) return false;
+    /* Cocok persis dulu; kalau tidak ada, baru cari yang mengandung - supaya
+       mengetik "BBRI" tidak malah memasukkan emiten lain yang kebetulan
+       namanya memuat huruf itu. */
+    let cocok = semua.find(r => r.kode.toUpperCase() === q);
+    if (!cocok) cocok = semua.find(r => r.kode.toUpperCase().indexOf(q) >= 0 ||
+                                        (r.nama || "").toUpperCase().indexOf(q) >= 0);
+    if (!cocok) return false;
+    if (hvPilih.indexOf(cocok.kode) < 0) hvPilih.push(cocok.kode);
+    return true;
+  }
+
+  inCari.onkeydown = ev => {
+    if (ev.key !== "Enter") return;
+    ev.preventDefault();
+    if (tambahEm(inCari.value)) { inCari.value = ""; gambarChip(); isiBaris(); }
+    else inCari.select();
+  };
+  /* Memilih dari daftar saran di HP tidak selalu memicu Enter. */
+  inCari.onchange = () => {
+    if (tambahEm(inCari.value)) { inCari.value = ""; gambarChip(); isiBaris(); }
+  };
+
+  function isiBaris() {
+    tbody.innerHTML = "";
+    const pilihEm = hvPilih.length
+      ? hvPilih.map(k => semua.find(r => r.kode === k)).filter(Boolean)
+      : semua;
+    hitung.textContent = (hvPilih.length
+      ? rp(pilihEm.length) + " dari " + rp(semua.length) : rp(semua.length)) +
+      " emiten";
+    if (!pilihEm.length) {
+      const tr = el("tr");
+      const td = el("td", null, "Tidak ada emiten yang cocok");
+      td.colSpan = urut.length * 2 + 1;
+      td.style.textAlign = "left";
+      tr.appendChild(td); tbody.appendChild(tr);
+      return;
+    }
+    pilihEm.forEach((r, i) => {
+      const tr = el("tr");
+      const c0 = el("td");
+      c0.appendChild(el("span", "kode", r.kode));
+      c0.appendChild(el("span", "nm", r.nama));
+      c0.style.position = "sticky"; c0.style.left = "0"; c0.style.zIndex = "2";
+      c0.style.background = i % 2 === 0 ? "var(--surface-2)" : "var(--surface-1)";
+      tr.appendChild(c0);
+      /* urutan sel HARUS mengikuti urut (terbaru di kiri), bukan hari */
+      urut.forEach(t2 => {
+        const j = hari.indexOf(t2);
+        const x = r.sel[j];
+        const ch = el("td", "num");
+        ch.style.borderLeft = "2px solid var(--garis)";
+        if (!x) ch.textContent = "\u2013";
+        else {
+          const u = x.ubah;
+          ch.appendChild(el("span", null, u === null ? "\u2013"
+            : (u > 0 ? "\u25b2" : u < 0 ? "\u25bc" : "\u25ac") +
+              Math.abs(u).toFixed(2).replace(".", ",") + "%"));
+          ch.style.color = u > 0 ? "var(--naik)" : u < 0 ? "var(--turun)" : "";
+          const hg = el("div", null, rp(x.c));
+          hg.style.fontSize = "10px";
+          hg.style.opacity = ".7";
+          hg.style.color = "var(--ink-2)";
+          ch.appendChild(hg);
+        }
+        tr.appendChild(ch);
+        tr.appendChild(el("td", "num", x ? rp(x.v) : "\u2013"));
+      });
+      tbody.appendChild(tr);
+    });
+  }
+  gambarChip();
+  isiBaris();
+
+  t.appendChild(tbody); bungkus.appendChild(t); hs.appendChild(bungkus);
+  /* Baris kepala kedua ditempelkan tepat di bawah yang pertama. Yang diukur
+     sel TANGGAL, bukan tinggi <tr>: kalau sel sudut sampai memakai rowSpan,
+     tinggi barisnya terbaca dua kali lipat dan kepalanya saling menimpa. */
+  requestAnimationFrame(() => {
+    const sel = tr1.querySelector("th.hv-tgl");
+    const h = sel ? sel.getBoundingClientRect().height : 0;
+    if (h > 0) Array.prototype.forEach.call(tr2.children,
+                                            x => { x.style.top = h + "px"; });
+  });
+  hs.appendChild(el("div", "bantu",
+    "Angka besar di kolom Hrg perubahan terhadap penutupan hari bursa " +
+    "SEBELUMNYA menurut IDX \u2014 bukan selisih dengan kolom di sebelahnya, " +
+    "jadi hari terlama pun tetap terisi dan emiten yang kemarin tidak " +
+    "diperdagangkan tidak dibandingkan dengan hari yang terpaut jauh. " +
+    "Angka kecil di bawahnya harga penutupan hari itu. Kolom Emiten dan " +
+    "kedua baris kepala sama-sama beku. Urutan barisnya mengikuti urutan " +
+    "Anda memilih, bukan diurutkan sendiri \u2014 supaya emiten yang " +
+    "sengaja disandingkan tetap bersebelahan."));
+  w.appendChild(hs);
+}
+
 function halScreener() {
   const w = $("#hal-screener"); w.innerHTML = "";
 
   const tab = el("div", "sub-tab");
-  [["saringan", "KRITERIA SARINGAN"], ["favorit", "ANALISA FAVORIT"]]
+  [["saringan", "KRITERIA SARINGAN"], ["favorit", "ANALISA FAVORIT"],
+   ["hargavol", "HARGA & VOL"]]
     .forEach(([k, judul]) => {
       const b = el("button", subScr === k ? "aktif" : null, judul);
       b.onclick = () => { subScr = k; halScreener(); };
@@ -1134,6 +1408,7 @@ function halScreener() {
     });
   w.appendChild(tab);
   if (subScr === "favorit") { panelFavorit(w); return; }
+  if (subScr === "hargavol") { panelHargaVol(w); return; }
 
   const p = el("div", "panel");
   p.appendChild(el("h2", null, "Kriteria saringan"));
@@ -1932,7 +2207,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-09-5";
+const VERSI_APP = "2026-09-09-7";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
