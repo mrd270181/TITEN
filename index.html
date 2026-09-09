@@ -90,6 +90,13 @@ input[type=date]{-webkit-appearance:none;appearance:none;min-height:38px;
    sempat menyembul di celah itu waktu tabel digeser. */
 .tbl-kunci{max-height:70vh;overflow:auto;-webkit-overflow-scrolling:touch;
   margin:0;padding:0}
+/* Baris ringkasan di atas tabel broker. Diberi garis tepi, bukan sekadar teks
+   abu-abu seperti .bantu: isinya angka pokok yang harus dibaca DULU sebelum
+   tabelnya, jadi tidak boleh terlihat sebagai keterangan tambahan. */
+.ringkas-brk{background:var(--surface-2);border:1px solid var(--garis);
+  border-radius:8px;padding:9px 11px;margin:0 0 10px;font-size:12.5px}
+.ringkas-brk b{color:var(--ink)}
+.ringkas-ket{font-size:10.5px;color:var(--ink-2);margin-top:2px}
 table{border-collapse:collapse;width:100%;font-size:12px}
 th{
   background:var(--merek);color:#fff;font-weight:600;font-size:10.5px;
@@ -1925,7 +1932,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-09-4";
+const VERSI_APP = "2026-09-09-5";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -3478,6 +3485,61 @@ function panelPosisiGross(w) {
   w.appendChild(p);
 }
 
+/* Ringkasan seluruh broker untuk emiten dan rentang yang sedang dipilih.
+   Ditaruh di ATAS tabel, bukan di bawah: angka satu broker tidak berarti
+   apa-apa sebelum diketahui totalnya berapa. Net dan crossing selalu
+   ditampilkan berpasangan karena jumlahnya persis volume total - itu yang
+   membuat persentasenya bisa dipercaya. */
+function ringkasBroker(agg, punyaGross, pakaiNilai) {
+  let gross = 0, net = 0, nilaiB = 0, aktif = 0;
+  Object.keys(agg).forEach(k => {
+    const a = agg[k];
+    gross += a.beli;
+    /* Net emiten = jumlah SISI POSITIF saja. Sisi negatifnya sama besar, jadi
+       kalau dua-duanya dijumlah hasilnya selalu nol. */
+    if (a.beli - a.jual > 0) net += a.beli - a.jual;
+    nilaiB += a.nilaiB || 0;
+    if (a.beli || a.jual) aktif++;
+  });
+  const hari = new Set();
+  const trx = semuaTrx();
+  const papan = pilih.pasar === "ALL MARKET" ? PAPAN
+              : [pilih.pasar === "REGULER" ? "REG" : pilih.pasar];
+  papan.forEach(pp => (trx[pp] || []).forEach(r => {
+    if (r.em === pilih.emiten && r.tgl >= pilih.dari && r.tgl <= pilih.sampai)
+      hari.add(r.tgl);
+  }));
+
+  const kotak = el("div", "ringkas-brk");
+  const b1 = el("div");
+  b1.appendChild(el("span", null, "Volume total "));
+  b1.appendChild(el("b", null, nf(gross) + " lot"));
+  /* Tanpa data GROSS, net emiten tidak bisa dihitung: pada tabel NETT IPOT
+     tiap broker cuma muncul di satu sisi, jadi lot yang berputar tidak
+     terlihat sama sekali dan persentasenya pasti menyesatkan. */
+  if (punyaGross) {
+    const pn = gross ? net / gross * 100 : 0;
+    b1.appendChild(el("span", null, " \u00b7 net "));
+    b1.appendChild(el("b", "naik", nf(net) + " lot"));
+    b1.appendChild(el("span", null, " (" +
+      pn.toFixed(1).replace(".", ",") + "%)"));
+    b1.appendChild(el("span", null, " \u00b7 crossing "));
+    b1.appendChild(el("b", null, nf(gross - net) + " lot"));
+    b1.appendChild(el("span", null, " (" +
+      (100 - pn).toFixed(1).replace(".", ",") + "%)"));
+  }
+  if (pakaiNilai && nilaiB) {
+    b1.appendChild(el("span", null, " \u00b7 nilai "));
+    b1.appendChild(el("b", null, rupiah(nilaiB, "IDR")));
+  }
+  kotak.appendChild(b1);
+  kotak.appendChild(el("div", "ringkas-ket",
+    tglID(pilih.dari) + " \u2013 " + tglID(pilih.sampai) + " " +
+    pilih.sampai.slice(0, 4) + " \u00b7 " + pilih.pasar + " \u00b7 " +
+    hari.size + " hari bertransaksi \u00b7 " + aktif + " broker"));
+  return kotak;
+}
+
 function panelPosisi(w) {
   if (pilih.mode === "gross") return panelPosisiGross(w);
   const saldo = saldoAwal(pilih.emiten, pilih.pasar);
@@ -3491,6 +3553,9 @@ function panelPosisi(w) {
   const p = el("div", "panel");
   p.appendChild(el("h2", null, "Posisi broker — " + pilih.emiten));
   tombolMode(p);
+  p.appendChild(ringkasBroker(tambah,
+    periksaGross(pilih.emiten, pilih.pasar, pilih.dari, pilih.sampai).semuaGross,
+    false));
   p.appendChild(el("div", "bantu", "Posisi = saldo awal per " + tglCutoff() +
     " ditambah net lot dalam rentang tanggal. Ketuk judul kolom untuk mengurutkan."));
   p.appendChild(tabelUrut([
@@ -3499,7 +3564,7 @@ function panelPosisi(w) {
     {judul: "Saldo Awal", kunci: "saldo", angka: true},
     {judul: "Net Tambahan", kunci: "tambahan", angka: true, warna: true},
     {judul: "Posisi Saat Ini", kunci: "posisi", angka: true, warna: true},
-  ], baris, "posisi"));
+  ], baris, "posisi", true));
   w.appendChild(p);
 }
 
@@ -3522,9 +3587,28 @@ function panelSaldo(w) {
   kolom.push({judul: "Saldo Awal", kunci: "net", angka: true, warna: true});
   const p = el("div", "panel");
   p.appendChild(el("h2", null, "Detail saldo awal per periode"));
+  /* Ringkasannya sengaja BEDA dengan panel lain: di sini tidak ada rentang
+     tanggal sama sekali - angkanya satu titik waktu, yaitu tanggal cutoff.
+     Menampilkan "volume rentang" di sini justru menyesatkan. */
+  let tBuy = 0, tSell = 0, tNet = 0;
+  baris.forEach(r => { tBuy += r.buy; tSell += r.sell; tNet += r.net; });
+  const rk = el("div", "ringkas-brk");
+  const rb = el("div");
+  rb.appendChild(el("span", null, "Total beli "));
+  rb.appendChild(el("b", null, nf(tBuy) + " lot"));
+  rb.appendChild(el("span", null, " \u00b7 total jual "));
+  rb.appendChild(el("b", null, nf(tSell) + " lot"));
+  rb.appendChild(el("span", null, " \u00b7 saldo awal "));
+  rb.appendChild(el("b", tNet >= 0 ? "naik" : "turun",
+    (tNet >= 0 ? "+" : "\u2212") + nf(Math.abs(tNet)) + " lot"));
+  rk.appendChild(rb);
+  rk.appendChild(el("div", "ringkas-ket",
+    "per " + tglCutoff() + " \u00b7 " + pilih.pasar + " \u00b7 " +
+    baris.length + " broker"));
+  p.appendChild(rk);
   p.appendChild(el("div", "bantu", "Saldo awal per " + tglCutoff() +
     ", dari data/kamus.json di server."));
-  p.appendChild(tabelUrut(kolom, baris, "net"));
+  p.appendChild(tabelUrut(kolom, baris, "net", true));
   w.appendChild(p);
 }
 
@@ -3612,8 +3696,7 @@ function panelTransaksi(w) {
       "tetap benar.";
   const p = el("div", "panel");
   p.appendChild(el("h2", null, "Detail transaksi harian — semua broker"));
-  p.appendChild(el("div", "bantu", tglID(pilih.dari) + " – " + tglID(pilih.sampai) + " " +
-    pilih.sampai.slice(0, 4) + " · " + pilih.pasar));
+  p.appendChild(ringkasBroker(agg, punyaGross, true));
   p.appendChild(tabelUrut([
     {judul: "Broker", kunci: "broker"},
     {judul: "Nama", kunci: "nama"},
@@ -3625,7 +3708,7 @@ function panelTransaksi(w) {
     {judul: "%Net", kunci: "pnet", angka: true, persen: true, silang: true},
     {judul: "%Crossing", kunci: "pputar", angka: true, persen: true},
     {judul: "Net Value", kunci: "nilai", angka: true, warna: true},
-  ], baris, "net"));
+  ], baris, "net", true));
   p.appendChild(el("div", "bantu", catatanGross));
   w.appendChild(p);
 }
@@ -3758,7 +3841,7 @@ function panelBrokerHarian(w) {
     {judul: "Net TUNAI", kunci: "tunai", angka: true, warna: true},
     {judul: "Lawan TUNAI", kunci: "lwTunai"},
     {judul: "Net TOTAL", kunci: "total", angka: true, warna: true},
-  ], baris, "tanggal"));
+  ], baris, "tanggal", true));
 
   let tReg = 0, tNego = 0, tTunai = 0;
   baris.forEach(r => { tReg += r.reg; tNego += r.nego; tTunai += r.tunai; });
@@ -4628,8 +4711,10 @@ function halBroker() {
     /* tiga panel posisi dulu ditumpuk ke bawah dan halamannya jadi panjang sekali;
        sekarang dipilih satu per satu, seperti di halaman CARI */
     const tab2 = el("div", "sub-tab");
-    [["posisi", "POSISI"], ["saldo", "SALDO AWAL"], ["transaksi", "TRANSAKSI"],
-     ["harian", "BROKER HARIAN"]]
+    /* Dulu bernama "POSISI" juga, sama persis dengan menu di atasnya, jadi
+       jalurnya terbaca POSISI > POSISI. */
+    [["posisi", "POSISI BROKER"], ["saldo", "SALDO AWAL"],
+     ["transaksi", "TRANSAKSI"], ["harian", "BROKER HARIAN"]]
       .forEach(([k, judul]) => {
         const b = el("button", pilih.subPos === k ? "aktif" : null, judul);
         b.onclick = () => { pilih.subPos = k; halBroker(); };
