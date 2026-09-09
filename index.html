@@ -673,33 +673,33 @@ let kriteria = [{gab: "DAN", metrik: "PER (x)", op: "<", nilai: 10},
 
    Semestanya cuma emiten yang punya data broker (isi pantau.txt), bukan
    seluruh emiten - tanpa data broker, Net Lot dan %Net tidak ada artinya. */
+/* Kolom volume dan Tot. Net Lot SENGAJA tidak ada di sini: semuanya tetap
+   tampil di tabel, cuma tidak dipakai menyaring. Daftar ini isinya metrik
+   yang bentuknya rasio atau arah - yang memang dipakai memilih, bukan
+   sekadar dilihat besarannya. */
 const METRIK_FAV = [
-  ["volHari", "Volume Hari Terbaru (lot)"],
-  ["volRata", "Volume Rata2 per Hari Transaksi (lot)"],
-  ["vol",   "Tot. Volume (lot)"],
-  ["net",   "Net Lot"],
   ["pnet",  "% Net thd Gross"],
   ["asing", "Net Foreign (lot)"],
 ];
 let subScr = "saringan";
 let favDari = "", favSampai = "", favAkhir = "";
-let favKriteria = [{gab: "DAN", metrik: "vol", op: ">", nilai: null}];
+let favKriteria = [{gab: "DAN", metrik: "pnet", op: ">", nilai: null}];
 let favUrut = "vol", favArah = -1;
 
 function siapkanFavorit() {
   const tgl = tanggalTersedia();
   const akhir = tgl[tgl.length - 1] || "";
-  /* Rentang selalu ikut data terbaru, sama seperti di halaman BROKER: begitu
-     ada tanggal baru masuk, "sampai" melompat sendiri ke sana. Bawaannya satu
-     bulan ke belakang, bukan sehari - rentang sehari membuat %Net selalu
-     tampak besar karena belum sempat kelihatan siapa yang bolak-balik. */
+  /* Bawaannya SATU HARI: dari dan sampai sama-sama tanggal terbaru, seperti di
+     halaman CEK VOLUME. Begitu ada tanggal baru masuk, keduanya melompat
+     sendiri ke sana - kalau tidak, pilihan kemarin tersangkut dan data yang
+     baru saja ditarik terlihat seperti belum ada.
+     Catatan bacaan: pada rentang sehari, %Net cenderung tampak besar karena
+     belum sempat kelihatan broker mana yang bolak-balik. Untuk membaca arah
+     yang lebih jujur, rentangnya dilebarkan sendiri lewat kotak tanggal. */
   if (akhir && akhir !== favAkhir) {
     favAkhir = akhir;
     favSampai = akhir;
-    const d = new Date(akhir + "T00:00:00");
-    d.setMonth(d.getMonth() - 1);
-    const mulai = d.toISOString().slice(0, 10);
-    favDari = tgl.filter(t => t >= mulai)[0] || tgl[0] || akhir;
+    favDari = akhir;
   }
 }
 
@@ -942,7 +942,7 @@ function panelFavorit(w) {
     {kunci: "volHari", judul: "Volume (lot)", angka: true},
     {kunci: "volRata", judul: "Vol Rata2", angka: true},
     {kunci: "vol",   judul: "Tot. Volume (lot)", angka: true},
-    {kunci: "net",   judul: "Net Lot", angka: true},
+    {kunci: "net",   judul: "Tot. Net Lot", angka: true},
     {kunci: "pnet",  judul: "%Net", angka: true},
     {kunci: "asing", judul: "Net Foreign (lot)", angka: true},
     {kunci: "beli3", judul: "3 Broker Net BELI"},
@@ -1238,6 +1238,11 @@ const WARNA_NF = ["#1f77b4", "#d62728", "#2ca02c", "#e8890c", "#7b3fa0",
 let volKode = "DSSA", volDari = "", volSampai = "", volAkhir = "";
 let volMode = "net", volPasar = "semua", volInvestor = "asing";
 let volUrut = "val", volArah = -1;                /* kolom & arah pengurutan tabel */
+/* Sub-tab halaman CEK VOLUME: "volume" (papan peringkat lama, pakai rentang)
+   dan "harian" (satu hari saja, bergaya Ringkasan Saham IDX). */
+let subVol = "volume";
+let vhTgl = "", vhAkhir = "";
+let vhUrut = "v", vhArah = -1;
 const LOT = 100;                                  /* 1 lot = 100 lembar */
 const lot = v => Math.round((v || 0) / LOT).toLocaleString("id-ID");
 
@@ -1538,8 +1543,163 @@ function panelVolPilihan(st, judul, jenis, urutTgl) {
   return p;
 }
 
+/* ---------- VOLUME HARIAN ----------
+   Satu tanggal saja, bukan rentang - bacaannya sama seperti berkas Ringkasan
+   Saham IDX sehari. Semestanya SELURUH emiten yang ada di berkas hari itu,
+   bukan cuma yang punya data broker: halaman ini murni data harga IDX.
+
+   Sumbernya daftarHari (IndexedDB), bukan DATA.vol, karena tertinggi/terendah
+   hanya ada di sana. */
+function panelVolumeHarian(w) {
+  const tgl = daftarHari.map(h => h.tgl).sort();
+  if (!tgl.length) {
+    const p = el("div", "panel");
+    p.appendChild(el("div", "bantu", "Belum ada data harian."));
+    w.appendChild(p);
+    return;
+  }
+  /* Tanggalnya ikut data terbaru; begitu ada hari baru masuk, pilihannya
+     melompat sendiri ke sana. Sama seperti panel Volume di sebelahnya. */
+  const akhir = tgl[tgl.length - 1];
+  if (akhir !== vhAkhir) { vhAkhir = akhir; vhTgl = akhir; }
+  if (!vhTgl || tgl.indexOf(vhTgl) < 0) vhTgl = akhir;
+
+  const p = el("div", "panel");
+  p.appendChild(el("h2", null, "Volume harian"));
+  const alat = el("div", "alat");
+  const bt = el("div");
+  bt.appendChild(el("label", null, "Tanggal"));
+  bt.appendChild(kotakTanggal(vhTgl, tgl, t => {
+    vhTgl = t; halVolume(); window.scrollTo(0, 0);
+  }));
+  alat.appendChild(bt);
+  const bb = el("div");
+  bb.appendChild(el("label", null, " "));
+  const btb = el("button", "tambah", "Terbaru");
+  btb.onclick = () => { vhTgl = akhir; halVolume(); window.scrollTo(0, 0); };
+  bb.appendChild(btb);
+  alat.appendChild(bb);
+  p.appendChild(alat);
+
+  const hari = daftarHari.find(h => h.tgl === vhTgl);
+  const baris = (hari && hari.baris) || {};
+  const data = Object.keys(baris).map(k => {
+    const x = baris[k] || {};
+    const c = x.c || 0, sblm = x.p || 0;
+    return {
+      kode: k, nama: x.nm || "",
+      /* IDX tetap menuliskan penutupan untuk emiten yang tidak diperdagangkan;
+         tertinggi/terendahnya nol. Dijadikan null supaya tampil sebagai tanda
+         pisah, bukan angka 0 yang terbaca seolah harganya memang nol. */
+      hi: x.h || null, lo: x.l || null, c: c || null,
+      ubah: (c && sblm) ? (c - sblm) / sblm * 100 : null,
+      v: Math.round((x.v || 0) / LOT),
+      n: x.n || 0,
+      /* Frekuensi belum ada di harga-*.json. Dibaca sekarang supaya begitu
+         datanya diekspor, kolomnya terisi sendiri tanpa merilis app lagi. */
+      f: (x.f === undefined || x.f === null) ? null : x.f,
+    };
+  });
+  const adaFreq = data.some(r => r.f !== null);
+
+  p.appendChild(el("div", "hitung",
+    rp(data.length) + " emiten pada " + tglID(vhTgl) + " " + vhTgl.slice(0, 4)));
+  p.appendChild(el("div", "bantu",
+    "Seluruh emiten yang ada di Ringkasan Saham IDX hari itu, bukan cuma yang " +
+    "punya data broker. Volume dalam LOT; nilai dalam rupiah." +
+    (adaFreq ? "" : " Kolom Freq masih kosong karena frekuensi belum ikut " +
+                    "diekspor ke berkas harga bulanan.")));
+  w.appendChild(p);
+
+  const KOL_VH = [
+    {k: "kode", j: "Emiten"},
+    {k: "hi",   j: "Tertinggi", n: true},
+    {k: "lo",   j: "Terendah", n: true},
+    {k: "c",    j: "Penutupan", n: true},
+    {k: "ubah", j: "%Ubah", n: true, ket: "thd penutupan lalu"},
+    {k: "v",    j: "Volume (lot)", n: true},
+    {k: "n",    j: "Nilai", n: true},
+    {k: "f",    j: "Freq", n: true},
+  ];
+
+  const hs = el("div", "panel");
+  const bungkus = el("div", "tbl-bungkus tbl-kunci");
+  const t = el("table");
+  const thead = el("thead"), trh = el("tr");
+  KOL_VH.forEach((c, i) => {
+    const th = el("th", null, c.j + (vhUrut === c.k
+      ? (vhArah < 0 ? " ▼" : " ▲") : ""));
+    if (c.ket) {
+      const g = el("div", null, c.ket);
+      g.style.fontSize = "10px"; g.style.fontWeight = "400"; g.style.opacity = ".75";
+      th.appendChild(g);
+    }
+    th.style.cursor = "pointer";
+    th.onclick = () => {
+      if (vhUrut === c.k) vhArah = -vhArah;
+      else { vhUrut = c.k; vhArah = c.n ? -1 : 1; }
+      halVolume();
+    };
+    if (i === 0) {
+      th.style.position = "sticky"; th.style.left = "0"; th.style.zIndex = "4";
+    }
+    trh.appendChild(th);
+  });
+  thead.appendChild(trh); t.appendChild(thead);
+
+  const kolAngka = (KOL_VH.find(c => c.k === vhUrut) || {}).n;
+  const tbody = el("tbody");
+  data.slice().sort((a, b) => {
+    const x = a[vhUrut], y = b[vhUrut];
+    if (kolAngka) return ((x === null ? -Infinity : x) -
+                          (y === null ? -Infinity : y)) * vhArah;
+    return String(x).localeCompare(String(y)) * vhArah;
+  }).forEach((r, i) => {
+    const tr = el("tr");
+    const c0 = el("td");
+    c0.appendChild(el("span", "kode", r.kode));
+    c0.appendChild(el("span", "nm", r.nama));
+    c0.style.position = "sticky"; c0.style.left = "0"; c0.style.zIndex = "2";
+    c0.style.background = i % 2 === 0 ? "var(--surface-2)" : "var(--surface-1)";
+    tr.appendChild(c0);
+    tr.appendChild(el("td", "num", r.hi === null ? "–" : rp(r.hi)));
+    tr.appendChild(el("td", "num", r.lo === null ? "–" : rp(r.lo)));
+    tr.appendChild(el("td", "num", r.c === null ? "–" : rp(r.c)));
+    const cu = el("td", "num");
+    if (r.ubah === null) cu.textContent = "–";
+    else {
+      cu.textContent = (r.ubah > 0 ? "▲" : r.ubah < 0 ? "▼" : "▬") +
+        Math.abs(r.ubah).toFixed(2).replace(".", ",") + "%";
+      cu.style.color = r.ubah > 0 ? "var(--naik)"
+                     : r.ubah < 0 ? "var(--turun)" : "";
+    }
+    tr.appendChild(cu);
+    tr.appendChild(el("td", "num", rp(r.v)));
+    tr.appendChild(el("td", "num", ringkas(r.n)));
+    tr.appendChild(el("td", "num", r.f === null ? "–" : rp(r.f)));
+    tbody.appendChild(tr);
+  });
+  t.appendChild(tbody); bungkus.appendChild(t); hs.appendChild(bungkus);
+  hs.appendChild(el("div", "bantu",
+    "Ketuk kepala kolom untuk mengurutkan. %Ubah dihitung dari penutupan hari " +
+    "bursa sebelumnya, angka yang dibawa IDX sendiri di berkas Ringkasan " +
+    "Saham - bukan dari selisih dua baris di tabel ini, supaya tetap benar " +
+    "untuk emiten yang kemarin tidak diperdagangkan."));
+  w.appendChild(hs);
+}
+
 function halVolume() {
   const w = $("#hal-volume"); w.innerHTML = "";
+
+  const tab = el("div", "sub-tab");
+  [["volume", "VOLUME"], ["harian", "VOLUME HARIAN"]].forEach(([k, judul]) => {
+    const b = el("button", subVol === k ? "aktif" : null, judul);
+    b.onclick = () => { subVol = k; halVolume(); };
+    tab.appendChild(b);
+  });
+  w.appendChild(tab);
+  if (subVol === "harian") { panelVolumeHarian(w); return; }
+
   const urutTgl = urutTglVol();
   const tgl = urutTgl.map(x => x.t), idx = urutTgl.map(x => x.i);
   if (!tgl.length) { w.appendChild(el("div", "panel")).appendChild(
@@ -1727,7 +1887,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-09-1";
+const VERSI_APP = "2026-09-09-2";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
