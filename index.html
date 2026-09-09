@@ -674,7 +674,9 @@ let kriteria = [{gab: "DAN", metrik: "PER (x)", op: "<", nilai: 10},
    Semestanya cuma emiten yang punya data broker (isi pantau.txt), bukan
    seluruh emiten - tanpa data broker, Net Lot dan %Net tidak ada artinya. */
 const METRIK_FAV = [
-  ["vol",   "Volume (lot)"],
+  ["volHari", "Volume Hari Terbaru (lot)"],
+  ["volRata", "Volume Rata2 per Hari Transaksi (lot)"],
+  ["vol",   "Tot. Volume (lot)"],
   ["net",   "Net Lot"],
   ["pnet",  "% Net thd Gross"],
   ["asing", "Net Foreign (lot)"],
@@ -714,6 +716,10 @@ function hitungFavorit(dari, sampai) {
   });
 
   /* harga, volume, dan asing dari data harian */
+  /* Tanggal data harian TERBARU yang ada di HP - bukan ujung rentang saringan.
+     Keduanya sering sama, tapi tidak selalu: data hari ini baru ada setelah
+     berkas terbaru diunggah, sedangkan rentangnya sudah bergerak duluan. */
+  const tglTerbaru = (daftarHari[0] || {}).tgl || "";
   const hrg = {};
   daftarHari.forEach(h => {                 /* daftarHari terbaru dulu */
     const b = h.baris || {};
@@ -721,13 +727,27 @@ function hitungFavorit(dari, sampai) {
       const x = b[k];
       if (!x || !x.c) return;
       const a = hrg[k] || (hrg[k] = {vol: 0, asing: 0, akhir: 0, awal: 0,
+                                     volAkhir: 0, hari: 0,
                                      tglAwal: "", tglAkhir: "", nama: x.nm || ""});
       /* Rekaman pertama = tanggal terbaru. Tanggalnya ikut disimpan, bukan cuma
          harganya: emiten yang tidak sempat transaksi di hari terakhir akan
          memakai harga hari sebelumnya, dan tanpa tanggal itu tidak kelihatan. */
       if (!a.akhir) { a.akhir = x.c; a.tglAkhir = h.tgl; }
+      /* Tanggal terakhir yang ADA VOLUMENYA - beda dengan tanggal harga.
+         IDX tetap menuliskan harga penutupan untuk emiten yang tidak
+         diperdagangkan (harga hari sebelumnya dibawa), volumenya saja nol.
+         Jadi "tidak berdagang" ketahuan dari volume, bukan dari tanggal. */
+      if (!a.tglVolAkhir && (x.v || 0) > 0) {
+        a.tglVolAkhir = h.tgl; a.volAkhir = x.v;
+      }
       if (h.tgl < dari || h.tgl > sampai) return;
       a.vol += x.v || 0;
+      /* Hari yang BENAR-BENAR ada transaksinya - ini pembagi Vol Rata2.
+         Hari tanpa volume tidak ikut membagi, jadi angkanya menjawab "kalau
+         dia bergerak, seberapa besar", bukan "seberapa ramai per hari".
+         Karena itu jumlah harinya WAJIB ikut ditampilkan di tabel: tanpa itu,
+         saham yang cuma dagang 3 hari terlihat seramai yang dagang 22 hari. */
+      if ((x.v || 0) > 0) a.hari++;
       /* Foreign buy/sell di Ringkasan Saham IDX satuannya LEMBAR, sama seperti
          volume - bukan rupiah. Buktinya rumus volume domestik di halaman VOLUME:
          vol - (fb + fs), pengurangan yang cuma masuk akal kalau satuannya sama. */
@@ -759,6 +779,15 @@ function hitungFavorit(dari, sampai) {
       harga: h.akhir || 0, tglHarga: h.tglAkhir || "",
       ubah: (h.awal && h.akhir) ? (h.akhir - h.awal) / h.awal * 100 : null,
       vol: Math.round((h.vol || 0) / 100),   /* volume disimpan per lembar */
+      /* Volume hari terbaru. Emiten yang tidak berdagang di tanggal itu diberi
+         null, BUKAN volume hari terakhirnya dan bukan 0: nol akan terbaca
+         seolah ada perdagangan sebesar nol dan ikut lolos saringan "di bawah
+         sekian", sedangkan angka hari lain menyesatkan karena beda tanggal. */
+      volHari: (h.tglVolAkhir && h.tglVolAkhir === tglTerbaru)
+                 ? Math.round((h.volAkhir || 0) / 100) : null,
+      tglVol: h.tglVolAkhir || "",
+      hariAda: h.hari || 0,
+      volRata: h.hari ? Math.round((h.vol || 0) / 100 / h.hari) : null,
       net: net, gross: gross,
       pnet: gross ? net / gross * 100 : null,
       asing: Math.round((h.asing || 0) / 100),   /* lembar -> lot */
@@ -910,7 +939,9 @@ function panelFavorit(w) {
   const KOLOM_FAV = [
     {kunci: "kode",  judul: "Emiten"},
     {kunci: "harga", judul: "Harga", angka: true},
-    {kunci: "vol",   judul: "Volume (lot)", angka: true},
+    {kunci: "volHari", judul: "Volume (lot)", angka: true},
+    {kunci: "volRata", judul: "Vol Rata2", angka: true},
+    {kunci: "vol",   judul: "Tot. Volume (lot)", angka: true},
     {kunci: "net",   judul: "Net Lot", angka: true},
     {kunci: "pnet",  judul: "%Net", angka: true},
     {kunci: "asing", judul: "Net Foreign (lot)", angka: true},
@@ -932,11 +963,17 @@ function panelFavorit(w) {
   KOLOM_FAV.forEach((k, i) => {
     const th = el("th", null, k.judul +
       (favUrut === k.kunci ? (favArah < 0 ? " ▼" : " ▲") : ""));
-    /* Kolom harga diberi tanggalnya supaya tidak terbaca sebagai harga pada
-       tanggal akhir rentang. */
-    if (k.kunci === "harga" && tglHargaUmum) {
-      const tg = el("div", null, tglID(tglHargaUmum) + " " +
-                                 tglHargaUmum.slice(0, 4));
+    /* Harga dan Volume (lot) sama-sama memakai data hari TERBARU, bukan ujung
+       rentang, jadi keduanya diberi tanggal di kepala kolom. Vol Rata2 diberi
+       keterangan pembaginya, karena "rata-rata" saja ambigu. */
+    let ket = "";
+    if ((k.kunci === "harga" || k.kunci === "volHari") && tglHargaUmum)
+      ket = tglID(tglHargaUmum) + " " + tglHargaUmum.slice(0, 4);
+    else if (k.kunci === "volRata") ket = "per hari transaksi";
+    else if (k.kunci === "vol" && favDari && favSampai)
+      ket = tglID(favDari) + " – " + tglID(favSampai);
+    if (ket) {
+      const tg = el("div", null, ket);
       tg.style.fontSize = "10px";
       tg.style.fontWeight = "400";
       tg.style.opacity = ".75";
@@ -1006,6 +1043,35 @@ function panelFavorit(w) {
     }
     tr.appendChild(ch);
 
+    /* Volume hari terbaru. Kalau emitennya libur di tanggal itu, yang tampil
+       tanda pisah plus tanggal transaksi terakhirnya - sama seperti Harga. */
+    const cvh = el("td", "num");
+    if (r.volHari === null) {
+      cvh.appendChild(el("span", null, "–"));
+      if (r.tglVol) {
+        const tg = el("div", null, tglID(r.tglVol));
+        tg.style.fontSize = "10px";
+        tg.style.opacity = ".7";
+        cvh.appendChild(tg);
+      }
+    } else {
+      cvh.appendChild(el("span", null, rp(r.volHari)));
+    }
+    tr.appendChild(cvh);
+
+    /* Vol Rata2 SELALU disertai jumlah hari pembaginya. Tanpa itu saham yang
+       cuma berdagang 3 hari terlihat seramai yang berdagang 22 hari. */
+    const cvr = el("td", "num");
+    cvr.appendChild(el("span", null, r.volRata === null ? "–"
+                                                        : rp(r.volRata)));
+    if (r.hariAda) {
+      const hd = el("div", null, r.hariAda + " hari");
+      hd.style.fontSize = "10px";
+      hd.style.opacity = ".7";
+      cvr.appendChild(hd);
+    }
+    tr.appendChild(cvr);
+
     tr.appendChild(el("td", "num", rp(r.vol)));
     tr.appendChild(el("td", "num", rp(r.net)));
     tr.appendChild(el("td", "num", r.pnet === null ? "–"
@@ -1021,15 +1087,23 @@ function panelFavorit(w) {
   t.appendChild(tbody); bungkus.appendChild(t); hs.appendChild(bungkus);
 
   hs.appendChild(el("div", "bantu",
-    "Volume, Net Lot, dan Net Foreign dijumlahkan sepanjang rentang tanggal; " +
-    "%Net dihitung dari hasil penjumlahan itu. Net Foreign satuannya LOT, " +
-    "sama seperti Volume dan Net Lot, jadi ketiganya bisa langsung dibandingkan. " +
+    "Tot. Volume, Net Lot, dan Net Foreign dijumlahkan sepanjang rentang " +
+    "tanggal; %Net dihitung dari hasil penjumlahan itu. Net Foreign satuannya " +
+    "LOT, sama seperti Volume dan Net Lot, jadi bisa langsung dibandingkan. " +
     "Kepala tabel dan kolom Emiten sama-sama beku, jadi tetap terbaca " +
     "waktu digulir ke bawah maupun digeser ke samping. " +
-    "Harga selalu yang TERBARU dan tidak ikut rentang, jadi tanggalnya " +
-    "ditulis di kepala kolom - kalau data hari ini belum diunggah, yang " +
-    "muncul tanggal kemarin. Persentase di sebelahnya perubahan dari awal " +
-    "rentang sampai tanggal itu."));
+    "Harga dan Volume (lot) sama-sama memakai data hari TERBARU dan tidak " +
+    "ikut rentang, jadi tanggalnya ditulis di kepala kolom - kalau data hari " +
+    "ini belum diunggah, yang muncul tanggal kemarin. Persentase di sebelah " +
+    "harga perubahan dari awal rentang sampai tanggal itu."));
+  hs.appendChild(el("div", "bantu",
+    "Vol Rata2 = Tot. Volume dibagi jumlah hari yang BENAR-BENAR ada " +
+    "transaksinya, bukan seluruh hari bursa dalam rentang. Jumlah harinya " +
+    "ditulis kecil di bawah angkanya, dan itu wajib dibaca: saham yang cuma " +
+    "berdagang 3 hari bisa punya rata-rata lebih besar daripada saham yang " +
+    "berdagang 22 hari, padahal total volumenya jauh lebih kecil. " +
+    "Emiten yang tidak berdagang di tanggal terbaru ditulis – pada " +
+    "kolom Volume (lot), bukan 0, supaya tidak ikut lolos saringan."));
   hs.appendChild(el("div", "bantu",
     "Net Lot dihitung dari beli dan jual tiap broker yang SUDAH dijumlahkan " +
     "sepanjang rentang, bukan dari penjumlahan net harian. Broker yang beli " +
@@ -1653,7 +1727,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-08-1";
+const VERSI_APP = "2026-09-09-1";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
