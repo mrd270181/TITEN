@@ -2207,7 +2207,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-09-7";
+const VERSI_APP = "2026-09-09-8";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -3930,6 +3930,14 @@ function panelTransaksi(w) {
   /* Rentang campuran sengaja TIDAK dihitung: menjumlahkan angka nett dengan angka
      gross menghasilkan bilangan yang tidak berarti apa pun. */
   const punyaGross = cekG.semuaGross;
+  /* Total net seluruh broker = jumlah SISI POSITIF saja. Sisi negatifnya sama
+     besar, jadi ini sekaligus besar sisi distribusi. Dipakai sebagai pembagi
+     %Partisipasi: broker net beli menjumlah tepat +100%, net jual -100%. */
+  let totalNet = 0;
+  Object.keys(agg).forEach(k => {
+    const d = agg[k].beli - agg[k].jual;
+    if (d > 0) totalNet += d;
+  });
   const baris = Object.keys(agg).map(k => {
     const a = agg[k];
     /* %Net memakai SISI YANG LEBIH BESAR sebagai pembagi, sama seperti di halaman
@@ -3944,6 +3952,10 @@ function panelTransaksi(w) {
             jual: a.jual,
             avgJ: a.jual ? Math.round(a.nilaiJ / a.jual / 100) : 0,
             net: a.beli - a.jual,
+            /* Dibulatkan ke satu angka di belakang koma SEBELUM disimpan:
+               tabelUrut memformat apa adanya, dan 16,755930% tidak terbaca. */
+            part: totalNet
+              ? Math.round((a.beli - a.jual) / totalNet * 1000) / 10 : null,
             pnet: pnet,
             pputar: pnet === null ? null : 100 - Math.abs(pnet),
             nilai: Math.round(a.nilaiB - a.nilaiJ)};
@@ -3980,10 +3992,19 @@ function panelTransaksi(w) {
     {judul: "Vol Jual", kunci: "jual", angka: true},
     {judul: "Avg Jual", kunci: "avgJ", angka: true},
     {judul: "Net Lot", kunci: "net", angka: true, warna: true},
+    {judul: "%Partisipasi", kunci: "part", angka: true, persen: true, warna: true},
     {judul: "%Net", kunci: "pnet", angka: true, persen: true, silang: true},
     {judul: "%Crossing", kunci: "pputar", angka: true, persen: true},
     {judul: "Net Value", kunci: "nilai", angka: true, warna: true},
   ], baris, "net", true));
+  p.appendChild(el("div", "bantu",
+    "%Partisipasi = Net Lot broker ini dibagi TOTAL net lot seluruh broker " +
+    "pada rentang yang sama, bukan dibagi volume \u2014 volume sudah diwakili " +
+    "kolom %Net di sebelahnya. Jadi angkanya menjawab: dari seluruh barang " +
+    "yang benar-benar berpindah tangan, berapa bagian yang diambil broker ini. " +
+    "Karena sisi beli dan sisi jual selalu sama besar, broker yang net beli " +
+    "menjumlah tepat 100% dan yang net jual \u2212100%. Angka minus berarti " +
+    "porsinya di sisi jual, bukan partisipasi yang kecil."));
   p.appendChild(el("div", "bantu", catatanGross));
   w.appendChild(p);
 }
