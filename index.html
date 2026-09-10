@@ -757,7 +757,13 @@ function hitungFavorit(dari, sampai) {
       /* Rekaman pertama = tanggal terbaru. Tanggalnya ikut disimpan, bukan cuma
          harganya: emiten yang tidak sempat transaksi di hari terakhir akan
          memakai harga hari sebelumnya, dan tanpa tanggal itu tidak kelihatan. */
-      if (!a.akhir) { a.akhir = x.c; a.tglAkhir = h.tgl; }
+      /* Penutupan SEBELUMNYA menurut IDX pada hari yang sama ikut disimpan:
+         persentase di sebelah Harga harus perubahan HARI ITU, sama seperti di
+         aplikasi bursa mana pun. Dulu dihitung dari awal rentang, sehingga
+         kepala kolom bertuliskan satu tanggal tapi angkanya perubahan
+         berhari-hari - dan sesudah ada kolom TOT. % HRGA, dua angka rentang
+         jadi bersebelahan dan yang satu menyamar jadi perubahan harian. */
+      if (!a.akhir) { a.akhir = x.c; a.tglAkhir = h.tgl; a.akhirP = x.p || 0; }
       /* Tanggal terakhir yang ADA VOLUMENYA - beda dengan tanggal harga.
          IDX tetap menuliskan harga penutupan untuk emiten yang tidak
          diperdagangkan (harga hari sebelumnya dibawa), volumenya saja nol.
@@ -811,7 +817,7 @@ function hitungFavorit(dari, sampai) {
     return {
       kode: em, nama: nama[em] || h.nama || "",
       harga: h.akhir || 0, tglHarga: h.tglAkhir || "",
-      ubah: (h.awal && h.akhir) ? (h.akhir - h.awal) / h.awal * 100 : null,
+      ubah: (h.akhirP && h.akhir) ? (h.akhir - h.akhirP) / h.akhirP * 100 : null,
       /* TOT. % HRGA - total perubahan harga sepanjang rentang, dihitung UJUNG
          KE UJUNG: penutupan hari terakhir rentang dibagi penutupan sebelum
          hari pertama rentang. BUKAN penjumlahan persen harian - naik 20% lalu
@@ -1070,8 +1076,9 @@ function panelFavorit(w) {
         " " + (r.ubah > 0 ? "▲" : r.ubah < 0 ? "▼" : "▬") +
         Math.abs(r.ubah).toFixed(1).replace(".", ",") + "%");
       u.style.fontSize = "10.5px";
-      u.title = "Perubahan " + tglID(favDari) + " → " +
-                (r.tglHarga ? tglID(r.tglHarga) : "harga terakhir");
+      u.title = "Perubahan pada " +
+                (r.tglHarga ? tglID(r.tglHarga) : "hari itu") +
+                " terhadap penutupan sebelumnya";
       ch.appendChild(u);
     }
     /* Emiten yang tidak diperdagangkan di tanggal kepala tabel memakai harga
@@ -1150,8 +1157,10 @@ function panelFavorit(w) {
     "waktu digulir ke bawah maupun digeser ke samping. " +
     "Harga dan Volume (lot) sama-sama memakai data hari TERBARU dan tidak " +
     "ikut rentang, jadi tanggalnya ditulis di kepala kolom - kalau data hari " +
-    "ini belum diunggah, yang muncul tanggal kemarin. Persentase di sebelah " +
-    "harga perubahan dari awal rentang sampai tanggal itu."));
+    "ini belum diunggah, yang muncul tanggal kemarin. Persentase kecil di " +
+    "sebelah harga perubahan HARI ITU saja terhadap penutupan sebelumnya " +
+    "menurut IDX — bukan perubahan sepanjang rentang. Yang sepanjang rentang " +
+    "ada di kolom TOT. % HRGA di sebelahnya."));
   hs.appendChild(el("div", "bantu",
     "TOT. % HRGA total perubahan harga sepanjang rentang tanggal, dihitung " +
     "UJUNG KE UJUNG: penutupan hari terakhir rentang dibagi penutupan " +
@@ -2247,7 +2256,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-10-1";
+const VERSI_APP = "2026-09-10-2";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
