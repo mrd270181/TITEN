@@ -730,6 +730,14 @@ function siapkanFavorit() {
   }
 }
 
+/* Perubahan kumulatif dari penutupan `dasar` ke penutupan emiten `em` pada
+   satu hari sesudahnya. null kalau salah satunya belum ada. */
+function hplus(dasar, baris, em) {
+  if (!dasar || !baris) return null;
+  const c = (baris[em] || {}).c;
+  return c ? (c - dasar) / dasar * 100 : null;
+}
+
 /* Satu kali jalan untuk SELURUH emiten sekaligus. Memanggil kumpulkan() per
    emiten berarti menyapu ulang seluruh transaksi 75 kali - di HP itu terasa. */
 function hitungFavorit(dari, sampai) {
@@ -798,6 +806,17 @@ function hitungFavorit(dari, sampai) {
     });
   });
 
+  /* Tiga hari bursa SESUDAH ujung rentang, untuk kolom H+1..H+3. Dipakai
+     menguji sendiri hasil saringan: %NF dihitung dari rentang yang berakhir di
+     `sampai`, tiga kolom ini memperlihatkan apa yang terjadi sesudahnya.
+     Yang ada cuma tanggal yang datanya SUDAH diunggah - kalau rentangnya
+     berakhir di tanggal terbaru, daftarnya kosong dan ketiga kolom jadi
+     tanda pisah. Itu bukan kesalahan, memang belum terjadi. */
+  const tglPlus = daftarHari.map(x => x.tgl).filter(t => t > sampai)
+                            .sort().slice(0, 3);
+  const barisPlus = tglPlus.map(t =>
+    ((daftarHari.find(x => x.tgl === t) || {}).baris) || {});
+
   const nama = {};
   (DATA.scr || []).forEach(b => { nama[b[0]] = b[1] || ""; });
 
@@ -848,6 +867,17 @@ function hitungFavorit(dari, sampai) {
          Catatan satuan: h.asing dan h.vol dua-duanya masih dalam LEMBAR di
          sini, jadi nisbahnya benar tanpa perlu dibagi 100 lebih dulu. */
       pnf: h.vol ? (h.asing || 0) / h.vol * 100 : null,
+      /* H+1..H+3. Persentasenya KUMULATIF dari penutupan di ujung rentang,
+         bukan perubahan harian: yang ingin dijawab "kalau dibeli di penutupan
+         hari itu lalu dijual di penutupan H+n, hasilnya berapa". Perubahan
+         harian menjawab pertanyaan lain dan tidak menjumlah jadi hasil akhir.
+         Pembandingnya h.tutup (penutupan ujung rentang), BUKAN h.akhir yang
+         selalu memakai hari terbaru. */
+      tglPlus: tglPlus,
+      hrgPlus: barisPlus.map(b => (b[em] || {}).c || null),
+      hp1: hplus(h.tutup, barisPlus[0], em),
+      hp2: hplus(h.tutup, barisPlus[1], em),
+      hp3: hplus(h.tutup, barisPlus[2], em),
       beli3: daftar.filter(x => x.net > 0).slice(0, 3),
       jual3: daftar.filter(x => x.net < 0).slice(-3).reverse(),
     };
@@ -1004,6 +1034,9 @@ function panelFavorit(w) {
     {kunci: "pnet",  judul: "%Net", angka: true},
     {kunci: "asing", judul: "Net Foreign (lot)", angka: true},
     {kunci: "pnf",   judul: "%NF", angka: true},
+    {kunci: "hp1",   judul: "H+1", angka: true},
+    {kunci: "hp2",   judul: "H+2", angka: true},
+    {kunci: "hp3",   judul: "H+3", angka: true},
     {kunci: "beli3", judul: "3 Broker Net BELI"},
     {kunci: "jual3", judul: "3 Broker Net JUAL"},
   ];
@@ -1032,6 +1065,13 @@ function panelFavorit(w) {
     else if ((k.kunci === "vol" || k.kunci === "totHrg" || k.kunci === "pnf")
              && favDari && favSampai)
       ket = tglID(favDari) + " – " + tglID(favSampai);
+    /* Tiap kolom H+n diberi tanggalnya sendiri. Kalau datanya belum ada,
+       ditulis apa adanya - lebih jelas daripada kepala kolom kosong. */
+    else if (k.kunci === "hp1" || k.kunci === "hp2" || k.kunci === "hp3") {
+      const tp = (hasil[0] || {}).tglPlus || [];
+      const t = tp[Number(k.kunci.slice(2)) - 1];
+      ket = t ? tglID(t) : "belum ada";
+    }
     if (ket) {
       const tg = el("div", null, ket);
       tg.style.fontSize = "10px";
@@ -1167,6 +1207,29 @@ function panelFavorit(w) {
                       : r.pnf < 0 ? "var(--turun)" : "";
     }
     tr.appendChild(cnf);
+
+    /* H+1..H+3: harga di atas, perubahan kumulatifnya di bawah. Yang diurutkan
+       persentasenya, bukan harganya - harga antar emiten tidak sebanding. */
+    [0, 1, 2].forEach(j => {
+      const cp = el("td", "num");
+      const u = r["hp" + (j + 1)];
+      const hg = (r.hrgPlus || [])[j];
+      if (u === null || u === undefined || !hg) {
+        cp.textContent = "–";
+        cp.style.color = "var(--ink-3)";
+      } else {
+        cp.appendChild(el("span", null, rp(hg)));
+        const s2 = el("div", u > 0 ? "naik" : u < 0 ? "turun" : "datar",
+          (u > 0 ? "+" : u < 0 ? "−" : "") +
+          Math.abs(u).toFixed(2).replace(".", ",") + "%");
+        s2.style.fontSize = "10px";
+        cp.appendChild(s2);
+      }
+      /* H+3 diberi garis tepi: itu lama pegang yang diuji, jadi kolom itulah
+         vonisnya - dua kolom sebelumnya cuma memperlihatkan jalannya. */
+      if (j === 2) cp.style.borderLeft = "2px solid var(--merek)";
+      tr.appendChild(cp);
+    });
     tr.appendChild(selBroker(r.beli3, true));
     tr.appendChild(selBroker(r.jual3, false));
     tbody.appendChild(tr);
@@ -1185,6 +1248,17 @@ function panelFavorit(w) {
     "sebelah harga perubahan HARI ITU saja terhadap penutupan sebelumnya " +
     "menurut IDX — bukan perubahan sepanjang rentang. Yang sepanjang rentang " +
     "ada di kolom TOT. % HRGA di sebelahnya."));
+  hs.appendChild(el("div", "bantu",
+    "H+1, H+2, H+3 = harga penutupan satu, dua, dan tiga hari bursa SESUDAH " +
+    "ujung rentang. Persentase kecil di bawahnya KUMULATIF terhadap penutupan " +
+    "di ujung rentang — jadi H+3 langsung menjawab: kalau dibeli di penutupan " +
+    "hari itu lalu dijual di penutupan H+3, hasilnya berapa. Bukan perubahan " +
+    "harian. H+3 diberi garis tepi karena itulah lama pegang yang diuji. " +
+    "Tanda pisah berarti hari itu belum ada datanya, bukan berarti tidak ada " +
+    "transaksi. Gunanya kolom ini untuk menguji sendiri: setel rentang ke " +
+    "tanggal lampau, urutkan %NF, lalu lihat sendiri seberapa sering benar. " +
+    "Jangan kaget kalau banyak yang merah — kelebihan rata-ratanya cuma " +
+    "sekitar 0,4%, hasil dari banyak yang meleset dan sedikit yang menang besar."));
   hs.appendChild(el("div", "bantu",
     "%NF = Net Foreign dibagi Tot. Volume, dua-duanya sepanjang rentang yang " +
     "sama. Nisbah inilah yang punya daya ramal, bukan angka Net Foreign-nya: " +
@@ -2291,7 +2365,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-10-3";
+const VERSI_APP = "2026-09-10-4";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
