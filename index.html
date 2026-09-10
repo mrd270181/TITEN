@@ -709,11 +709,6 @@ let favUrut = "vol", favArah = -1;
 let hvDari = "", hvSampai = "", hvAkhir = "";
 /* Emiten yang dipilih untuk ditampilkan. Kosong = tampilkan semua. */
 let hvPilih = [];
-/* Pengurutan kolom TOT. % HRGA: 0 = urutan asli (urutan user memilih),
-   -1 = besar ke kecil, 1 = kecil ke besar. Sengaja BERPUTAR kembali ke 0,
-   bukan cuma bolak-balik dua arah: urutan pilihan itu gunanya menyandingkan
-   emiten yang sengaja dibandingkan, jadi harus bisa dikembalikan. */
-let hvUrut = 0;
 const HV_HARI = 10;              /* paling banyak 10 hari = 20 kolom angka */
 
 function siapkanFavorit() {
@@ -771,6 +766,15 @@ function hitungFavorit(dari, sampai) {
         a.tglVolAkhir = h.tgl; a.volAkhir = x.v;
       }
       if (h.tgl < dari || h.tgl > sampai) return;
+      /* Dua titik untuk TOT. % HRGA, keduanya DI DALAM rentang - beda dengan
+         a.akhir di atas yang selalu memakai hari terbaru walau rentangnya
+         berakhir lebih awal. daftarHari disapu dari yang TERBARU, jadi rekaman
+         dalam-rentang yang pertama datang itu ujung kanan rentang. */
+      if (!a.tglTutup) { a.tglTutup = h.tgl; a.tutup = x.c; }
+      /* Penyebutnya penutupan SEBELUM hari pertama rentang, bukan penutupan
+         hari pertama itu sendiri: kalau memakai penutupan hari pertama,
+         gerakan hari pertama sendiri hilang dari hitungan. */
+      if (!a.tglBuka || h.tgl <= a.tglBuka) { a.tglBuka = h.tgl; a.buka = x.p || 0; }
       a.vol += x.v || 0;
       /* Hari yang BENAR-BENAR ada transaksinya - ini pembagi Vol Rata2.
          Hari tanpa volume tidak ikut membagi, jadi angkanya menjawab "kalau
@@ -808,6 +812,13 @@ function hitungFavorit(dari, sampai) {
       kode: em, nama: nama[em] || h.nama || "",
       harga: h.akhir || 0, tglHarga: h.tglAkhir || "",
       ubah: (h.awal && h.akhir) ? (h.akhir - h.awal) / h.awal * 100 : null,
+      /* TOT. % HRGA - total perubahan harga sepanjang rentang, dihitung UJUNG
+         KE UJUNG: penutupan hari terakhir rentang dibagi penutupan sebelum
+         hari pertama rentang. BUKAN penjumlahan persen harian - naik 20% lalu
+         turun 20% tidak kembali ke titik semula, jadi menjumlahkannya akan
+         melebihkan gerakan yang bergejolak (1.000 -> 1.104 itu +10,4%,
+         sedangkan jumlah persen hariannya bisa terbaca +19,9%). */
+      totHrg: (h.buka && h.tutup) ? (h.tutup - h.buka) / h.buka * 100 : null,
       vol: Math.round((h.vol || 0) / 100),   /* volume disimpan per lembar */
       /* Volume hari terbaru. Emiten yang tidak berdagang di tanggal itu diberi
          null, BUKAN volume hari terakhirnya dan bukan 0: nol akan terbaca
@@ -969,6 +980,7 @@ function panelFavorit(w) {
   const KOLOM_FAV = [
     {kunci: "kode",  judul: "Emiten"},
     {kunci: "harga", judul: "Harga", angka: true},
+    {kunci: "totHrg", judul: "TOT. % HRGA", angka: true},
     {kunci: "volHari", judul: "Volume (lot)", angka: true},
     {kunci: "volRata", judul: "Vol Rata2", angka: true},
     {kunci: "vol",   judul: "Tot. Volume (lot)", angka: true},
@@ -1000,7 +1012,7 @@ function panelFavorit(w) {
     if ((k.kunci === "harga" || k.kunci === "volHari") && tglHargaUmum)
       ket = tglID(tglHargaUmum) + " " + tglHargaUmum.slice(0, 4);
     else if (k.kunci === "volRata") ket = "per hari transaksi";
-    else if (k.kunci === "vol" && favDari && favSampai)
+    else if ((k.kunci === "vol" || k.kunci === "totHrg") && favDari && favSampai)
       ket = tglID(favDari) + " – " + tglID(favSampai);
     if (ket) {
       const tg = el("div", null, ket);
@@ -1073,6 +1085,20 @@ function panelFavorit(w) {
     }
     tr.appendChild(ch);
 
+    /* TOT. % HRGA. Diberi latar berwarna (.pil), bukan cuma huruf berwarna:
+       ini kolom yang dicari mata lebih dulu daripada angka volume di
+       sebelahnya, jadi harus menonjol tanpa perlu dibaca satu per satu. */
+    const ct = el("td", "num");
+    if (r.totHrg === null) ct.appendChild(el("span", null, "–"));
+    else {
+      const s = el("span", "pil " + (r.totHrg > 0 ? "naik"
+                                   : r.totHrg < 0 ? "turun" : "datar"));
+      s.textContent = (r.totHrg > 0 ? "+" : r.totHrg < 0 ? "−" : "") +
+        Math.abs(r.totHrg).toFixed(2).replace(".", ",") + "%";
+      ct.appendChild(s);
+    }
+    tr.appendChild(ct);
+
     /* Volume hari terbaru. Kalau emitennya libur di tanggal itu, yang tampil
        tanda pisah plus tanggal transaksi terakhirnya - sama seperti Harga. */
     const cvh = el("td", "num");
@@ -1126,6 +1152,15 @@ function panelFavorit(w) {
     "ikut rentang, jadi tanggalnya ditulis di kepala kolom - kalau data hari " +
     "ini belum diunggah, yang muncul tanggal kemarin. Persentase di sebelah " +
     "harga perubahan dari awal rentang sampai tanggal itu."));
+  hs.appendChild(el("div", "bantu",
+    "TOT. % HRGA total perubahan harga sepanjang rentang tanggal, dihitung " +
+    "UJUNG KE UJUNG: penutupan hari terakhir rentang dibagi penutupan " +
+    "SEBELUM hari pertama rentang. Bukan penjumlahan persen harian — naik " +
+    "20% lalu turun 20% tidak kembali ke titik semula, jadi menjumlahkan " +
+    "persen harian akan melebihkan gerakan yang bergejolak. Kolomnya bisa " +
+    "diketuk untuk mengurutkan seperti kolom angka lainnya. Berbeda dengan " +
+    "Harga, kolom ini MENGIKUTI rentang tanggal, jadi rentangnya ditulis di " +
+    "kepala kolom."));
   hs.appendChild(el("div", "bantu",
     "Vol Rata2 = Tot. Volume dibagi jumlah hari yang BENAR-BENAR ada " +
     "transaksinya, bukan seluruh hari bursa dalam rentang. Jumlah harinya " +
@@ -1223,24 +1258,11 @@ function panelHargaVol(w) {
          di sebelahnya. Dengan begitu hari bursa paling lama pun tetap punya
          persentase, dan emiten yang kemarin tidak diperdagangkan tidak
          dibandingkan dengan hari yang terpaut jauh. */
-      return {c: x.c, p: x.p || 0,
+      return {c: x.c,
               ubah: x.p ? (x.c - x.p) / x.p * 100 : null,
               v: Math.round((x.v || 0) / LOT)};
     }),
-  })).filter(r => r.sel.some(x => x)).map(r => {
-    /* TOT. % HRGA - perubahan harga UJUNG KE UJUNG sepanjang rentang, bukan
-       penjumlahan persentase harian. Naik 20% lalu turun 20% tidak kembali ke
-       titik semula, jadi menjumlahkan persen harian akan melebihkan gerakan
-       yang bergejolak: 1.000 -> 1.104 itu +10,40%, sedangkan jumlah harian
-       untuk jalur yang sama bisa terbaca +19,86%.
-       Pembilangnya penutupan hari BERISI terakhir, penyebutnya kolom
-       "sebelumnya" milik IDX pada hari BERISI pertama - hari yang emitennya
-       tidak diperdagangkan dilewati, tidak dianggap 0%. */
-    const isi = r.sel.filter(x => x);         /* r.sel urut lama -> baru */
-    const awal = isi[0], akhir = isi[isi.length - 1];
-    r.tot = (awal && akhir && awal.p) ? (akhir.c - awal.p) / awal.p * 100 : null;
-    return r;
-  });
+  })).filter(r => r.sel.some(x => x));
 
   const hitung = el("div", "hitung", "");
   p.appendChild(hitung);
@@ -1259,25 +1281,6 @@ function panelHargaVol(w) {
   const sudut1 = el("th", null, "Emiten");
   sudut1.style.top = "0"; sudut1.style.left = "0"; sudut1.style.zIndex = "5";
   tr1.appendChild(sudut1);
-  /* Kolom TOT. sengaja ditaruh di sebelah kanan Emiten dan ikut BEKU, bukan di
-     ujung kanan tabel: dengan sepuluh hari x dua kolom, ujung kanan itu lebarnya
-     sekitar tiga layar HP, jadi angka rangkumannya justru yang paling sulit
-     dilihat. Jarak bekunya diukur saat jalan di pasangBeku(). */
-  const thTot1 = el("th", null, "TOT. % HRGA");
-  thTot1.style.top = "0"; thTot1.style.zIndex = "5";
-  thTot1.style.cursor = "pointer";
-  thTot1.title = "Ketuk untuk mengurutkan";
-  function labelUrut() {
-    thTot1.textContent = "TOT. % HRGA" +
-      (hvUrut === -1 ? " ▼" : hvUrut === 1 ? " ▲" : "");
-  }
-  thTot1.onclick = () => {
-    hvUrut = hvUrut === 0 ? -1 : hvUrut === -1 ? 1 : 0;
-    labelUrut();
-    isiBaris();
-  };
-  labelUrut();
-  tr1.appendChild(thTot1);
   urut.forEach(t2 => {
     const th = el("th", null, tglID(t2));
     th.colSpan = 2;
@@ -1293,9 +1296,6 @@ function panelHargaVol(w) {
   const sudut2 = el("th", null, "");
   sudut2.style.left = "0"; sudut2.style.zIndex = "5";
   tr2.appendChild(sudut2);
-  const thTot2 = el("th", null, "");
-  thTot2.style.zIndex = "5";
-  tr2.appendChild(thTot2);
   urut.forEach(() => {
     const a = el("th", null, "Hrg");
     a.style.borderLeft = "2px solid rgba(0,0,0,.35)";
@@ -1361,83 +1361,30 @@ function panelHargaVol(w) {
     if (tambahEm(inCari.value)) { inCari.value = ""; gambarChip(); isiBaris(); }
   };
 
-  /* Kolom TOT. beku menempel di kanan kolom Emiten. Lebar kolom Emiten tidak
-     tetap - bergantung panjang nama emiten yang sedang tampil - jadi jaraknya
-     DIUKUR saat jalan, jangan dipatok angka: dipatok berarti menyisakan celah
-     (kolom lain menyembul waktu digeser) atau saling menimpa. */
-  let bekuLebar = 0;
-  function pasangBeku(sisa) {
-    const w0 = sudut1.getBoundingClientRect().width;
-    if (!w0) {
-      /* Lebarnya nol berarti panelnya belum tergambar di layar - biasanya
-         halamannya masih hidden waktu digambar. Dicoba lagi beberapa bingkai;
-         kalau tetap nol, penjaga scroll di bawah yang mengurus. */
-      if (sisa === undefined) sisa = 10;
-      if (sisa > 0) requestAnimationFrame(() => pasangBeku(sisa - 1));
-      return;
-    }
-    bekuLebar = w0;
-    thTot1.style.left = w0 + "px";
-    thTot2.style.left = w0 + "px";
-    Array.prototype.forEach.call(tbody.querySelectorAll("td.tot-hv"),
-                                 x => { x.style.left = w0 + "px"; });
-  }
-  /* Penjaga terakhir: begitu tabelnya benar-benar digeser, panelnya pasti sudah
-     terlihat, jadi pengukurannya pasti berhasil. Tanpa ini, kolom TOT bisa ikut
-     hanyut ke kiri kalau kebetulan digambar saat halaman masih tersembunyi. */
-  bungkus.addEventListener("scroll", () => { if (!bekuLebar) pasangBeku(0); },
-                           {passive: true});
-
   function isiBaris() {
     tbody.innerHTML = "";
-    let pilihEm = hvPilih.length
+    const pilihEm = hvPilih.length
       ? hvPilih.map(k => semua.find(r => r.kode === k)).filter(Boolean)
       : semua;
-    if (hvUrut) {
-      /* slice() dulu: kalau tidak ada emiten dipilih, pilihEm ITU semua -
-         mengurutkannya langsung berarti mengacak daftar induknya. Emiten yang
-         totalnya tidak bisa dihitung selalu ditaruh paling bawah, ke arah mana
-         pun diurutkan, supaya tanda "-" tidak menyamar jadi nilai terkecil. */
-      pilihEm = pilihEm.slice().sort((a, b) => {
-        if (a.tot === null && b.tot === null) return 0;
-        if (a.tot === null) return 1;
-        if (b.tot === null) return -1;
-        return hvUrut === -1 ? b.tot - a.tot : a.tot - b.tot;
-      });
-    }
     hitung.textContent = (hvPilih.length
       ? rp(pilihEm.length) + " dari " + rp(semua.length) : rp(semua.length)) +
       " emiten";
     if (!pilihEm.length) {
       const tr = el("tr");
       const td = el("td", null, "Tidak ada emiten yang cocok");
-      td.colSpan = urut.length * 2 + 2;
+      td.colSpan = urut.length * 2 + 1;
       td.style.textAlign = "left";
       tr.appendChild(td); tbody.appendChild(tr);
-      requestAnimationFrame(pasangBeku);
       return;
     }
     pilihEm.forEach((r, i) => {
       const tr = el("tr");
-      const latar = i % 2 === 0 ? "var(--surface-2)" : "var(--surface-1)";
       const c0 = el("td");
       c0.appendChild(el("span", "kode", r.kode));
       c0.appendChild(el("span", "nm", r.nama));
       c0.style.position = "sticky"; c0.style.left = "0"; c0.style.zIndex = "2";
-      c0.style.background = latar;
+      c0.style.background = i % 2 === 0 ? "var(--surface-2)" : "var(--surface-1)";
       tr.appendChild(c0);
-      const ct = el("td", "num tot-hv");
-      ct.style.position = "sticky"; ct.style.zIndex = "2";
-      ct.style.background = latar;
-      if (r.tot === null) ct.textContent = "–";
-      else {
-        const s = el("span", "pil " + (r.tot > 0 ? "naik"
-                                     : r.tot < 0 ? "turun" : "datar"));
-        s.textContent = (r.tot > 0 ? "+" : r.tot < 0 ? "−" : "") +
-          Math.abs(r.tot).toFixed(2).replace(".", ",") + "%";
-        ct.appendChild(s);
-      }
-      tr.appendChild(ct);
       /* urutan sel HARUS mengikuti urut (terbaru di kiri), bukan hari */
       urut.forEach(t2 => {
         const j = hari.indexOf(t2);
@@ -1462,7 +1409,6 @@ function panelHargaVol(w) {
       });
       tbody.appendChild(tr);
     });
-    requestAnimationFrame(pasangBeku);
   }
   gambarChip();
   isiBaris();
@@ -1476,26 +1422,16 @@ function panelHargaVol(w) {
     const h = sel ? sel.getBoundingClientRect().height : 0;
     if (h > 0) Array.prototype.forEach.call(tr2.children,
                                             x => { x.style.top = h + "px"; });
-    pasangBeku();
   });
   hs.appendChild(el("div", "bantu",
-    "TOT. % HRGA perubahan harga sepanjang rentang, dihitung UJUNG KE UJUNG: " +
-    "penutupan hari terakhir yang ada dibagi penutupan sebelum hari pertama " +
-    "yang ada. Bukan penjumlahan persen harian \u2014 naik 20% lalu turun 20% " +
-    "tidak kembali ke titik semula, jadi penjumlahan akan melebihkan gerakan " +
-    "yang bergejolak. Hari yang emitennya tidak diperdagangkan dilewati, " +
-    "tidak dihitung 0%. " +
     "Angka besar di kolom Hrg perubahan terhadap penutupan hari bursa " +
     "SEBELUMNYA menurut IDX \u2014 bukan selisih dengan kolom di sebelahnya, " +
     "jadi hari terlama pun tetap terisi dan emiten yang kemarin tidak " +
     "diperdagangkan tidak dibandingkan dengan hari yang terpaut jauh. " +
-    "Angka kecil di bawahnya harga penutupan hari itu. Kolom Emiten, " +
-    "TOT. % HRGA, dan kedua baris kepala sama-sama beku. " +
-    "Kepala kolom TOT. % HRGA bisa diketuk untuk mengurutkan: sekali " +
-    "besar\u2192kecil (\u25bc), sekali lagi kecil\u2192besar (\u25b2), sekali lagi kembali ke " +
-    "urutan Anda memilih \u2014 supaya emiten yang sengaja disandingkan bisa " +
-    "dikembalikan bersebelahan. Emiten yang totalnya tidak bisa dihitung " +
-    "selalu di baris paling bawah."));
+    "Angka kecil di bawahnya harga penutupan hari itu. Kolom Emiten dan " +
+    "kedua baris kepala sama-sama beku. Urutan barisnya mengikuti urutan " +
+    "Anda memilih, bukan diurutkan sendiri \u2014 supaya emiten yang " +
+    "sengaja disandingkan tetap bersebelahan."));
   w.appendChild(hs);
 }
 
@@ -2311,7 +2247,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-10-2";
+const VERSI_APP = "2026-09-10-1";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
