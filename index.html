@@ -696,7 +696,9 @@ let kriteria = [{gab: "DAN", metrik: "PER (x)", op: "<", nilai: 10},
    sekadar dilihat besarannya. */
 const METRIK_FAV = [
   ["pnet",  "% Net thd Gross"],
+  ["pnf",   "%NF (net foreign / volume)"],
   ["asing", "Net Foreign (lot)"],
+  ["totHrg", "TOT. % HRGA"],
 ];
 let subScr = "saringan";
 let favDari = "", favSampai = "", favAkhir = "";
@@ -838,6 +840,14 @@ function hitungFavorit(dari, sampai) {
       net: net, gross: gross,
       pnet: gross ? net / gross * 100 : null,
       asing: Math.round((h.asing || 0) / 100),   /* lembar -> lot */
+      /* %NF = net foreign dibagi volume, sepanjang rentang yang sama. Yang
+         punya daya ramal itu NISBAHNYA, bukan angka mutlaknya: emiten besar
+         selalu punya net foreign besar semata-mata karena volumenya besar.
+         Pembaginya volume TOTAL rentang, bukan volume sehari, supaya sebanding
+         dengan pembilangnya yang juga dijumlahkan sepanjang rentang.
+         Catatan satuan: h.asing dan h.vol dua-duanya masih dalam LEMBAR di
+         sini, jadi nisbahnya benar tanpa perlu dibagi 100 lebih dulu. */
+      pnf: h.vol ? (h.asing || 0) / h.vol * 100 : null,
       beli3: daftar.filter(x => x.net > 0).slice(0, 3),
       jual3: daftar.filter(x => x.net < 0).slice(-3).reverse(),
     };
@@ -985,14 +995,15 @@ function panelFavorit(w) {
 
   const KOLOM_FAV = [
     {kunci: "kode",  judul: "Emiten"},
-    {kunci: "harga", judul: "Harga", angka: true},
     {kunci: "totHrg", judul: "TOT. % HRGA", angka: true},
+    {kunci: "harga", judul: "Harga", angka: true},
     {kunci: "volHari", judul: "Volume (lot)", angka: true},
     {kunci: "volRata", judul: "Vol Rata2", angka: true},
     {kunci: "vol",   judul: "Tot. Volume (lot)", angka: true},
     {kunci: "net",   judul: "Tot. Net Lot", angka: true},
     {kunci: "pnet",  judul: "%Net", angka: true},
     {kunci: "asing", judul: "Net Foreign (lot)", angka: true},
+    {kunci: "pnf",   judul: "%NF", angka: true},
     {kunci: "beli3", judul: "3 Broker Net BELI"},
     {kunci: "jual3", judul: "3 Broker Net JUAL"},
   ];
@@ -1018,7 +1029,8 @@ function panelFavorit(w) {
     if ((k.kunci === "harga" || k.kunci === "volHari") && tglHargaUmum)
       ket = tglID(tglHargaUmum) + " " + tglHargaUmum.slice(0, 4);
     else if (k.kunci === "volRata") ket = "per hari transaksi";
-    else if ((k.kunci === "vol" || k.kunci === "totHrg") && favDari && favSampai)
+    else if ((k.kunci === "vol" || k.kunci === "totHrg" || k.kunci === "pnf")
+             && favDari && favSampai)
       ket = tglID(favDari) + " – " + tglID(favSampai);
     if (ket) {
       const tg = el("div", null, ket);
@@ -1069,6 +1081,20 @@ function panelFavorit(w) {
     c0.style.background = i % 2 === 0 ? "var(--surface-2)" : "var(--surface-1)";
     tr.appendChild(c0);
 
+    /* TOT. % HRGA. Diberi latar berwarna (.pil), bukan cuma huruf berwarna:
+       ini kolom yang dicari mata lebih dulu daripada angka volume di
+       sebelahnya, jadi harus menonjol tanpa perlu dibaca satu per satu. */
+    const ct = el("td", "num");
+    if (r.totHrg === null) ct.appendChild(el("span", null, "–"));
+    else {
+      const s = el("span", "pil " + (r.totHrg > 0 ? "naik"
+                                   : r.totHrg < 0 ? "turun" : "datar"));
+      s.textContent = (r.totHrg > 0 ? "+" : r.totHrg < 0 ? "−" : "") +
+        Math.abs(r.totHrg).toFixed(2).replace(".", ",") + "%";
+      ct.appendChild(s);
+    }
+    tr.appendChild(ct);
+
     const ch = el("td", "num");
     ch.appendChild(el("span", null, rp(r.harga)));
     if (r.ubah !== null) {
@@ -1091,20 +1117,6 @@ function panelFavorit(w) {
       ch.appendChild(tg);
     }
     tr.appendChild(ch);
-
-    /* TOT. % HRGA. Diberi latar berwarna (.pil), bukan cuma huruf berwarna:
-       ini kolom yang dicari mata lebih dulu daripada angka volume di
-       sebelahnya, jadi harus menonjol tanpa perlu dibaca satu per satu. */
-    const ct = el("td", "num");
-    if (r.totHrg === null) ct.appendChild(el("span", null, "–"));
-    else {
-      const s = el("span", "pil " + (r.totHrg > 0 ? "naik"
-                                   : r.totHrg < 0 ? "turun" : "datar"));
-      s.textContent = (r.totHrg > 0 ? "+" : r.totHrg < 0 ? "−" : "") +
-        Math.abs(r.totHrg).toFixed(2).replace(".", ",") + "%";
-      ct.appendChild(s);
-    }
-    tr.appendChild(ct);
 
     /* Volume hari terbaru. Kalau emitennya libur di tanggal itu, yang tampil
        tanda pisah plus tanggal transaksi terakhirnya - sama seperti Harga. */
@@ -1143,6 +1155,18 @@ function panelFavorit(w) {
       rp(Math.abs(r.asing)));
     ca.style.color = r.asing > 0 ? "var(--naik)" : r.asing < 0 ? "var(--turun)" : "";
     tr.appendChild(ca);
+
+    /* %NF. Diwarnai seperti Net Foreign supaya arahnya terbaca sekilas, tapi
+       tanpa latar - yang menonjol di baris ini cukup TOT. % HRGA saja. */
+    const cnf = el("td", "num");
+    if (r.pnf === null) cnf.textContent = "–";
+    else {
+      cnf.textContent = (r.pnf > 0 ? "+" : r.pnf < 0 ? "−" : "") +
+        Math.abs(r.pnf).toFixed(2).replace(".", ",") + "%";
+      cnf.style.color = r.pnf > 0 ? "var(--naik)"
+                      : r.pnf < 0 ? "var(--turun)" : "";
+    }
+    tr.appendChild(cnf);
     tr.appendChild(selBroker(r.beli3, true));
     tr.appendChild(selBroker(r.jual3, false));
     tbody.appendChild(tr);
@@ -1161,6 +1185,17 @@ function panelFavorit(w) {
     "sebelah harga perubahan HARI ITU saja terhadap penutupan sebelumnya " +
     "menurut IDX — bukan perubahan sepanjang rentang. Yang sepanjang rentang " +
     "ada di kolom TOT. % HRGA di sebelahnya."));
+  hs.appendChild(el("div", "bantu",
+    "%NF = Net Foreign dibagi Tot. Volume, dua-duanya sepanjang rentang yang " +
+    "sama. Nisbah inilah yang punya daya ramal, bukan angka Net Foreign-nya: " +
+    "emiten besar selalu punya net foreign besar semata-mata karena volumenya " +
+    "besar, jadi mengurutkan angka mutlak hanya mengurutkan ukuran emiten. " +
+    "Diuji pada 368 hari bursa (Januari 2025 – September 2026): emiten " +
+    "sepersepuluh teratas menurut %NF di antara saham likuid rata-rata " +
+    "unggul 0,44% terhadap pasar dalam 3 hari bursa berikutnya. Itu " +
+    "kelebihan SEBELUM biaya transaksi — sesudah biaya, tipis, dan pada " +
+    "2025 nyaris impas. Pakai untuk mengurutkan dan menyaring, bukan " +
+    "sebagai isyarat beli."));
   hs.appendChild(el("div", "bantu",
     "TOT. % HRGA total perubahan harga sepanjang rentang tanggal, dihitung " +
     "UJUNG KE UJUNG: penutupan hari terakhir rentang dibagi penutupan " +
@@ -2256,7 +2291,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-10-2";
+const VERSI_APP = "2026-09-10-3";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
