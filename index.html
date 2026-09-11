@@ -2365,7 +2365,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-10-4";
+const VERSI_APP = "2026-09-11-1";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -3729,6 +3729,7 @@ function saldoAwal(emiten, pasar) {
 const pilih = {emiten: "", pasar: "ALL MARKET", dari: "", sampai: "",
                urut: "posisi", arah: -1, sub: "posisi", subPos: "posisi",
                kalBroker: "", kalBulan: "", brSiap: false,
+               kalEmMode: "GROSS",
                mode: "net", pnetBroker: "", tglAkhir: "",
                hrBroker: "", hrBulan: "",
                subNet: "rasio", tierD1: "", tierS1: "", tierD2: "", tierS2: ""};
@@ -4486,6 +4487,148 @@ function panelKalender(w) {
   w.appendChild(panelBrPilihan(brPie, "Pie porsi posisi", "pie"));
 }
 
+/* Lot, nilai, dan harga rata-rata per tanggal untuk SATU emiten, seluruh broker
+   digabung — bahan KAL. EMITEN.
+
+   GROSS dihitung SATU SISI saja: jumlah lot BELI seluruh broker. Tiap transaksi
+   punya dua sisi, jadi beli + jual akan memberi angka dua kali lipat volume
+   bursa — bukan itu yang dimaksud orang waktu menyebut volume.
+
+   NET diturunkan dari data gross yang sama: jumlah selisih beli-jual milik
+   broker yang bersih MEMBELI. Jadi tidak perlu data nett lama sama sekali.
+
+   `gross` menandai apakah tanggal itu memang data gross — ciri khasnya ada
+   broker yang muncul di sisi beli DAN sisi jual sekaligus. Pada data nett lama
+   tiap broker cuma di satu sisi, sehingga net selalu sama dengan gross dan
+   kalendernya cuma akan mengulang angka yang sama dua kali. Tanggal seperti itu
+   sengaja tidak ditampilkan. */
+function kalEmitenHarian(emiten, pasar) {
+  const papanDipakai = pasar === "ALL MARKET" ? PAPAN : [pasar === "REGULER" ? "REG" : pasar];
+  const trx = semuaTrx();
+  const per = {};
+  papanDipakai.forEach(p => (trx[p] || []).forEach(r => {
+    if (r.em !== emiten) return;
+    const a = per[r.tgl] || (per[r.tgl] = {});
+    const b = a[r.br] || (a[r.br] = {beli: 0, jual: 0, nilaiB: 0});
+    b.beli += r.beli; b.jual += r.jual;
+    b.nilaiB += r.beli * r.avgB * 100;
+  }));
+  const hasil = {};
+  Object.keys(per).forEach(t => {
+    let gLot = 0, gNilai = 0, nLot = 0, nNilai = 0, duaSisi = false;
+    Object.keys(per[t]).forEach(k => {
+      const b = per[t][k];
+      gLot += b.beli; gNilai += b.nilaiB;
+      if (b.beli > 0 && b.jual > 0) duaSisi = true;
+      if (b.beli > b.jual) {
+        const sisa = b.beli - b.jual;
+        nLot += sisa;
+        /* nilainya diambil sebanding: harga beli rata-rata broker itu juga */
+        nNilai += b.beli ? b.nilaiB / b.beli * sisa : 0;
+      }
+    });
+    hasil[t] = {gross: duaSisi,
+                gLot: gLot, gNilai: gNilai,
+                gAvg: gLot ? gNilai / (gLot * 100) : null,
+                nLot: nLot, nNilai: nNilai,
+                nAvg: nLot ? nNilai / (nLot * 100) : null};
+  });
+  return hasil;
+}
+
+function panelKalenderEmiten(w) {
+  const p = el("div", "panel");
+  p.appendChild(el("h2", null, "Kalender emiten — " + pilih.emiten));
+
+  const alat = el("div", "alat");
+  const bulanAda = [...new Set(tanggalTersedia().map(t => t.slice(0, 7)))];
+  const selBl = el("select", "cari");
+  bulanAda.forEach(b => {
+    const o = el("option", null, b); o.value = b;
+    if (b === pilih.kalBulan) o.selected = true;
+    selBl.appendChild(o);
+  });
+  selBl.onchange = () => { pilih.kalBulan = selBl.value; halBroker(); };
+  alat.appendChild(selBl);
+
+  const selMode = el("select", "cari");
+  [["GROSS", "GROSS — seluruh volume"], ["NET", "NET — yang berpindah"]]
+    .forEach(([k, judul]) => {
+      const o = el("option", null, judul); o.value = k;
+      if (k === pilih.kalEmMode) o.selected = true;
+      selMode.appendChild(o);
+    });
+  selMode.onchange = () => { pilih.kalEmMode = selMode.value; halBroker(); };
+  alat.appendChild(selMode);
+  p.appendChild(alat);
+
+  const ring = kalEmitenHarian(pilih.emiten, pilih.pasar);
+  const net = pilih.kalEmMode === "NET";
+  const [th, bl] = pilih.kalBulan.split("-").map(Number);
+  const hariAwal = (new Date(th, bl - 1, 1).getDay() + 6) % 7;   /* Senin = 0 */
+  const jml = new Date(th, bl, 0).getDate();
+
+  const tabel = el("table", "kalender");
+  const thead = el("thead"); const trh = el("tr");
+  ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"]
+    .forEach(h => trh.appendChild(el("th", null, h)));
+  thead.appendChild(trh); tabel.appendChild(thead);
+
+  const tbody = el("tbody");
+  let tr = el("tr");
+  let adaNett = 0, adaIsi = 0;
+  for (let i = 0; i < hariAwal; i++) tr.appendChild(el("td", null, ""));
+  for (let d = 1; d <= jml; d++) {
+    const kunci = `${th}-${String(bl).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    const a = ring[kunci];
+    const td = el("td");
+    td.appendChild(el("div", "kal-tgl", String(d)));
+    if (a !== undefined) {
+      if (!a.gross) {
+        /* data nett lama - tidak ditampilkan, cuma ditandai */
+        adaNett++;
+        const x = el("div", "kal-sub", "nett");
+        x.style.color = "var(--ink-3)";
+        td.appendChild(x);
+      } else {
+        adaIsi++;
+        const lot = net ? a.nLot : a.gLot;
+        const nilai = net ? a.nNilai : a.gNilai;
+        const avg = net ? a.nAvg : a.gAvg;
+        td.appendChild(el("div", "kal-nilai", lotSingkat(lot)))
+          .title = lot.toLocaleString("id-ID") + " lot";
+        const nil = el("div", "kal-sub", nilaiSingkat(nilai));
+        nil.title = "Rp " + Math.round(nilai).toLocaleString("id-ID");
+        td.appendChild(nil);
+        if (avg !== null)
+          td.appendChild(el("div", "kal-avg", "@" + Math.round(avg).toLocaleString("id-ID")));
+        td.style.background = "rgba(22,163,74,.10)";
+      }
+    }
+    tr.appendChild(td);
+    if ((hariAwal + d) % 7 === 0) { tbody.appendChild(tr); tr = el("tr"); }
+  }
+  if (tr.children.length) tbody.appendChild(tr);
+  tabel.appendChild(tbody);
+  p.appendChild(tabel);
+
+  p.appendChild(el("div", "bantu",
+    "Baris sel: " + (net ? "net" : "gross") + " lot · nilai transaksi · harga " +
+    "rata-rata. Seluruh broker digabung, jadi ini gambaran emitennya — bukan " +
+    "satu broker seperti di KAL. BROKER. " + pilih.pasar + ". " +
+    "GROSS dihitung SATU SISI (jumlah lot beli), bukan beli ditambah jual, " +
+    "supaya sepadan dengan volume yang tercatat bursa. NET diturunkan dari data " +
+    "gross yang sama: jumlah selisih beli-jual milik broker yang bersih membeli. " +
+    "Selisih gross dengan net itulah crossing — barang yang cuma berputar di " +
+    "broker yang sama. Volume besar dengan net kecil berarti ramainya semu." +
+    (adaNett ? " " + adaNett + " tanggal bulan ini datanya masih NETT lama dan " +
+      "sengaja dikosongkan: di data itu net selalu sama dengan gross, jadi " +
+      "angkanya cuma akan mengulang dirinya sendiri." : "")));
+  if (!adaIsi && !adaNett)
+    p.appendChild(el("div", "bantu", "Belum ada data broker untuk bulan ini."));
+  w.appendChild(p);
+}
+
 /* ===== GRAFIK DAN PIE BROKER: DUA PANEL, PILIHAN MASING-MASING =====
 
    Grafik dan pie sengaja TIDAK berbagi pilihan. Keduanya menjawab pertanyaan yang
@@ -5147,7 +5290,8 @@ function halBroker() {
   w.appendChild(dl);
 
   const tab = el("div", "sub-tab");
-  [["posisi", "POSISI"], ["kalender", "KALENDER"], ["dashboard", "%NET"]].forEach(([k, judul]) => {
+  [["posisi", "POSISI"], ["kalender", "KAL. BROKER"],
+   ["kalemiten", "KAL. EMITEN"], ["dashboard", "%NET"]].forEach(([k, judul]) => {
     const b = el("button", pilih.sub === k ? "aktif" : null, judul);
     b.onclick = () => { pilih.sub = k; halBroker(); };
     tab.appendChild(b);
@@ -5158,6 +5302,7 @@ function halBroker() {
      kotak Dari/Sampai disembunyikan supaya tidak terlihat seperti mengatur
      sesuatu padahal tidak dipakai. */
   w.appendChild(kotakKontrol({tanggal: pilih.sub !== "kalender" &&
+    pilih.sub !== "kalemiten" &&
     !(pilih.sub === "posisi" && pilih.subPos === "harian") &&
     !(pilih.sub === "dashboard" && pilih.subNet === "tier")}));
 
@@ -5181,6 +5326,7 @@ function halBroker() {
     else panelPosisi(w);
   }
   else if (pilih.sub === "kalender") panelKalender(w);
+  else if (pilih.sub === "kalemiten") panelKalenderEmiten(w);
   else {
     /* %NET berisi dua cara memandang yang berbeda: RASIO menilai satu rentang
        tanggal, TIER membandingkan dua rentang. Keduanya tidak muat ditumpuk,
