@@ -201,6 +201,25 @@ table.kalender td{border:1px solid var(--garis);height:74px;vertical-align:top;p
 /* Angka lot kalender, dibesarkan dari 11px jadi 14px. Selnya ikut ditinggikan
    74 -> 80px supaya tiga barisnya tetap lega. Kelasnya dipisah dari .kal-nilai
    karena .kal-nilai masih dipakai di tempat lain. */
+/* Aliran asing di CEK VOLUME: dua kotak sejajar lalu satu baris kesimpulan. */
+.fx{display:flex;gap:8px;margin-top:9px}
+.fx>div{flex:1;min-width:0;border:1px solid var(--garis);border-radius:10px;
+  padding:8px 9px;background:var(--surface-2)}
+.fx .lbl{font-size:9.5px;text-transform:uppercase;letter-spacing:.5px;
+  font-weight:700;color:var(--ink-2)}
+.fx .ang{font-size:14px;font-weight:800;margin-top:2px;line-height:1.15;
+  font-variant-numeric:tabular-nums;word-break:break-all}
+.fx .kcl{font-size:9.5px;color:var(--ink-3);font-weight:600;margin-top:1px}
+.fxNet{margin-top:8px;border-radius:10px;padding:9px 11px;border:1px solid;
+  display:flex;align-items:center;gap:8px}
+.fxNet .lbl{font-size:9.5px;text-transform:uppercase;letter-spacing:.5px;
+  font-weight:700;color:var(--ink-2);flex:0 0 auto}
+.fxNet .ang{margin-left:auto;font-size:16px;font-weight:800;text-align:right;
+  font-variant-numeric:tabular-nums}
+@media (max-width:340px){
+  .fxNet{flex-direction:column;align-items:flex-start;gap:2px}
+  .fxNet .ang{margin-left:0;text-align:left;font-size:15px}
+}
 table.besar td{height:80px}
 .kal-lot{font-size:14px;font-weight:800;margin-top:2px;line-height:1.1;word-break:break-all}
 /* HP kecil (iPhone SE dan sejenisnya, 320px): kolomnya cuma 39,6px sehingga
@@ -1729,7 +1748,17 @@ function ringkasRentang(idx, i1, i2, pasarP, investorP) {
     let net, gross;
     if (investor === "domestik") {
       net = -netAsing;
-      gross = vol - (fb + fs);
+      /* Dulu vol - (fb + fs), dan itu bisa NEGATIF. Diuji dengan data BBCA
+         8 September 2026: volume 108.127.600, asing beli 88.110.900, asing
+         jual 47.968.700 -> rumus lama memberi -27.952.000 lembar.
+
+         Sebabnya asing bisa ada di DUA SISI sekaligus - membeli dari asing
+         lain - sehingga beli+jual asing boleh melebihi volume. Tiap transaksi
+         punya dua sisi, jadi seluruh sisi = 2 x volume, dan sisi domestik =
+         2 x volume dikurangi sisi asing. Dicocokkan dengan berkas pecahan
+         domestik: beli 108.127.600 - 88.110.900 = 20.016.700 dan jual
+         108.127.600 - 47.968.700 = 60.158.900, dua-duanya cocok tepat. */
+      gross = Math.max(0, 2 * vol - (fb + fs));
     } else if (investor === "semua") {
       /* asing dan domestik dijumlahkan: netnya selalu nol, jadi yang ditampilkan
          seluruh transaksi pasar — volume dan nilainya apa adanya */
@@ -2242,8 +2271,17 @@ function halVolume() {
 
   const rk = ringkasRentang(idx, i1, i2);
   const kode = Object.keys(rk);
-  let volTot = 0, nilaiTot = 0, netTot = 0;
-  kode.forEach(k => { volTot += rk[k].vol; nilaiTot += rk[k].nilai; netTot += rk[k].net; });
+  let volTot = 0, nilaiTot = 0, netTot = 0, fbLbr = 0, fsLbr = 0, fbRp = 0, fsRp = 0;
+  kode.forEach(k => {
+    const x = rk[k];
+    volTot += x.vol; nilaiTot += x.nilai; netTot += x.net;
+    fbLbr += x.fb; fsLbr += x.fs;
+    /* Rupiahnya dihitung PER EMITEN lalu dijumlahkan, bukan lot seluruh pasar
+       dikali satu harga. Menjumlahkan lot lintas emiten tidak ada artinya:
+       1 lot BBCA dan 1 lot saham gocap bukan uang yang sama. Itu sebabnya
+       angka rupiah ini yang jadi kesimpulan, bukan angka lotnya. */
+    fbRp += x.fb * x.avg; fsRp += x.fs * x.avg;
+  });
   const aTot = arah(netTot);
   p.appendChild(el("div", "hitung")).innerHTML =
     `${tglID(volDari)} s/d ${tglID(volSampai)} · ${i2 - i1 + 1} hari bursa · ` +
@@ -2252,6 +2290,48 @@ function halVolume() {
       ? `seluruh transaksi <b>${lot(Math.abs(netTot))} lot</b>`
       : `net ${volInvestor === "domestik" ? "domestik" : "asing"} ` +
         `<b class="${aTot.k}">${aTot.t}${lot(Math.abs(netTot))} lot</b>`);
+
+  /* ---- aliran asing: beli, jual, lalu netnya ----
+     Angka asing IDX cuma ada untuk pasar reguler, jadi panel ini disembunyikan
+     kalau pasarnya nego/tunai - lebih baik tidak ada daripada memakai angka
+     reguler yang bukan miliknya. */
+  if (volPasar !== "nego" && (fbLbr || fsLbr)) {
+    const kotak = el("div", "fx");
+    [["Foreign buy", fbRp, fbLbr, "naik"], ["Foreign sell", fsRp, fsLbr, "turun"]]
+      .forEach(([judul, rp, lbr, warna]) => {
+        const d = el("div");
+        d.appendChild(el("div", "lbl", judul));
+        const a = el("div", "ang", rupiah(rp, "IDR"));
+        a.style.color = "var(--" + warna + ")";
+        d.appendChild(a);
+        d.appendChild(el("div", "kcl", lotSingkat(Math.round(lbr / LOT)) + " lot"));
+        kotak.appendChild(d);
+      });
+    p.appendChild(kotak);
+
+    const netRp = fbRp - fsRp;
+    const beli = netRp > 0;
+    const garis = netRp === 0 ? "var(--garis)" : beli ? "var(--naik)" : "var(--turun)";
+    const net = el("div", "fxNet");
+    net.style.borderColor = garis;
+    net.style.background = netRp === 0 ? "var(--surface-2)"
+      : beli ? "rgba(12,163,12,.12)" : "rgba(208,59,59,.12)";
+    net.appendChild(el("div", "lbl", "Net foreign"));
+    const isi = el("div", "ang",
+      (netRp === 0 ? "SEIMBANG " : beli ? "BELI " : "JUAL ") +
+      rupiah(Math.abs(netRp), "IDR"));
+    isi.style.color = netRp === 0 ? "var(--ink-2)"
+      : beli ? "var(--naik)" : "var(--turun)";
+    net.appendChild(isi);
+    p.appendChild(net);
+    p.appendChild(el("div", "bantu",
+      "Foreign buy dan sell dari Ringkasan Saham IDX, pasar reguler. Satuan " +
+      "aslinya LEMBAR, jadi rupiahnya dihitung lembar dikali harga rata-rata " +
+      "tiap emiten - sebuah pendekatan, karena transaksi asing hari itu terjadi " +
+      "di macam-macam harga. Diuji dengan data BBCA 8 September 2026: melesetnya " +
+      "0,26% dari nilai yang sebenarnya."));
+  }
+
   if (volPasar === "nego")
     p.appendChild(el("div", "bantu",
       "IDX tidak memisahkan pembelian asing untuk pasar tunai dan nego. " +
@@ -2375,7 +2455,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-11-3";
+const VERSI_APP = "2026-09-12-1";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
