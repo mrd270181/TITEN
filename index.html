@@ -221,6 +221,55 @@ table.kalender td{border:1px solid var(--garis);height:74px;vertical-align:top;p
   .fxNet .ang{margin-left:0;text-align:left;font-size:15px}
 }
 table.besar td{height:80px}
+/* ---------- BROKER SUMMARY ----------
+   Tiga kartu BERJAJAR, bukan ditumpuk: gunanya memang membandingkan
+   berdampingan. Di HP deretnya digeser mendatar dan tiap kartu punya kancing
+   berhenti sendiri; mulai 1080px ketiganya muat sekaligus jadi tiga kolom. */
+.deret-sum{display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;
+  -webkit-overflow-scrolling:touch;margin:0 -10px 10px;padding:0 10px 4px}
+.kartu-sum{flex:0 0 min(92vw,420px);scroll-snap-align:start;min-width:0;
+  background:var(--surface-1);border:1px solid var(--garis);border-radius:12px;padding:9px}
+@media (min-width:1080px){
+  .deret-sum{display:grid;grid-template-columns:repeat(3,1fr);overflow:visible;
+    margin:0 0 10px;padding:0}
+  .kartu-sum{flex:none}
+}
+.sum-kepala{display:flex;align-items:flex-start;gap:8px;margin-bottom:8px}
+.sum-kepala .kiri{flex:0 0 96px}
+.sum-kepala input{font-weight:800;font-size:15px;letter-spacing:.5px;text-transform:uppercase;
+  padding:6px 8px}
+.sum-kepala .kanan{flex:1;min-width:0;text-align:right}
+.sum-nm{font-size:10.5px;color:var(--ink-3);white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis}
+.sum-harga{font-size:16px;font-weight:800;line-height:1.15}
+.sum-ubah{font-size:11px;font-weight:700}
+.sum-atur{display:flex;gap:6px;margin-bottom:7px}
+.sum-atur>div{flex:1;min-width:0}
+/* Kotak papan diberi jatah lebih lebar dan hurufnya dikecilkan: dengan tiga
+   kolom sama rata di layar 360px, tulisan "REGULER" terpotong jadi "REGULE"
+   dan "ALL MARKET" lebih parah lagi - nama papan yang terpotong bisa terbaca
+   sebagai papan yang salah. */
+.sum-atur .kol-papan{flex:1.25}
+.sum-atur .kol-inv{flex:.9}
+.sum-atur select,.sum-atur input{font-size:11.5px;padding:6px 4px}
+.saklar{display:flex;border:1px solid var(--garis);border-radius:9px;overflow:hidden}
+.saklar button{flex:1;border:0;background:var(--surface-1);color:var(--ink-2);
+  font-size:11px;font-weight:700;padding:7px 2px;cursor:pointer;font-family:inherit}
+.saklar button.aktif{background:var(--merek);color:#fff}
+.mati{opacity:.45}
+.sum-tbl{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table.sum{font-size:11px}
+table.sum th{font-size:9.5px;padding:5px 5px;position:static}
+table.sum td{padding:4px 5px}
+.sum-brk-b{font-weight:700;color:var(--merek-tua);text-align:left}
+.sum-brk-j{font-weight:700;color:var(--turun);text-align:left}
+.sum-no{color:var(--ink-3);font-size:10px}
+.sum-pisah{border-left:2px solid var(--garis)}
+.sum-kaki{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;margin-top:8px;
+  background:var(--garis);border:1px solid var(--garis);border-radius:9px;overflow:hidden}
+.sum-kaki>div{background:var(--surface-2);padding:6px 4px;text-align:center}
+.sum-kaki .t{font-size:9px;color:var(--ink-3);font-weight:700;letter-spacing:.4px}
+.sum-kaki .v{font-size:12px;font-weight:800;margin-top:1px}
 .kal-lot{font-size:14px;font-weight:800;margin-top:2px;line-height:1.1;word-break:break-all}
 /* HP kecil (iPhone SE dan sejenisnya, 320px): kolomnya cuma 39,6px sehingga
    ruang isinya 33,7px. Bentuk terpanjang seperti "10,0K" masih lewat sedikit
@@ -2455,7 +2504,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-12-1";
+const VERSI_APP = "2026-09-16-1";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -3821,7 +3870,10 @@ const pilih = {emiten: "", pasar: "ALL MARKET", dari: "", sampai: "",
                kalBroker: "", kalBulan: "", brSiap: false,
                mode: "net", pnetBroker: "", tglAkhir: "",
                hrBroker: "", hrBulan: "",
-               subNet: "rasio", tierD1: "", tierS1: "", tierD2: "", tierS2: ""};
+               subNet: "rasio", tierD1: "", tierS1: "", tierD2: "", tierS2: "",
+               /* SUMMARY: tiga kartu yang masing-masing menyimpan emiten,
+                  rentang tanggal, papan dan mode sendiri */
+               sumKartu: []};
 
 function siapkanPilihan() {
   const tgl = tanggalTersedia();
@@ -3839,6 +3891,26 @@ function siapkanPilihan() {
   }
   if (!pilih.dari) pilih.dari = akhir;
   if (!pilih.sampai) pilih.sampai = akhir;
+  /* Tiga kartu SUMMARY disiapkan sekali saja. Sesudah itu isinya milik user -
+     jangan disusun ulang tiap halaman digambar, kalau tidak emiten dan papan
+     yang baru dia pilih akan balik sendiri ke bawaan. */
+  if (pilih.sumKartu.length < 3) {
+    const bawaan = ["AADI", "BBCA", "TLKM"];
+    for (let i = pilih.sumKartu.length; i < 3; i++)
+      pilih.sumKartu.push({em: BRK.em.includes(bawaan[i]) ? bawaan[i]
+                             : (BRK.em[i] || BRK.em[0] || ""),
+                           dari: akhir, sampai: akhir, kunci: false,
+                           pasar: "REGULER", mode: "gross"});
+  }
+  /* Kartu yang tanggalnya BELUM pernah disentuh user ikut maju sendiri begitu
+     ada tanggal baru - kalau tidak, kartu itu diam di tanggal lama dan data
+     baru terlihat seperti belum masuk. Kartu yang tanggalnya sengaja diatur
+     user (kunci) dibiarkan, cuma dijaga supaya tidak melewati data yang ada. */
+  if (akhir) pilih.sumKartu.forEach(k => {
+    if (!k.kunci) { k.dari = akhir; k.sampai = akhir; return; }
+    if (!k.dari || k.dari > akhir) k.dari = akhir;
+    if (!k.sampai || k.sampai > akhir) k.sampai = akhir;
+  });
   if (!pilih.kalBulan) pilih.kalBulan = (pilih.sampai || "").slice(0, 7);
   if (!pilih.brSiap) {
     pilih.brSiap = true;
@@ -5261,6 +5333,254 @@ function panelDashboard(w) {
   w.appendChild(p3);
 }
 
+/* ---------- BROKER SUMMARY ----------
+   Bentuknya mengikuti tabel broker summary IPOT: dua sisi berdampingan, sisi
+   beli urut menurun di kiri dan sisi jual urut menurun di kanan, dihubungkan
+   nomor urut di tengah. Tiga emiten berjajar supaya bisa dibandingkan langsung.
+
+   Yang TIDAK ada dan sengaja tidak dikarang:
+   - pemisahan investor asing/domestik per broker. Data yang ada tidak memuatnya
+     (IDX hanya memberi foreign buy/sell di tingkat emiten), jadi kotaknya
+     ditampilkan dalam keadaan mati, bukan disembunyikan - supaya jelas bahwa
+     tempatnya sudah disediakan dan tinggal diisi kalau sumbernya ada.
+   - frekuensi per broker. Kolom "#" di IPOT adalah frekuensi; di sini nomor
+     urut, dan judulnya memang ditulis "#" tanpa mengaku frekuensi. */
+
+/* GROSS: satu broker boleh muncul di dua sisi sekaligus - itu memang maksud
+   tabel gross. NET: tiap broker disisakan di sisi yang lebih besar saja. */
+function sumSisiGross(agg) {
+  const beli = [], jual = [];
+  Object.keys(agg).forEach(k => {
+    const a = agg[k];
+    if (a.beli > 0) beli.push({br: k, lot: a.beli, val: a.nilaiB,
+                               avg: a.nilaiB / (a.beli * 100)});
+    if (a.jual > 0) jual.push({br: k, lot: a.jual, val: a.nilaiJ,
+                               avg: a.nilaiJ / (a.jual * 100)});
+  });
+  return {beli: beli, jual: jual};
+}
+
+function sumSisiNet(agg) {
+  const beli = [], jual = [];
+  Object.keys(agg).forEach(k => {
+    const a = agg[k];
+    const net = a.beli - a.jual, nilai = a.nilaiB - a.nilaiJ;
+    if (net > 0) beli.push({br: k, lot: net, val: nilai, avg: nilai / (net * 100)});
+    else if (net < 0) jual.push({br: k, lot: -net, val: -nilai, avg: -nilai / (-net * 100)});
+  });
+  return {beli: beli, jual: jual};
+}
+
+/* Net foreign dalam rupiah untuk satu rentang tanggal.
+   Sumbernya kolom foreign IDX, yang hanya mencakup PASAR REGULER - pemanggil
+   wajib memeriksa papannya sendiri. Nilainya TAKSIRAN: IDX memberi lembar, bukan
+   rupiah, jadi lembar dikali harga rata-rata hari itu (nilai/volume). Memakai
+   harga penutupan meleset jauh lebih besar; ini sudah diuji terhadap layar
+   Stockbit dan selisihnya tinggal di bawah satu persen. */
+function sumNetForeign(emiten, dari, sampai) {
+  if (!DATA || !DATA.tglVol || !DATA.vol || !DATA.vol[emiten]) return null;
+  let ada = false, jml = 0;
+  DATA.tglVol.forEach((t, i) => {
+    if (t < dari || t > sampai) return;
+    const a = DATA.vol[emiten][i];
+    if (!a || !a[0]) return;
+    if (a[1] === null && a[2] === null) return;
+    ada = true;
+    jml += ((a[2] || 0) - (a[1] || 0)) * (a[3] / a[0]);
+  });
+  return ada ? jml : null;
+}
+
+function sumAngka(v) {
+  return (v === null || v === undefined || !isFinite(v)) ? "–" : rp(Math.round(v));
+}
+
+function kartuSummary(no) {
+  const s = pilih.sumKartu[no];
+  const w = el("div", "kartu-sum");
+  const tglAda = tanggalTersedia();
+
+  /* ---- kepala: kode emiten, nama, harga penutupan ---- */
+  const kep = el("div", "sum-kepala");
+  const kiri = el("div", "kiri");
+  const inp = el("input", "cari");
+  inp.value = s.em; inp.setAttribute("list", "daftarEmBroker");
+  inp.onchange = () => {
+    const v = inp.value.trim().toUpperCase();
+    if (BRK.em.includes(v)) { s.em = v; halBroker(); }
+    else inp.value = s.em;
+  };
+  kiri.appendChild(inp); kep.appendChild(kiri);
+
+  const kanan = el("div", "kanan");
+  kanan.appendChild(el("div", "sum-nm", DATA.nama[s.em] || ""));
+  /* DATA.hrg hanya memuat 5 hari bursa terakhir, jadi harga penutupan pada
+     tanggal "sampai" belum tentu ada. Kalau tidak ada, dipakai penutupan
+     terakhir dan tanggalnya ditulis apa adanya - bukan diam-diam dianggap
+     harga tanggal itu. */
+  const hrg = DATA.hrg[s.em] || [];
+  let iH = (DATA.tgl || []).indexOf(s.sampai);
+  const tepat = iH >= 0;
+  if (iH < 0) iH = 0;
+  const tutup = hrg[iH], lalu = hrg[iH + 1];
+  const ubah = (typeof tutup === "number" && typeof lalu === "number") ? tutup - lalu : null;
+  kanan.appendChild(el("div", "sum-harga", typeof tutup === "number" ? rp(tutup) : "–"));
+  const a = arah(ubah);
+  kanan.appendChild(el("div", "sum-ubah " + a.k,
+    ubah === null ? "" : a.t + rp(Math.abs(ubah)) +
+      (lalu ? " (" + nf(Math.abs(ubah / lalu * 100), 1) + "%)" : "")));
+  kep.appendChild(kanan);
+  w.appendChild(kep);
+  if (!tepat && (DATA.tgl || []).length)
+    w.appendChild(el("div", "bantu",
+      "Harga di atas penutupan " + tglID(DATA.tgl[0]) + ", bukan tanggal yang dipilih."));
+
+  /* ---- rentang tanggal ---- */
+  const brs = el("div", "sum-atur");
+  [["dari", "Dari"], ["sampai", "Sampai"]].forEach(([kunci, label]) => {
+    const b = el("div");
+    b.appendChild(el("label", "bantu", label));
+    b.appendChild(kotakTanggal(s[kunci], tglAda, t => {
+      s[kunci] = t; s.kunci = true;
+      if (s.dari > s.sampai) { if (kunci === "dari") s.sampai = t; else s.dari = t; }
+      halBroker();
+    }));
+    brs.appendChild(b);
+  });
+  w.appendChild(brs);
+
+  /* ---- investor (mati), papan, mode ---- */
+  const atur = el("div", "sum-atur");
+
+  const inv = el("div", "mati kol-inv");
+  inv.appendChild(el("label", "bantu", "Investor"));
+  const si = el("select", "cari"); si.disabled = true;
+  si.appendChild(el("option", null, "ALL (D&F)"));
+  si.title = "Belum bisa dipisah: data broker yang ada tidak memuat kebangsaan investor";
+  inv.appendChild(si); atur.appendChild(inv);
+
+  const pap = el("div", "kol-papan");
+  pap.appendChild(el("label", "bantu", "Papan"));
+  const sp = el("select", "cari");
+  ["REGULER", "NEGO", "TUNAI", "ALL MARKET"].forEach(x => {
+    const o = el("option", null, x); o.value = x;
+    if (x === s.pasar) o.selected = true;
+    sp.appendChild(o);
+  });
+  sp.onchange = () => { s.pasar = sp.value; halBroker(); };
+  pap.appendChild(sp); atur.appendChild(pap);
+
+  const md = el("div");
+  md.appendChild(el("label", "bantu", "Tampilan"));
+  const sw = el("div", "saklar");
+  [["gross", "GROSS"], ["net", "NET"]].forEach(([k, t]) => {
+    const b = el("button", s.mode === k ? "aktif" : null, t);
+    b.onclick = () => { s.mode = k; halBroker(); };
+    sw.appendChild(b);
+  });
+  md.appendChild(sw); atur.appendChild(md);
+  w.appendChild(atur);
+
+  /* ---- tabel dua sisi ---- */
+  const agg = kumpulkan(s.em, s.pasar, s.dari, s.sampai);
+  if (!Object.keys(agg).length) {
+    w.appendChild(el("div", "kosong", "Tidak ada transaksi " + s.em + " di papan " +
+      s.pasar + " pada rentang ini."));
+    return w;
+  }
+  const sisi = s.mode === "net" ? sumSisiNet(agg) : sumSisiGross(agg);
+  sisi.beli.sort((x, y) => y.lot - x.lot);
+  sisi.jual.sort((x, y) => y.lot - x.lot);
+
+  const bung = el("div", "sum-tbl");
+  const t = el("table", "sum");
+  const thead = el("thead"), trh = el("tr");
+  [["B", ""], ["B.LOT", ""], ["B.VAL", ""], ["B.AVG", ""], ["#", "sum-pisah"],
+   ["S", "sum-pisah"], ["S.LOT", ""], ["S.VAL", ""], ["S.AVG", ""]]
+    .forEach(([j, k]) => trh.appendChild(el("th", k, j)));
+  thead.appendChild(trh); t.appendChild(thead);
+
+  const tbody = el("tbody");
+  const n = Math.max(sisi.beli.length, sisi.jual.length);
+  for (let i = 0; i < n; i++) {
+    const b = sisi.beli[i], j = sisi.jual[i];
+    const tr = el("tr");
+    const sel = (kelas, isi, judul) => {
+      const td = el("td", kelas, isi);
+      if (judul) td.title = judul;
+      tr.appendChild(td);
+    };
+    sel("sum-brk-b", b ? b.br : "", b ? namaBroker(b.br) : "");
+    sel(null, b ? rp(b.lot) : "");
+    sel(null, b ? ringkas(b.val) : "");
+    sel(null, b ? sumAngka(b.avg) : "");
+    sel("sum-no sum-pisah", String(i + 1));
+    sel("sum-brk-j sum-pisah", j ? j.br : "", j ? namaBroker(j.br) : "");
+    sel(null, j ? rp(j.lot) : "");
+    sel(null, j ? ringkas(j.val) : "");
+    sel(null, j ? sumAngka(j.avg) : "");
+    tbody.appendChild(tr);
+  }
+  t.appendChild(tbody); bung.appendChild(t); w.appendChild(bung);
+
+  /* ---- kaki: total emiten, SELALU gross ----
+     Sengaja tidak ikut mode NET. T.LOT gross adalah volume emiten itu sendiri
+     dan AVG-nya harga rata-rata sebenarnya; kalau dihitung dari angka net,
+     keduanya berubah arti tiap kali saklar ditekan padahal namanya sama. */
+  const gro = sumSisiGross(agg);
+  const tlot = gro.beli.reduce((x, y) => x + y.lot, 0);
+  const tval = gro.beli.reduce((x, y) => x + y.val, 0);
+  const avg = tlot ? tval / (tlot * 100) : null;
+  const reg = s.pasar === "REGULER";
+  const fn = reg ? sumNetForeign(s.em, s.dari, s.sampai) : null;
+  const kaki = el("div", "sum-kaki");
+  [["T.LOT", rp(tlot), ""],
+   ["T.VAL", ringkas(tval), ""],
+   ["AVG", sumAngka(avg), ""],
+   ["F.NVAL", fn === null ? "––" : ringkas(fn),
+    fn === null ? "datar" : fn > 0 ? "naik" : "turun"]].forEach(([j, v, k]) => {
+    const d = el("div");
+    d.appendChild(el("div", "t", j));
+    d.appendChild(el("div", "v " + k, v));
+    kaki.appendChild(d);
+  });
+  w.appendChild(kaki);
+
+  const ket = el("div", "bantu",
+    (s.mode === "net"
+      ? "NET: tiap broker cuma muncul di satu sisi, sebesar selisihnya; lot yang berputar di broker yang sama tidak terlihat. "
+      : "GROSS: satu broker boleh ada di sisi beli dan sisi jual sekaligus. ") +
+    "T.LOT, T.VAL dan AVG di kaki selalu angka gross emiten ini, tidak ikut berubah saat saklar ditekan. " +
+    (reg ? "F.NVAL taksiran dari lembar asing IDX dikali harga rata-rata."
+         : "F.NVAL dikosongkan: foreign IDX hanya mencakup pasar reguler."));
+  w.appendChild(ket);
+  return w;
+}
+
+function panelBrokerSummary(w) {
+  const p = el("div", "panel");
+  p.appendChild(el("h2", null, "Broker Summary — tiga emiten berdampingan"));
+  p.appendChild(el("div", "bantu",
+    "Tiap kartu berdiri sendiri: emiten, rentang tanggal, papan dan NET/GROSS " +
+    "diatur terpisah, jadi satu emiten bisa dibandingkan antar papan, atau tiga " +
+    "emiten berbeda di hari yang sama. Geser mendatar untuk berpindah kartu."));
+  w.appendChild(p);
+
+  const deret = el("div", "deret-sum");
+  for (let i = 0; i < 3; i++) deret.appendChild(kartuSummary(i));
+  w.appendChild(deret);
+
+  const ket = el("div", "panel");
+  ket.appendChild(el("h2", null, "Yang belum bisa ditampilkan"));
+  ket.appendChild(el("div", "bantu",
+    "Pemisahan investor ASING dan DOMESTIK per broker belum ada sumbernya — " +
+    "IDX hanya memberi foreign buy/sell di tingkat emiten, bukan per broker, " +
+    "jadi kotak Investor dibiarkan mati. Kolom # berisi nomor urut, bukan " +
+    "frekuensi seperti di IPOT: tabel yang selama ini ditempel tidak memuat " +
+    "frekuensi per broker. Papan TUNAI datanya memang tipis, jadi sering kosong."));
+  w.appendChild(ket);
+}
+
 /* ---------- halaman utama broker ---------- */
 function halBroker() {
   const w = $("#hal-broker"); if (!w) return;
@@ -5272,7 +5592,9 @@ function halBroker() {
   w.appendChild(dl);
 
   const tab = el("div", "sub-tab");
-  [["posisi", "POSISI"], ["kalender", "KALENDER"],
+  /* "SUMMARY", bukan "BROKER SUMMARY": empat tab hanya muat satu baris di layar
+     360px kalau namanya pendek. Nama panjangnya dipakai sebagai judul panel. */
+  [["posisi", "POSISI"], ["summary", "SUMMARY"], ["kalender", "KALENDER"],
    ["dashboard", "%NET"]].forEach(([k, judul]) => {
     const b = el("button", pilih.sub === k ? "aktif" : null, judul);
     b.onclick = () => { pilih.sub = k; halBroker(); };
@@ -5283,9 +5605,13 @@ function halBroker() {
   /* BROKER HARIAN memakai pilihan bulan sendiri, sama seperti KALENDER, jadi
      kotak Dari/Sampai disembunyikan supaya tidak terlihat seperti mengatur
      sesuatu padahal tidak dipakai. */
-  w.appendChild(kotakKontrol({tanggal: pilih.sub !== "kalender" &&
-    !(pilih.sub === "posisi" && pilih.subPos === "harian") &&
-    !(pilih.sub === "dashboard" && pilih.subNet === "tier")}));
+  /* SUMMARY sengaja TIDAK memakai kotak kendali bersama: tiap kartunya
+     mengatur emiten, tanggal, papan dan mode sendiri-sendiri. Dua tempat yang
+     mengatur hal sama membuat user menyangka kendali atas yang berlaku. */
+  if (pilih.sub !== "summary")
+    w.appendChild(kotakKontrol({tanggal: pilih.sub !== "kalender" &&
+      !(pilih.sub === "posisi" && pilih.subPos === "harian") &&
+      !(pilih.sub === "dashboard" && pilih.subNet === "tier")}));
 
   if (pilih.sub === "posisi") {
     /* tiga panel posisi dulu ditumpuk ke bawah dan halamannya jadi panjang sekali;
@@ -5306,6 +5632,7 @@ function halBroker() {
     else if (pilih.subPos === "harian") panelBrokerHarian(w);
     else panelPosisi(w);
   }
+  else if (pilih.sub === "summary") panelBrokerSummary(w);
   else if (pilih.sub === "kalender") panelKalender(w);
   else {
     /* %NET berisi dua cara memandang yang berbeda: RASIO menilai satu rentang
