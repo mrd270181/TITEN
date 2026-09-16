@@ -270,6 +270,37 @@ table.sum td{padding:4px 5px}
 .sum-kaki>div{background:var(--surface-2);padding:6px 4px;text-align:center}
 .sum-kaki .t{font-size:9px;color:var(--ink-3);font-weight:700;letter-spacing:.4px}
 .sum-kaki .v{font-size:12px;font-weight:800;margin-top:1px}
+/* ---------- BROKER ACTIVITY ----------
+   Baris sub-menu POSISI jadi LIMA tab. Di layar 360px lima tab tidak muat satu
+   baris - "POSISI BROKER" sendiri sudah 85px - jadi barisnya dibiarkan
+   membungkus. Menggulung mendatar ditolak karena tab yang tersembunyi di luar
+   layar praktis tidak pernah ditemukan user. */
+.sub-tab.lima{flex-wrap:wrap}
+.sub-tab.lima button{flex:1 1 auto}
+.judul-baris{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.judul-baris h2{margin:0;flex:1;min-width:0}
+.saklar{display:flex;border:1px solid var(--garis);border-radius:9px;overflow:hidden;
+  flex:0 0 auto}
+.saklar button{border:0;background:var(--surface-1);color:var(--ink-2);font-size:11px;
+  font-weight:700;padding:7px 11px;cursor:pointer;font-family:inherit}
+.saklar button.aktif{background:var(--merek);color:#fff}
+.brk-nama{font-size:11px;color:var(--ink-3);margin:-2px 0 8px}
+.ba-atur{display:flex;gap:6px;margin-bottom:8px;align-items:flex-end}
+.ba-atur>div{flex:1;min-width:0}
+.ba-atur .saklar{flex:1}
+.ba-atur .saklar button{flex:1;padding:8px 2px}
+.em-b{font-weight:700;color:var(--merek-tua);text-align:left}
+:root[data-tema="gelap"] .em-b{color:var(--merek)}
+.em-j{font-weight:700;color:var(--turun);text-align:left}
+.rentang{display:flex;gap:5px;margin:9px 0 0;flex-wrap:wrap}
+.rentang button{flex:1;min-width:52px;border:1px solid var(--garis);background:var(--surface-1);
+  color:var(--ink-2);border-radius:8px;padding:6px 2px;font-size:11px;font-weight:700;
+  cursor:pointer;font-family:inherit}
+.rentang button.aktif{background:var(--merek);color:#fff;border-color:var(--merek)}
+/* Dibatasi lebarnya di layar besar: tanpa batas, grafiknya ikut melar sampai
+   selebar jendela dan hurufnya membesar tidak wajar. */
+svg.ba-grafik{display:block;width:100%;max-width:560px;height:auto;margin:4px auto 2px}
+.chip i{width:8px;height:8px;border-radius:50%;display:inline-block;flex:0 0 auto}
 .kal-lot{font-size:14px;font-weight:800;margin-top:2px;line-height:1.1;word-break:break-all}
 /* HP kecil (iPhone SE dan sejenisnya, 320px): kolomnya cuma 39,6px sehingga
    ruang isinya 33,7px. Bentuk terpanjang seperti "10,0K" masih lewat sedikit
@@ -2504,7 +2535,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-16-1";
+const VERSI_APP = "2026-09-16-2";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -3873,7 +3904,12 @@ const pilih = {emiten: "", pasar: "ALL MARKET", dari: "", sampai: "",
                subNet: "rasio", tierD1: "", tierS1: "", tierD2: "", tierS2: "",
                /* SUMMARY: tiga kartu yang masing-masing menyimpan emiten,
                   rentang tanggal, papan dan mode sendiri */
-               sumKartu: []};
+               sumKartu: [],
+               /* BROKER ACTIVITY - papan dan rentang tanggal tabelnya memakai
+                  kotak kendali bersama, jadi yang disimpan di sini cuma yang
+                  memang milik halaman ini sendiri */
+               baBroker: "", baMode: "net", baTampil: "tabel", baUkur: "val",
+               baChip: [], baRentang: "1M"};
 
 function siapkanPilihan() {
   const tgl = tanggalTersedia();
@@ -3923,6 +3959,10 @@ function siapkanPilihan() {
 function kotakKontrol(opsi) {
   const p = el("div", "panel");
   const baris1 = el("div", "alat");
+  /* Kotak emiten disembunyikan di halaman yang tidak memakainya (BROKER
+     ACTIVITY memilih BROKER, bukan emiten). Kotak yang terpampang tapi tidak
+     mengubah apa pun membuat user mengira halamannya tidak menurut. */
+  if (opsi.emiten !== false) {
   const inpEm = el("input", "cari"); inpEm.value = pilih.emiten;
   inpEm.placeholder = "Kode emiten"; inpEm.setAttribute("list", "daftarEmBroker");
   inpEm.onchange = () => {
@@ -3935,6 +3975,7 @@ function kotakKontrol(opsi) {
     else inpEm.value = pilih.emiten;
   };
   baris1.appendChild(inpEm);
+  }
 
   const selPasar = el("select", "cari");
   ["ALL MARKET", "REGULER", "NEGO", "TUNAI"].forEach(x => {
@@ -5581,6 +5622,387 @@ function panelBrokerSummary(w) {
   w.appendChild(ket);
 }
 
+/* ---------- BROKER ACTIVITY ----------
+   Kebalikan dari BROKER SUMMARY: di sana satu emiten dilihat dari banyak broker,
+   di sini satu BROKER dilihat dari banyak emiten - "broker ini sedang pegang
+   apa saja". Bentuknya mengikuti Broker Activity Stockbit.
+
+   BATASAN YANG WAJIB DIINGAT: TITEN hanya memuat emiten yang ada di DATA BROKER
+   VERTIKAL (sekitar 148), sedangkan broker sungguhan bertransaksi di emiten
+   mana pun. Jadi daftar di halaman ini bisa KEHILANGAN emiten tanpa tanda apa
+   pun. Peringatannya dicetak di bawah tabel dan jangan dihapus selama sumber
+   datanya masih tempelan IPOT. */
+
+function kumpulBroker(broker, pasar, dari, sampai) {
+  const hasil = {};
+  const papanDipakai = pasar === "ALL MARKET" ? PAPAN : [pasar === "REGULER" ? "REG" : pasar];
+  const trx = semuaTrx();
+  papanDipakai.forEach(p => (trx[p] || []).forEach(r => {
+    if (r.br !== broker) return;
+    if (dari && r.tgl < dari) return;
+    if (sampai && r.tgl > sampai) return;
+    const a = hasil[r.em] || (hasil[r.em] = {beli: 0, jual: 0, nilaiB: 0, nilaiJ: 0});
+    a.beli += r.beli; a.jual += r.jual;
+    a.nilaiB += r.beli * r.avgB * 100;
+    a.nilaiJ += r.jual * r.avgJ * 100;
+  }));
+  return hasil;
+}
+
+/* Diurutkan menurut NILAI, bukan lot: antar emiten lot tidak sebanding -
+   159.600 lot BNBR seharga Rp 1,5 M kalah jauh dari 3.600 lot AADI. */
+function baSisi(agg, mode) {
+  const beli = [], jual = [];
+  Object.keys(agg).forEach(k => {
+    const a = agg[k];
+    if (mode === "net") {
+      const net = a.beli - a.jual, nilai = a.nilaiB - a.nilaiJ;
+      if (net > 0) beli.push({em: k, lot: net, val: nilai, avg: nilai / (net * 100)});
+      else if (net < 0) jual.push({em: k, lot: -net, val: -nilai, avg: -nilai / (-net * 100)});
+    } else {
+      if (a.beli > 0) beli.push({em: k, lot: a.beli, val: a.nilaiB,
+                                 avg: a.nilaiB / (a.beli * 100)});
+      if (a.jual > 0) jual.push({em: k, lot: a.jual, val: a.nilaiJ,
+                                 avg: a.nilaiJ / (a.jual * 100)});
+    }
+  });
+  beli.sort((x, y) => y.val - x.val);
+  jual.sort((x, y) => y.val - x.val);
+  return {beli: beli, jual: jual};
+}
+
+/* Net KUMULATIF per hari bursa. Bukan net harian: yang ingin dilihat adalah
+   posisi yang menumpuk, jadi garis naik = broker menambah, turun = melepas.
+   Titiknya akhir hari - data TITEN harian, tidak ada gerak sepanjang hari. */
+function baDeret(broker, pasar, emiten, hari, ukur) {
+  const papanDipakai = pasar === "ALL MARKET" ? PAPAN : [pasar === "REGULER" ? "REG" : pasar];
+  const set = new Set(emiten);
+  const iHari = {}; hari.forEach((t, i) => iHari[t] = i);
+  const harian = {};
+  emiten.forEach(e => harian[e] = new Array(hari.length).fill(0));
+  const trx = semuaTrx();
+  papanDipakai.forEach(p => (trx[p] || []).forEach(r => {
+    if (r.br !== broker || !set.has(r.em)) return;
+    const i = iHari[r.tgl];
+    if (i === undefined) return;
+    harian[r.em][i] += ukur === "lot" ? (r.beli - r.jual)
+                                      : (r.beli * r.avgB - r.jual * r.avgJ) * 100;
+  }));
+  const hasil = {};
+  emiten.forEach(e => { let s = 0; hasil[e] = harian[e].map(v => (s += v)); });
+  return hasil;
+}
+
+function baGrafik(hari, seri, ukur) {
+  const NS = "http://www.w3.org/2000/svg";
+  /* Kotak gambarnya sengaja hampir selebar layar HP (400), bukan 640: seluruh
+     SVG diskalakan ke lebar wadahnya, jadi viewBox yang jauh lebih lebar
+     daripada layar membuat huruf 10,5 menyusut jadi sekitar 6 piksel dan
+     nama emiten di ujung garis tidak terbaca lagi. */
+  const W = 400, H = 200, KIRI = 56, KANAN = 10, ATAS = 10, BAWAH = 21;
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+  svg.setAttribute("class", "ba-grafik");
+  svg.setAttribute("role", "img");
+  const tambah = (t, a) => { const e = document.createElementNS(NS, t);
+    Object.keys(a).forEach(k => e.setAttribute(k, a[k])); svg.appendChild(e); return e; };
+
+  let min = 0, max = 0;
+  seri.forEach(s => s.titik.forEach(v => { if (v < min) min = v; if (v > max) max = v; }));
+  if (min === max) max = min + 1;
+  const x = i => KIRI + (hari.length < 2 ? (W - KIRI - KANAN) / 2
+                                         : i * (W - KIRI - KANAN) / (hari.length - 1));
+  const y = v => ATAS + (max - v) * (H - ATAS - BAWAH) / (max - min);
+
+  const langkah = (max - min) / 4;
+  for (let i = 0; i <= 4; i++) {
+    const v = min + langkah * i;
+    tambah("line", {x1: KIRI, x2: W - KANAN, y1: y(v), y2: y(v),
+      stroke: "var(--garis)"});
+    const t = tambah("text", {x: KIRI - 6, y: y(v) + 3.5, "text-anchor": "end",
+      "font-size": "11.5", fill: "var(--ink-3)"});
+    t.textContent = ukur === "lot" ? rp(Math.round(v)) : ringkas(v);
+  }
+  /* garis nol dipertebal: di grafik net, sisi atas dan sisi bawah nol artinya
+     berlawanan - menambah lawan melepas - jadi batasnya harus terlihat */
+  if (min < 0 && max > 0)
+    tambah("line", {x1: KIRI, x2: W - KANAN, y1: y(0), y2: y(0),
+      stroke: "var(--ink-3)", "stroke-width": "1.3"});
+
+  seri.forEach(s => {
+    const d = s.titik.map((v, i) => (i ? "L" : "M") + x(i).toFixed(1) + " " +
+      y(v).toFixed(1)).join(" ");
+    tambah("path", {d: d, fill: "none", stroke: s.warna, "stroke-width": "2",
+      "stroke-linejoin": "round", "stroke-linecap": "round"});
+  });
+
+  /* Label di ujung garis SALING MENIMPA begitu dua emiten berakhir di tinggi
+     yang hampir sama, dan dua nama bertumpuk lebih buruk daripada tanpa nama.
+     Jadi digeser turun satu per satu sampai jaraknya minimal 11px. */
+  const label = seri.map(s => ({em: s.em, warna: s.warna,
+    y: y(s.titik[s.titik.length - 1])})).sort((a, b) => a.y - b.y);
+  for (let i = 1; i < label.length; i++)
+    if (label[i].y - label[i - 1].y < 14) label[i].y = label[i - 1].y + 14;
+  /* Menggeser ke bawah saja tidak cukup: kalau garis-garisnya menumpuk di dasar
+     grafik, label paling bawah terdorong keluar kotak dan menabrak tanggal di
+     sumbu. Jadi sesudah itu seluruh tumpukan ditarik naik dari bawah. */
+  const dasar = H - BAWAH - 3;
+  if (label.length && label[label.length - 1].y > dasar) {
+    label[label.length - 1].y = dasar;
+    for (let i = label.length - 2; i >= 0; i--)
+      if (label[i + 1].y - label[i].y < 14) label[i].y = label[i + 1].y - 14;
+  }
+  label.forEach(l => {
+    const t = tambah("text", {x: W - KANAN - 2, y: l.y + 3, "text-anchor": "end",
+      "font-size": "11.5", "font-weight": "700", fill: l.warna});
+    t.textContent = l.em;
+  });
+
+  [0, hari.length >> 1, hari.length - 1].forEach((i, n) => {
+    if (i < 0 || i >= hari.length) return;
+    const t = tambah("text", {x: x(i), y: H - 6,
+      "text-anchor": n === 0 ? "start" : n === 2 ? "end" : "middle",
+      "font-size": "11.5", fill: "var(--ink-3)"});
+    t.textContent = tglID(hari[i]);
+  });
+  svg.setAttribute("aria-label", "Net kumulatif " + seri.map(s => s.em).join(", ") +
+    " selama " + hari.length + " hari bursa");
+  return svg;
+}
+
+const BA_PANJANG = {"1M": 22, "3M": 66, "6M": 132, "1T": 250};
+
+function panelBrokerActivity(w) {
+  const p = el("div", "panel");
+  const semuaTgl = tanggalTersedia();
+
+  /* broker yang benar-benar bertransaksi pada rentang & papan terpilih */
+  const papanDipakai = pilih.pasar === "ALL MARKET" ? PAPAN
+    : [pilih.pasar === "REGULER" ? "REG" : pilih.pasar];
+  const trx = semuaTrx();
+  const putar = {};
+  papanDipakai.forEach(pp => (trx[pp] || []).forEach(r => {
+    if (r.tgl < pilih.dari || r.tgl > pilih.sampai) return;
+    putar[r.br] = (putar[r.br] || 0) + r.beli + r.jual;
+  }));
+  const daftarBr = Object.keys(putar).sort();
+  if (!pilih.baBroker || daftarBr.indexOf(pilih.baBroker) < 0)
+    pilih.baBroker = daftarBr.slice().sort((a, b) => putar[b] - putar[a])[0] || "";
+
+  /* ---- judul + saklar TABEL/GRAFIK ---- */
+  const jb = el("div", "judul-baris");
+  jb.appendChild(el("h2", null, "Broker activity — " + (pilih.baBroker || "?")));
+  const sw = el("div", "saklar");
+  [["tabel", "TABEL"], ["grafik", "GRAFIK"]].forEach(([k, t]) => {
+    const b = el("button", pilih.baTampil === k ? "aktif" : null, t);
+    b.onclick = () => { pilih.baTampil = k; halBroker(); };
+    sw.appendChild(b);
+  });
+  jb.appendChild(sw);
+  p.appendChild(jb);
+
+  if (!daftarBr.length) {
+    p.appendChild(el("div", "kosong",
+      "Tidak ada transaksi di papan " + pilih.pasar + " pada rentang tanggal ini."));
+    w.appendChild(p); return;
+  }
+  p.appendChild(el("div", "brk-nama", namaBroker(pilih.baBroker) || ""));
+
+  /* ---- kendali: broker, investor (mati), gross/net ----
+     Papan dan rentang tanggal TIDAK diulang di sini: keduanya sudah ada di
+     kotak kendali bersama di atas halaman. */
+  const atur = el("div", "ba-atur");
+
+  const kb = el("div");
+  kb.appendChild(el("label", "bantu", "Broker"));
+  const dl = el("datalist"); dl.id = "daftarBrActivity";
+  daftarBr.forEach(k => { const o = el("option"); o.value = k;
+    o.textContent = namaBroker(k); dl.appendChild(o); });
+  kb.appendChild(dl);
+  const ib = el("input", "cari"); ib.value = pilih.baBroker;
+  ib.placeholder = "Kode broker"; ib.setAttribute("list", "daftarBrActivity");
+  ib.autocapitalize = "characters";
+  ib.onchange = () => {
+    const v = ib.value.trim().toUpperCase();
+    if (daftarBr.indexOf(v) >= 0) { pilih.baBroker = v; pilih.baChip = []; halBroker(); }
+    else ib.value = pilih.baBroker;
+  };
+  kb.appendChild(ib); atur.appendChild(kb);
+
+  const inv = el("div", "mati");
+  inv.appendChild(el("label", "bantu", "Investor"));
+  const si = el("select", "cari"); si.disabled = true;
+  si.appendChild(el("option", null, "ALL (D/F)"));
+  si.title = "Belum bisa dipisah: data broker yang ada tidak memuat kebangsaan investor";
+  inv.appendChild(si); atur.appendChild(inv);
+
+  const md = el("div");
+  md.appendChild(el("label", "bantu", "Tampilan"));
+  const sw2 = el("div", "saklar");
+  [["gross", "GROSS"], ["net", "NET"]].forEach(([k, t]) => {
+    const b = el("button", pilih.baMode === k ? "aktif" : null, t);
+    b.onclick = () => { pilih.baMode = k; halBroker(); };
+    sw2.appendChild(b);
+  });
+  md.appendChild(sw2); atur.appendChild(md);
+  p.appendChild(atur);
+
+  const agg = kumpulBroker(pilih.baBroker, pilih.pasar, pilih.dari, pilih.sampai);
+  const sisi = baSisi(agg, pilih.baMode);
+
+  /* ---- chip emiten untuk grafik: bawaannya yang terbesar nilainya ---- */
+  const sah = Object.keys(agg);
+  pilih.baChip = pilih.baChip.filter(e => sah.indexOf(e) >= 0);
+  if (!pilih.baChip.length)
+    pilih.baChip = sisi.beli.concat(sisi.jual)
+      .sort((a, b) => b.val - a.val).slice(0, 6).map(x => x.em);
+
+  if (pilih.baTampil === "grafik") baBagianGrafik(p, semuaTgl);
+
+  /* ---- ringkasan ---- */
+  const tb = sisi.beli.reduce((a, x) => a + x.val, 0);
+  const tj = sisi.jual.reduce((a, x) => a + x.val, 0);
+  const net = tb - tj;
+  const r = el("div", "ringkas-brk");
+  r.appendChild(el("span", null, "Beli "));
+  r.appendChild(el("b", "naik", ringkas(tb)));
+  r.appendChild(el("span", null, " · jual "));
+  r.appendChild(el("b", "turun", ringkas(tj)));
+  r.appendChild(el("span", null, " · net "));
+  r.appendChild(el("b", net >= 0 ? "naik" : "turun",
+    (net >= 0 ? "+" : "−") + ringkas(Math.abs(net))));
+  r.appendChild(el("div", "ringkas-ket", sisi.beli.length + " emiten di sisi beli, " +
+    sisi.jual.length + " di sisi jual · " + pilih.pasar + " · " +
+    (pilih.baMode === "net" ? "net per emiten"
+                            : "gross, satu emiten bisa muncul di dua sisi")));
+  p.appendChild(r);
+
+  /* ---- tabel dua sisi ---- */
+  if (!sisi.beli.length && !sisi.jual.length) {
+    p.appendChild(el("div", "kosong", pilih.baBroker +
+      " tidak bertransaksi di papan " + pilih.pasar + " pada rentang ini."));
+    w.appendChild(p); return;
+  }
+  const bung = el("div", "tbl-bungkus");
+  const t = el("table");
+  const thead = el("thead"), trh = el("tr");
+  [["Buy", ""], ["B.VAL", ""], ["B.LOT", ""], ["B.AVG", ""],
+   ["Sell", "sum-pisah"], ["S.VAL", ""], ["S.LOT", ""], ["S.AVG", ""]]
+    .forEach(([j, k]) => trh.appendChild(el("th", k, j)));
+  thead.appendChild(trh); t.appendChild(thead);
+  const tbody = el("tbody");
+  const n = Math.max(sisi.beli.length, sisi.jual.length);
+  for (let i = 0; i < n; i++) {
+    const b = sisi.beli[i], j = sisi.jual[i];
+    const tr = el("tr");
+    tr.appendChild(el("td", "em-b", b ? b.em : ""));
+    tr.appendChild(el("td", b ? "naik" : null, b ? ringkas(b.val) : ""));
+    tr.appendChild(el("td", null, b ? rp(b.lot) : ""));
+    tr.appendChild(el("td", null, b ? sumAngka(b.avg) : ""));
+    tr.appendChild(el("td", "em-j sum-pisah", j ? j.em : ""));
+    tr.appendChild(el("td", j ? "turun" : null, j ? ringkas(j.val) : ""));
+    tr.appendChild(el("td", null, j ? rp(j.lot) : ""));
+    tr.appendChild(el("td", null, j ? sumAngka(j.avg) : ""));
+    tbody.appendChild(tr);
+  }
+  t.appendChild(tbody); bung.appendChild(t); p.appendChild(bung);
+
+  p.appendChild(el("div", "bantu",
+    "Hanya emiten yang ada di data TITEN yang terbaca di sini — " +
+    BRK.em.length + " emiten. Kalau " + pilih.baBroker + " bertransaksi besar di " +
+    "emiten di luar daftar itu, transaksinya TIDAK muncul dan tidak ada tandanya. " +
+    "Diurutkan menurut nilai, bukan lot, karena lot antar emiten tidak sebanding."));
+  w.appendChild(p);
+}
+
+function baBagianGrafik(p, semuaTgl) {
+  /* ---- saklar VALUE/LOT ---- */
+  const b = el("div", "ba-atur");
+  const u = el("div");
+  u.appendChild(el("label", "bantu", "Ukuran"));
+  const sw = el("div", "saklar");
+  [["val", "VALUE"], ["lot", "LOT"]].forEach(([k, t]) => {
+    const x = el("button", pilih.baUkur === k ? "aktif" : null, t);
+    x.onclick = () => { pilih.baUkur = k; halBroker(); };
+    sw.appendChild(x);
+  });
+  u.appendChild(sw); b.appendChild(u);
+  p.appendChild(b);
+
+  /* Rentang grafik BERDIRI SENDIRI, tidak ikut kotak tanggal di atas: tabelnya
+     biasanya dilihat satu hari, sedangkan garis baru berarti kalau berhari-hari.
+     Ujung kanannya tetap tanggal "Sampai" supaya keduanya bicara soal hari yang
+     sama. Tidak ada pilihan 1D seperti Stockbit - data TITEN harian, satu hari
+     cuma satu titik. */
+  const sampai = pilih.sampai;
+  let hari = semuaTgl.filter(t => t <= sampai);
+  const panjang = BA_PANJANG[pilih.baRentang];
+  if (panjang && hari.length > panjang) hari = hari.slice(-panjang);
+
+  if (hari.length < 2) {
+    p.appendChild(el("div", "kosong",
+      "Grafik perlu minimal dua hari bursa. Yang tersedia sampai " +
+      tglID(sampai) + " baru " + hari.length + " hari."));
+  } else if (!pilih.baChip.length) {
+    p.appendChild(el("div", "kosong", "Belum ada emiten dipilih."));
+  } else {
+    const deret = baDeret(pilih.baBroker, pilih.pasar, pilih.baChip, hari, pilih.baUkur);
+    const seri = pilih.baChip.map((em, i) => ({em: em, warna: WARNA_BROKER[i % 8],
+      titik: deret[em]}));
+    p.appendChild(baGrafik(hari, seri, pilih.baUkur));
+    p.appendChild(el("div", "bantu",
+      "Net kumulatif " + (pilih.baUkur === "val" ? "rupiah" : "lot") + " sejak " +
+      tglID(hari[0]) + ". Garis naik berarti " + pilih.baBroker + " menambah, " +
+      "turun berarti melepas. Titiknya akhir hari, bukan gerak sepanjang hari — " +
+      "data TITEN harian."));
+  }
+
+  const rg = el("div", "rentang");
+  ["1M", "3M", "6M", "1T", "SEMUA"].forEach(k => {
+    const x = el("button", pilih.baRentang === k ? "aktif" : null, k);
+    x.onclick = () => { pilih.baRentang = k; halBroker(); };
+    rg.appendChild(x);
+  });
+  p.appendChild(rg);
+
+  /* ---- chip emiten ---- */
+  const cs = el("div"); cs.style.marginTop = "9px";
+  pilih.baChip.forEach((em, i) => {
+    const c = el("span", "chip");
+    const dot = el("i"); dot.style.background = WARNA_BROKER[i % 8];
+    c.appendChild(dot);
+    c.appendChild(el("span", null, em));
+    const x = el("button", null, "×");
+    x.title = "Buang " + em + " dari grafik";
+    x.onclick = () => { pilih.baChip = pilih.baChip.filter(z => z !== em); halBroker(); };
+    c.appendChild(x); cs.appendChild(c);
+  });
+  if (pilih.baChip.length < 8) {
+    const agg = kumpulBroker(pilih.baBroker, pilih.pasar, pilih.dari, pilih.sampai);
+    const sisa = Object.keys(agg).filter(e => pilih.baChip.indexOf(e) < 0)
+      .sort((a, b) => Math.abs(agg[b].nilaiB - agg[b].nilaiJ) -
+                      Math.abs(agg[a].nilaiB - agg[a].nilaiJ));
+    if (sisa.length) {
+      const c = el("span", "chip");
+      c.style.borderStyle = "dashed";
+      const sel = el("select");
+      sel.style.border = "0"; sel.style.background = "none";
+      sel.style.padding = "0"; sel.style.fontSize = "11.5px";
+      sel.style.fontWeight = "700"; sel.style.width = "auto";
+      const kosong = el("option", null, "+ emiten"); kosong.value = "";
+      sel.appendChild(kosong);
+      sisa.forEach(e => { const o = el("option", null, e); o.value = e; sel.appendChild(o); });
+      sel.onchange = () => {
+        if (sel.value) { pilih.baChip.push(sel.value); halBroker(); }
+      };
+      c.appendChild(sel); cs.appendChild(c);
+    }
+  }
+  p.appendChild(cs);
+  p.appendChild(el("div", "bantu",
+    "Maksimal 8 emiten, sama seperti grafik broker yang sudah ada di TITEN."));
+}
+
 /* ---------- halaman utama broker ---------- */
 function halBroker() {
   const w = $("#hal-broker"); if (!w) return;
@@ -5609,25 +6031,29 @@ function halBroker() {
      mengatur emiten, tanggal, papan dan mode sendiri-sendiri. Dua tempat yang
      mengatur hal sama membuat user menyangka kendali atas yang berlaku. */
   if (pilih.sub !== "summary")
-    w.appendChild(kotakKontrol({tanggal: pilih.sub !== "kalender" &&
-      !(pilih.sub === "posisi" && pilih.subPos === "harian") &&
-      !(pilih.sub === "dashboard" && pilih.subNet === "tier")}));
+    w.appendChild(kotakKontrol({
+      tanggal: pilih.sub !== "kalender" &&
+        !(pilih.sub === "posisi" && pilih.subPos === "harian") &&
+        !(pilih.sub === "dashboard" && pilih.subNet === "tier"),
+      emiten: !(pilih.sub === "posisi" && pilih.subPos === "activity")}));
 
   if (pilih.sub === "posisi") {
     /* tiga panel posisi dulu ditumpuk ke bawah dan halamannya jadi panjang sekali;
        sekarang dipilih satu per satu, seperti di halaman CARI */
-    const tab2 = el("div", "sub-tab");
+    const tab2 = el("div", "sub-tab lima");
     /* Dulu bernama "POSISI" juga, sama persis dengan menu di atasnya, jadi
        jalurnya terbaca POSISI > POSISI. */
     [["posisi", "POSISI BROKER"], ["saldo", "SALDO AWAL"],
-     ["transaksi", "TRANSAKSI"], ["harian", "BROKER HARIAN"]]
+     ["transaksi", "TRANSAKSI"], ["harian", "BROKER HARIAN"],
+     ["activity", "ACTIVITY"]]
       .forEach(([k, judul]) => {
         const b = el("button", pilih.subPos === k ? "aktif" : null, judul);
         b.onclick = () => { pilih.subPos = k; halBroker(); };
         tab2.appendChild(b);
       });
     w.appendChild(tab2);
-    if (pilih.subPos === "saldo") panelSaldo(w);
+    if (pilih.subPos === "activity") panelBrokerActivity(w);
+    else if (pilih.subPos === "saldo") panelSaldo(w);
     else if (pilih.subPos === "transaksi") panelTransaksi(w);
     else if (pilih.subPos === "harian") panelBrokerHarian(w);
     else panelPosisi(w);
