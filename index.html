@@ -307,6 +307,19 @@ svg.ba-grafik{display:block;width:100%;max-width:560px;height:auto;margin:4px au
    di 14px, jadi khusus layar sesempit itu hurufnya diturunkan. Di HP 360px ke
    atas tetap 14px penuh. */
 @media (max-width:340px){.kal-lot{font-size:12.5px}}
+/* ---------- KALENDER FOREIGN ----------
+   LIMA kolom, bukan tujuh: bursa tidak pernah buka Sabtu dan Minggu, jadi dua
+   kolom itu selamanya kosong dan cuma memakan lebar. Dibuang, tiap sel dapat
+   sekitar 65px di layar 360px - naik dari 45px - dan angkanya bisa dibuat jauh
+   lebih besar tanpa patah jadi dua baris. Itulah yang membuat "perbesar
+   angkanya" benar-benar mungkin; menaikkan huruf di kalender tujuh kolom cuma
+   membuat angka lima huruf seperti "4,8Jt" turun ke baris berikutnya. */
+table.kalender.foreign td{height:62px}
+.kal-lot-xl{font-size:20px;font-weight:800;line-height:1.1;margin-top:4px;
+  letter-spacing:-.2px}
+@media (max-width:340px){.kal-lot-xl{font-size:17px}}
+.kf-judul{font-size:11px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;
+  margin:12px 0 5px}
 .grafik{margin-top:8px;color:var(--ink)}
 .grafik svg{display:block}
 td.num{text-align:right;font-variant-numeric:tabular-nums}
@@ -1790,6 +1803,7 @@ let volUrut = "val", volArah = -1;                /* kolom & arah pengurutan tab
 /* Sub-tab halaman CEK VOLUME: "volume" (papan peringkat lama, pakai rentang)
    dan "harian" (satu hari saja, bergaya Ringkasan Saham IDX). */
 let subVol = "volume";
+let kfEm = "", kfBulan = "";      /* KALENDER FOREIGN: emiten & bulan terpilih */
 let vhTgl = "", vhAkhir = "";
 let vhUrut = "v", vhArah = -1;
 let vhCari = "";                 /* saringan kode/nama emiten di VOLUME HARIAN */
@@ -2285,17 +2299,301 @@ function panelVolumeHarian(w) {
   w.appendChild(hs);
 }
 
+/* ---------- KALENDER FOREIGN ----------
+   Satu emiten, satu bulan: tiap hari bursa diisi net foreign lot, nilainya
+   dalam rupiah, dan harga penutupan hari itu. Hijau asing masuk, merah keluar.
+
+   SUMBERNYA daftarHari, BUKAN DATA.hrg atau DATA.vol - dan ini bukan pilihan
+   gaya melainkan keharusan:
+     - DATA.hrg cuma memuat LIMA hari bursa terakhir (kolom harga di WATCHLIST),
+       jadi penutupan sebulan penuh tidak ada di sana. Memakainya akan diam-diam
+       mengisi seluruh tanggal dengan harga hari terakhir;
+     - DATA.vol punya foreign, volume dan nilai sepanjang riwayat, tapi TIDAK
+       punya penutupan sama sekali.
+   daftarHari memuat ketiganya sekaligus per tanggal per emiten, karena sinkron
+   menulis isi harga-YYYY-MM.json apa adanya ke IndexedDB: {c,p,v,n,fs,fb,...}.
+
+   CATATAN ANGKA: foreign IDX satuannya LEMBAR dan hanya mencakup PASAR REGULER.
+   Rupiahnya taksiran - lembar dikali harga rata-rata hari itu (nilai/volume),
+   cara yang sama dengan panel NET FOREIGN di halaman VOLUME. */
+function kfHarian(emiten, bulan) {
+  const hasil = {};
+  /* satu tanggal hanya boleh dipakai sekali walau ada di dua rekaman (sudah
+     disinkron dari server lalu diimpor lagi dari berkas) - daftarHari urut
+     terbaru dulu, jadi yang pertama ketemu yang dipakai */
+  daftarHari.forEach(r => {
+    if (!r.tgl || r.tgl.slice(0, 7) !== bulan || hasil[r.tgl]) return;
+    const b = r.baris && r.baris[emiten];
+    if (!b) return;
+    if ((b.fb === null || b.fb === undefined) &&
+        (b.fs === null || b.fs === undefined)) return;
+    const lembar = (b.fb || 0) - (b.fs || 0);
+    const avg = b.v ? b.n / b.v : null;
+    hasil[r.tgl] = {lot: lembar / LOT,
+                    rp: avg === null ? null : lembar * avg,
+                    c: typeof b.c === "number" ? b.c : null};
+  });
+  return hasil;
+}
+
+/* Nilai rupiah untuk SEL kalender. Sengaja satu angka di belakang koma, bukan
+   dua seperti ringkas(): kolom kalender cuma sekitar 36px di layar 320px dan
+   "178,36 M" tidak muat - huruf M-nya turun sendiri ke baris berikutnya.
+   Satuannya mengikuti halaman VOLUME tempat kalender ini tinggal (M = miliar),
+   BUKAN gaya IPOT di kalender broker (B = miliar): dua satuan yang berbeda di
+   satu halaman lebih membingungkan daripada beda antar halaman. */
+function kfNilai(v) {
+  const a = Math.abs(v);
+  if (a >= 1e12) return (v / 1e12).toFixed(1).replace(".", ",") + " T";
+  if (a >= 1e9) return (v / 1e9).toFixed(1).replace(".", ",") + " M";
+  if (a >= 1e6) return (v / 1e6).toFixed(1).replace(".", ",") + " jt";
+  return rp(Math.round(v));
+}
+
+function kfDaftarEmiten() {
+  const s = new Set();
+  daftarHari.forEach(r => Object.keys(r.baris || {}).forEach(k => s.add(k)));
+  return [...s].sort();
+}
+
+/* Peringkat SELURUH emiten pada satu bulan. Kalender selalu tentang satu
+   emiten, jadi pertanyaan "emiten mana yang lagi diborong atau dilepas asing"
+   memang tidak bisa dijawab olehnya - itu pekerjaan tabel, bukan kalender.
+   Sumbernya daftarHari yang sama persis, jadi tidak ada sumber kedua yang bisa
+   diam-diam berbeda dari kalender di atasnya. */
+const KF_PERINGKAT = 20;
+
+function kfPeringkat(bulan) {
+  const kum = {};
+  /* dedup per TANGGAL, bukan per emiten: satu tanggal yang muncul di dua
+     rekaman akan terhitung dua kali kalau tidak dijaga di sini, dan angkanya
+     cuma terlihat "besar", tidak terlihat salah */
+  const sudah = new Set();
+  daftarHari.forEach(r => {
+    if (!r.tgl || r.tgl.slice(0, 7) !== bulan || sudah.has(r.tgl)) return;
+    sudah.add(r.tgl);
+    Object.keys(r.baris || {}).forEach(k => {
+      const b = r.baris[k];
+      if ((b.fb === null || b.fb === undefined) &&
+          (b.fs === null || b.fs === undefined)) return;
+      const lembar = (b.fb || 0) - (b.fs || 0);
+      const avg = b.v ? b.n / b.v : null;
+      const a = kum[k] || (kum[k] = {em: k, lot: 0, rp: 0, beli: 0, jual: 0});
+      a.lot += lembar / LOT;
+      if (avg !== null) a.rp += lembar * avg;
+      if (lembar > 0) a.beli++; else if (lembar < 0) a.jual++;
+    });
+  });
+  return Object.keys(kum).map(k => kum[k]).sort((x, y) => y.rp - x.rp);
+}
+
+/* Diurutkan menurut RUPIAH, bukan lot: antar emiten lot tidak sebanding sama
+   sekali - 11 juta lot BUMI di harga 209 kalah jauh dari 480 ribu lot ANTM di
+   harga 3.242. Kolom lot tetap ditampilkan karena itu satuan yang dipakai
+   kalender di atasnya. */
+function kfTabelPeringkat(baris, judul, arahKelas) {
+  const bung = el("div");
+  bung.appendChild(el("div", "kf-judul " + arahKelas, judul));
+  const bungkus = el("div", "tbl-bungkus");
+  const t = el("table");
+  const thead = el("thead"), trh = el("tr");
+  ["Emiten", "Net foreign", "Net lot", "Beli/Jual"]
+    .forEach(j => trh.appendChild(el("th", null, j)));
+  thead.appendChild(trh); t.appendChild(thead);
+  const tbody = el("tbody");
+  baris.forEach(x => {
+    const tr = el("tr");
+    tr.className = "klik";
+    tr.title = "Buka kalender " + x.em;
+    tr.onclick = () => { kfEm = x.em; halVolume();
+      window.scrollTo({top: 0, behavior: "smooth"}); };
+    const c0 = el("td");
+    c0.appendChild(el("span", "kode", x.em));
+    c0.appendChild(el("span", "nm", DATA.nama[x.em] || ""));
+    tr.appendChild(c0);
+    tr.appendChild(el("td", arahKelas,
+      (x.rp >= 0 ? "+" : "−") + kfNilai(Math.abs(x.rp))));
+    tr.appendChild(el("td", arahKelas,
+      (x.lot >= 0 ? "+" : "−") + rp(Math.round(Math.abs(x.lot)))));
+    tr.appendChild(el("td", null, x.beli + " / " + x.jual));
+    tbody.appendChild(tr);
+  });
+  t.appendChild(tbody); bungkus.appendChild(t); bung.appendChild(bungkus);
+  return bung;
+}
+
+function kfPanelPeringkat(w) {
+  const p = el("div", "panel");
+  p.appendChild(el("h2", null, "Emiten mana yang diincar asing — " +
+    bulanID(kfBulan + "-01") + " " + kfBulan.slice(0, 4)));
+  const semua = kfPeringkat(kfBulan);
+  if (!semua.length) {
+    p.appendChild(el("div", "kosong", "Belum ada data foreign pada bulan ini."));
+    w.appendChild(p); return;
+  }
+  const beli = semua.filter(x => x.rp > 0);
+  const jual = semua.filter(x => x.rp < 0);
+  const totRp = semua.reduce((a, x) => a + x.rp, 0);
+
+  const r = el("div", "ringkas-brk");
+  r.appendChild(el("span", null, "Net asing seluruh pasar "));
+  r.appendChild(el("b", totRp >= 0 ? "naik" : "turun",
+    (totRp >= 0 ? "BELI " : "JUAL ") + ringkas(Math.abs(totRp))));
+  r.appendChild(el("div", "ringkas-ket", semua.length + " emiten punya data " +
+    "foreign bulan ini · " + beli.length + " net dibeli asing, " +
+    jual.length + " net dilepas"));
+  p.appendChild(r);
+
+  p.appendChild(kfTabelPeringkat(beli.slice(0, KF_PERINGKAT),
+    "Paling diborong asing", "naik"));
+  p.appendChild(kfTabelPeringkat(jual.slice(-KF_PERINGKAT).reverse(),
+    "Paling dilepas asing", "turun"));
+  p.appendChild(el("div", "bantu",
+    "Masing-masing " + KF_PERINGKAT + " teratas dari " + semua.length +
+    " emiten, diurutkan menurut NILAI rupiah — bukan lot, karena antar " +
+    "emiten lot tidak sebanding. Ketuk satu baris untuk membuka kalendernya."));
+  w.appendChild(p);
+}
+
+function panelKalenderForeign(w) {
+  const p = el("div", "panel");
+  const emAda = kfDaftarEmiten();
+  const bulanAda = [...new Set(daftarHari.map(r => (r.tgl || "").slice(0, 7))
+                                          .filter(Boolean))].sort();
+  if (!emAda.length || !bulanAda.length) {
+    p.appendChild(el("h2", null, "Kalender foreign"));
+    p.appendChild(el("div", "kosong", "Belum ada data harian."));
+    w.appendChild(p); return;
+  }
+  if (!kfEm || emAda.indexOf(kfEm) < 0)
+    kfEm = emAda.indexOf("BBCA") >= 0 ? "BBCA" : emAda[0];
+  if (!kfBulan || bulanAda.indexOf(kfBulan) < 0) kfBulan = bulanAda[bulanAda.length - 1];
+
+  p.appendChild(el("h2", null, "Kalender foreign — " + kfEm));
+
+  /* ---- cari emiten + pilih bulan ---- */
+  const alat = el("div", "alat");
+  const dl = el("datalist"); dl.id = "daftarEmKalFor";
+  emAda.forEach(k => {
+    const o = el("option"); o.value = k; o.label = DATA.nama[k] || ""; dl.appendChild(o);
+  });
+  alat.appendChild(dl);
+  const inp = el("input", "cari");
+  inp.value = kfEm; inp.placeholder = "Ketik kode emiten";
+  inp.setAttribute("list", "daftarEmKalFor");
+  inp.setAttribute("autocapitalize", "characters");
+  inp.onchange = () => {
+    const v = inp.value.trim().toUpperCase();
+    if (emAda.indexOf(v) >= 0) { kfEm = v; halVolume(); } else inp.value = kfEm;
+  };
+  alat.appendChild(inp);
+  const sel = el("select", "cari");
+  bulanAda.slice().reverse().forEach(b => {
+    const o = el("option", null, bulanID(b + "-01") + " " + b.slice(0, 4));
+    o.value = b;
+    if (b === kfBulan) o.selected = true;
+    sel.appendChild(o);
+  });
+  sel.onchange = () => { kfBulan = sel.value; halVolume(); };
+  alat.appendChild(sel);
+  p.appendChild(alat);
+  if (DATA.nama[kfEm]) p.appendChild(el("div", "bantu", DATA.nama[kfEm]));
+
+  const hari = kfHarian(kfEm, kfBulan);
+  const kunci = Object.keys(hari).sort();
+  if (!kunci.length) {
+    p.appendChild(el("div", "kosong", kfEm + " tidak punya data foreign pada " +
+      bulanID(kfBulan + "-01") + " " + kfBulan.slice(0, 4) + "."));
+    w.appendChild(p); kfPanelPeringkat(w); return;
+  }
+
+  /* ---- ringkasan bulan ---- */
+  const totLot = kunci.reduce((a, t) => a + hari[t].lot, 0);
+  const totRp = kunci.reduce((a, t) => a + (hari[t].rp || 0), 0);
+  const hijau = kunci.filter(t => hari[t].lot > 0).length;
+  const merah = kunci.filter(t => hari[t].lot < 0).length;
+  const r = el("div", "ringkas-brk");
+  r.appendChild(el("span", null, "Net foreign bulan ini "));
+  r.appendChild(el("b", totRp >= 0 ? "naik" : "turun",
+    (totRp >= 0 ? "BELI " : "JUAL ") + ringkas(Math.abs(totRp))));
+  r.appendChild(el("span", null, " · "));
+  r.appendChild(el("b", totLot >= 0 ? "naik" : "turun",
+    (totLot >= 0 ? "+" : "−") + rp(Math.round(Math.abs(totLot))) + " lot"));
+  r.appendChild(el("div", "ringkas-ket", kunci.length + " hari bursa · " +
+    hijau + " hari asing masuk, " + merah + " hari asing keluar"));
+  p.appendChild(r);
+
+  /* ---- kalender ---- */
+  const [th, bl] = kfBulan.split("-").map(Number);
+  const jml = new Date(th, bl, 0).getDate();
+  const tabel = el("table", "kalender foreign");
+  const thead = el("thead"), trh = el("tr");
+  ["Sen", "Sel", "Rab", "Kam", "Jum"]
+    .forEach(h => trh.appendChild(el("th", null, h)));
+  thead.appendChild(trh); tabel.appendChild(thead);
+  const tbody = el("tbody");
+  let tr = el("tr"), kolom = 0;
+  for (let d = 1; d <= jml; d++) {
+    const w = new Date(th, bl - 1, d).getDay();     /* 0 = Minggu */
+    if (w === 0 || w === 6) continue;               /* bursa tidak pernah buka */
+    while (kolom < w - 1) { tr.appendChild(el("td", null, "")); kolom++; }
+    const t = th + "-" + String(bl).padStart(2, "0") + "-" + String(d).padStart(2, "0");
+    const a = hari[t];
+    const td = el("td");
+    td.appendChild(el("div", "kal-tgl", String(d)));
+    if (a) {
+      const arahK = a.lot > 0 ? "naik" : a.lot < 0 ? "turun" : "datar";
+      const lot = el("div", "kal-lot-xl " + arahK, lotBesar(Math.abs(a.lot)));
+      /* Rupiah dan harga penutupan tidak lagi dicetak di sel - user memilih lot
+         saja supaya angkanya bisa besar - tapi keduanya TIDAK dibuang: dipindah
+         ke judul sel, jadi tetap keluar kalau selnya disentuh lama. */
+      lot.title = Math.round(a.lot).toLocaleString("id-ID") + " lot" +
+        (a.rp === null ? "" : "\nRp " + Math.round(a.rp).toLocaleString("id-ID") +
+                              " (taksiran)") +
+        (a.c === null ? "" : "\nPenutupan " + rp(a.c));
+      td.appendChild(lot);
+      td.style.background = a.lot > 0 ? "rgba(22,163,74,.14)"
+                          : a.lot < 0 ? "rgba(220,38,38,.14)" : "";
+    }
+    tr.appendChild(td); kolom++;
+    if (kolom === 5) { tbody.appendChild(tr); tr = el("tr"); kolom = 0; }
+  }
+  if (kolom) {
+    while (kolom < 5) { tr.appendChild(el("td", null, "")); kolom++; }
+    tbody.appendChild(tr);
+  }
+  tabel.appendChild(tbody);
+  p.appendChild(tabel);
+
+  p.appendChild(el("div", "bantu",
+    "Angka di sel = net foreign dalam LOT. Hijau = asing net beli, merah = asing " +
+    "net jual. Sabtu dan Minggu tidak ditampilkan karena bursa memang tidak pernah " +
+    "buka. Angkanya dibulatkan supaya muat sebaris; angka persisnya, nilai " +
+    "rupiahnya, dan harga penutupan hari itu keluar kalau selnya disentuh lama."));
+  p.appendChild(el("div", "bantu",
+    "Foreign dari Ringkasan Saham IDX, jadi hanya PASAR REGULER — transaksi " +
+    "asing lewat nego dan tunai tidak terhitung di sini, dan karena itu halaman " +
+    "ini sengaja tidak punya pilihan papan. IDX memberi angkanya dalam LEMBAR, " +
+    "bukan rupiah; rupiahnya dihitung lembar dikali harga rata-rata hari itu " +
+    "— taksiran, diuji dengan BBCA 8 September 2026 dan melesetnya 0,26%. " +
+    "Lot dan harga penutupan diambil apa adanya dari IDX."));
+  w.appendChild(p);
+  kfPanelPeringkat(w);
+}
+
 function halVolume() {
   const w = $("#hal-volume"); w.innerHTML = "";
 
   const tab = el("div", "sub-tab");
-  [["volume", "VOLUME"], ["harian", "VOLUME HARIAN"]].forEach(([k, judul]) => {
+  [["volume", "VOLUME"], ["kalfor", "KALENDER FOREIGN"],
+   ["harian", "VOLUME HARIAN"]].forEach(([k, judul]) => {
     const b = el("button", subVol === k ? "aktif" : null, judul);
     b.onclick = () => { subVol = k; halVolume(); };
     tab.appendChild(b);
   });
   w.appendChild(tab);
   if (subVol === "harian") { panelVolumeHarian(w); return; }
+  if (subVol === "kalfor") { panelKalenderForeign(w); return; }
 
   const urutTgl = urutTglVol();
   const tgl = urutTgl.map(x => x.t), idx = urutTgl.map(x => x.i);
@@ -2535,7 +2833,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-16-2";
+const VERSI_APP = "2026-09-17-2";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
