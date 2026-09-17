@@ -2833,7 +2833,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-17-2";
+const VERSI_APP = "2026-09-17-3";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -5019,7 +5019,7 @@ function panelKalender(w) {
 
   /* grafik & pie: panelnya sendiri, pilihannya sendiri */
   w.appendChild(panelBrPilihan(brGrafik, "Grafik net lot harian", "grafik"));
-  w.appendChild(panelBrPilihan(brPie, "Pie porsi posisi", "pie"));
+  w.appendChild(panelBrPilihan(brPie, "Pie porsi net lot", "pie"));
 }
 
 /* ===== GRAFIK DAN PIE BROKER: DUA PANEL, PILIHAN MASING-MASING =====
@@ -5033,7 +5033,7 @@ function panelKalender(w) {
    dicentang; untuk menambah, ketik kodenya di kotak cari. */
 const B_MAKS = 8;
 const brGrafik = {dari: "", sampai: "", broker: [], auto: true, cari: "", urut: "aktif"};
-const brPie = {dari: "", sampai: "", broker: [], auto: true, cari: "", urut: "posisi"};
+const brPie = {dari: "", sampai: "", broker: [], auto: true, cari: "", urut: "net"};
 
 function lupakanPilihanBroker() {
   [brGrafik, brPie].forEach(st => { st.auto = true; st.broker = []; st.cari = ""; });
@@ -5065,7 +5065,7 @@ function panelBrPilihan(st, judul, jenis) {
   });
   const bungkusUrut = el("label", "bantu", "Urutan: ");
   const selUrut = el("select", "cari");
-  [["aktif", "Paling ramai (beli+jual)"], ["posisi", "Posisi terbesar"]].forEach(([v, t]) => {
+  [["aktif", "Paling ramai (beli+jual)"], ["net", "Net lot terbesar"]].forEach(([v, t]) => {
     const o = el("option", null, t); o.value = v;
     if (st.urut === v) o.selected = true;
     selUrut.appendChild(o);
@@ -5075,17 +5075,21 @@ function panelBrPilihan(st, judul, jenis) {
   alat.appendChild(bungkusUrut);
   p.appendChild(alat);
 
-  const saldo = saldoAwal(pilih.emiten, pilih.pasar);
   const agg = kumpulkan(pilih.emiten, pilih.pasar, st.dari, st.sampai);
-  const semuaBr = [...new Set([...Object.keys(saldo), ...Object.keys(agg)])];
+  const semuaBr = Object.keys(agg);
   if (!semuaBr.length) {
     p.appendChild(el("div", "bantu", "Tidak ada transaksi broker pada rentang ini."));
     return p;
   }
-  const posisi = k => (saldo[k] ? saldo[k].net : 0) +
-                      (agg[k] ? agg[k].beli - agg[k].jual : 0);
+  /* SALDO AWAL SENGAJA TIDAK IKUT. Panel ini dikendalikan kotak tanggal di
+     atasnya, jadi angkanya harus berubah kalau tanggalnya digeser. Saldo awal
+     per 31 Juli membeku puluhan juta lot di broker besar sehingga potongan pie
+     nyaris tidak bergerak entah rentangnya sehari atau sebulan - kotak tanggal
+     jadi tidak ada gunanya. Posisi berikut saldo awal tetap ada di tabel
+     POSISI, yang memang untuk itu. */
+  const netRentang = k => agg[k] ? agg[k].beli - agg[k].jual : 0;
   const keramaian = k => agg[k] ? agg[k].beli + agg[k].jual : 0;
-  const nilaiUrutBr = st.urut === "posisi" ? posisi : keramaian;
+  const nilaiUrutBr = st.urut === "net" ? netRentang : keramaian;
   const urutBr = semuaBr.slice().sort((a, b) => nilaiUrutBr(b) - nilaiUrutBr(a));
   const dipilih = (st.auto ? urutBr.slice(0, B_MAKS)
                            : st.broker.filter(k => semuaBr.indexOf(k) >= 0)).slice(0, B_MAKS);
@@ -5157,7 +5161,7 @@ function panelBrPilihan(st, judul, jenis) {
       const teks = el("span", null, k);
       teks.style.fontWeight = "600";
       const n = nilaiUrutBr(k);
-      const angka = el("span", st.urut === "posisi" ? arah(n).k : null,
+      const angka = el("span", st.urut === "net" ? arah(n).k : null,
                        lotSingkat(Math.abs(n)));
       angka.style.cssText = "margin-left:auto;font-size:10.5px";
       baris.appendChild(c); baris.appendChild(titik);
@@ -5169,8 +5173,8 @@ function panelBrPilihan(st, judul, jenis) {
   cari.oninput = () => { st.cari = cari.value; isiDaftar(); };
   isiDaftar();
   p.appendChild(el("div", "bantu",
-    "Angka di kanan tiap baris = " + (st.urut === "posisi"
-      ? "posisi broker itu (saldo awal + net lot dalam rentang)."
+    "Angka di kanan tiap baris = " + (st.urut === "net"
+      ? "net lot broker itu di dalam rentang (beli \u2212 jual). Saldo awal tidak ikut."
       : "total lot beli + jual dalam rentang.")));
 
   if (!dipilih.length) {
@@ -5193,21 +5197,34 @@ function panelBrPilihan(st, judul, jenis) {
         ? " Rentangnya baru satu hari, jadi grafiknya masih satu titik \u2014 geser Dari ke " +
           "belakang untuk melihat garis." : "")));
   } else {
-    const isiPie = dipilih.map(k => ({kode: k, nama: namaBroker(k), lot: posisi(k)}))
+    const isiPie = dipilih.map(k => ({kode: k, nama: namaBroker(k), lot: netRentang(k)}))
                           .filter(x => x.lot > 0).sort((a, b) => b.lot - a.lot);
     if (!isiPie.length) {
       p.appendChild(el("div", "bantu",
-        "Dari broker yang dicentang, tidak ada yang posisinya positif \u2014 pie tidak bisa digambar."));
+        "Dari broker yang dicentang, tidak ada satu pun yang net beli pada rentang ini " +
+        "\u2014 pie tidak bisa digambar karena potongan pie tidak bisa negatif. " +
+        "Ganti urutan ke \u201cNet lot terbesar\u201d atau centang broker lain."));
     } else {
       p.appendChild(gambarPie(isiPie));
-      const totalSemua = semuaBr.reduce((a, k) => a + Math.max(0, posisi(k)), 0);
+      /* Jumlah sisi positif seluruh broker = lot yang benar-benar berpindah
+         tangan pada rentang ini, angka yang sama persis dengan "berpindah" di
+         halaman %NET. Sisi negatifnya sama besar, jadi ini sekaligus besar
+         sisi distribusi. */
+      const totalSemua = semuaBr.reduce((a, k) => a + Math.max(0, netRentang(k)), 0);
       const porsi = isiPie.reduce((a, b) => a + b.lot, 0);
+      const jmlJual = semuaBr.filter(k => netRentang(k) < 0).length;
       p.appendChild(el("div", "bantu",
-        "Posisi = saldo awal per " + tglCutoff() + " ditambah net lot dalam rentang panel ini \u2014 " +
-        "sama seperti tabel Posisi. Persentase dihitung antar broker yang dicentang saja; " +
-        "bersama-sama mereka memegang " + porsi.toLocaleString("id-ID") + " lot dari " +
-        totalSemua.toLocaleString("id-ID") + " lot yang tercatat (" +
-        (totalSemua ? Math.round(porsi / totalSemua * 100) : 0) + "%) \u00b7 " + pilih.pasar + "."));
+        "Net lot = beli \u2212 jual di dalam rentang panel ini saja; saldo awal per " +
+        tglCutoff() + " TIDAK ikut dihitung. Persentase dihitung antar broker yang " +
+        "dicentang saja; bersama-sama mereka menyerap " + porsi.toLocaleString("id-ID") +
+        " lot dari " + totalSemua.toLocaleString("id-ID") + " lot yang berpindah pada " +
+        "rentang ini (" + (totalSemua ? Math.round(porsi / totalSemua * 100) : 0) +
+        "%) \u00b7 " + pilih.pasar + "."));
+      p.appendChild(el("div", "bantu",
+        "Potongan pie tidak bisa negatif, jadi " + jmlJual + " broker yang net jual pada " +
+        "rentang ini tidak tergambar di sini. Lot mereka sama besar dengan sisi beli \u2014 " +
+        "tiap lot yang dibeli seseorang pasti dijual orang lain. Untuk melihat siapa saja " +
+        "mereka, buka Detail transaksi harian."));
     }
   }
   return p;
