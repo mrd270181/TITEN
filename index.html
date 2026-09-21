@@ -348,6 +348,10 @@ th.rek-b,td.rek-b{background:var(--naik-bg)}
 th.rek-j,td.rek-j{background:var(--turun-bg)}
 th.rek-gb,th.rek-gj{text-align:center}
 td.rek-lawan{outline:1.5px solid currentColor;outline-offset:-3px;font-weight:800}
+th.rek-s,td.rek-s{background:rgba(63,174,92,.07);font-variant-numeric:tabular-nums}
+th.rek-s1,td.rek-s1{border-left:2px solid var(--merek)}
+th.rek-s3,td.rek-s3{border-right:2px solid var(--merek)}
+td.rek-s{font-weight:700}
 tfoot td{border-top:2px solid var(--garis);font-weight:800;background:var(--surface-2)}
 #barisVersi{
   position:fixed; left:0; right:0; z-index:60;
@@ -1745,6 +1749,66 @@ function rekHarga(emiten, dari, sampai) {
   return Object.keys(hasil).sort().map(t => hasil[t]);
 }
 
+/* ---- AREA SUPPORT ----------------------------------------------------------
+   S1/S2/S3 = harga TERENDAH yang benar-benar pernah tercapai di tiap kelompok
+   titik balik di bawah harga sekarang. Dipakai sebagai patokan entry: harga itu
+   pernah tersentuh, jadi pesanan di situ pernah kena.
+
+   Titik balik = hari yang 'l'-nya paling rendah dibanding REK_SUP_PIVOT hari
+   sebelum dan sesudahnya. Titik balik dikelompokkan kalau masih dalam
+   REK_SUP_TOL dari DASAR kelompok - bukan dari anggota terakhir. Kalau
+   dibandingkan ke anggota terakhir, titik balik berantai (6.075 menarik 6.110,
+   6.110 menarik 6.150) dan satu kelompok melebar sampai 4%, terlalu lebar untuk
+   dipakai patokan.
+
+   Jendelanya REK_SUP_HARI hari bursa terakhir, SENGAJA tidak mengikuti rentang
+   tanggal yang dipilih di panel: rentang 2 minggu tidak memuat cukup titik balik
+   untuk membentuk level, hasilnya akan kosong atau ngawur.
+
+   MA sengaja tidak dipakai. Uji 21 September 2026 atas 330.316 baris harga
+   menunjukkan MA20/50/200 bukan penahan: saham yang menyentuh MA lalu bertahan
+   justru tertinggal 0,19% dari pasar keesokan harinya (t=-3,22 di luar contoh),
+   sedangkan yang menembusnya malah unggul 0,42% (t=+5,24). */
+const REK_SUP_HARI = 70;
+const REK_SUP_PIVOT = 3;
+const REK_SUP_TOL = 0.015;
+const REK_SUP_JUMLAH = 3;
+
+function rekSupport(emiten, sampai) {
+  const per = {};
+  daftarHari.forEach(r => {
+    if (!r.tgl || r.tgl > sampai || per[r.tgl]) return;
+    const b = r.baris && r.baris[emiten];
+    if (!b) return;
+    const l = typeof b.l === "number" ? b.l : null;
+    const c = typeof b.c === "number" ? b.c : null;
+    if (!l || l <= 0 || !c || c <= 0) return;
+    per[r.tgl] = {l: l, c: c};
+  });
+  const tgl = Object.keys(per).sort().slice(-REK_SUP_HARI);
+  if (tgl.length < REK_SUP_PIVOT * 2 + 4) return [];
+  const rendah = tgl.map(t => per[t].l);
+  const kini = per[tgl[tgl.length - 1]].c;
+
+  const piv = [];
+  for (let i = REK_SUP_PIVOT; i < rendah.length - REK_SUP_PIVOT; i++) {
+    let min = Infinity;
+    for (let j = i - REK_SUP_PIVOT; j <= i + REK_SUP_PIVOT; j++) {
+      if (rendah[j] < min) min = rendah[j];
+    }
+    if (rendah[i] <= min) piv.push(rendah[i]);
+  }
+
+  const dasar = [];
+  piv.sort((a, b) => a - b).forEach(h => {
+    const akhir = dasar.length ? dasar[dasar.length - 1] : null;
+    if (akhir === null || h > akhir * (1 + REK_SUP_TOL)) dasar.push(h);
+  });
+
+  return dasar.filter(h => h < kini).sort((a, b) => b - a)
+              .slice(0, REK_SUP_JUMLAH);
+}
+
 function rekBroker(emiten, dari, sampai) {
   const perTgl = {}, total = {};
   ((semuaTrx() || {}).REG || []).forEach(r => {
@@ -1905,9 +1969,10 @@ function panelRekomendasi(w) {
   const t = el("table");
   const thead = el("thead");
   const tr1 = el("tr"), tr2 = el("tr");
-  [["Tanggal", ""], ["Tutup", "num"], ["%Hrg", "num"],
-   ["Net Foreign", "num"], ["Volume", "num"]].forEach(([judul]) => {
-    const th = el("th", null, judul); th.rowSpan = 2; tr1.appendChild(th);
+  [["Tanggal", null], ["S1", "rek-s rek-s1 num"], ["S2", "rek-s num"],
+   ["S3", "rek-s rek-s3 num"], ["Tutup", null], ["%Hrg", null],
+   ["Net Foreign", null], ["Volume", null]].forEach(([judul, kelas]) => {
+    const th = el("th", kelas, judul); th.rowSpan = 2; tr1.appendChild(th);
   });
   if (adaBroker) {
     if (brBeli.length) {
@@ -1930,10 +1995,27 @@ function panelRekomendasi(w) {
   thead.appendChild(tr1); if (adaBroker) thead.appendChild(tr2);
   t.appendChild(thead);
 
+  /* Level support dihitung sekali, bukan per baris: angkanya berlaku SEKARANG,
+     bukan per tanggal. Karena itu cuma ditulis di baris tanggal terbaru - kalau
+     diulang di tiap baris, kolomnya penuh angka sama yang tidak berarti apa-apa
+     pada tanggal-tanggal lama itu. */
+  const sup = rekSupport(rek.em, rek.sampai);
+
   const tbody = el("tbody");
   hr.forEach((x, i) => {
     const tr = el("tr");
     tr.appendChild(el("td", null, tglID(x.tgl)));
+    const barisAkhir = (i === hr.length - 1);
+    for (let s = 0; s < REK_SUP_JUMLAH; s++) {
+      const kelas = "num rek-s" + (s === 0 ? " rek-s1" : "") +
+                    (s === REK_SUP_JUMLAH - 1 ? " rek-s3" : "");
+      const td = el("td", kelas, (barisAkhir && sup[s] != null) ? rp(sup[s]) : "");
+      if (barisAkhir && sup[s] != null) {
+        td.title = "S" + (s + 1) + " · " +
+                   rekPersen((sup[s] / x.c - 1) * 100, 1) + " dari harga terakhir";
+      }
+      tr.appendChild(td);
+    }
     tr.appendChild(el("td", "num", x.c === null ? "—" : rp(x.c)));
     const sblm = i ? hr[i - 1].c : null;
     const d = (i && sblm && x.c) ? (x.c / sblm - 1) * 100 : null;
@@ -1960,6 +2042,10 @@ function panelRekomendasi(w) {
 
   const tfoot = el("tfoot"); const trf = el("tr");
   trf.appendChild(el("td", null, "TOTAL"));
+  for (let s = 0; s < REK_SUP_JUMLAH; s++) {
+    trf.appendChild(el("td", "num rek-s" + (s === 0 ? " rek-s1" : "") +
+                       (s === REK_SUP_JUMLAH - 1 ? " rek-s3" : ""), ""));
+  }
   trf.appendChild(el("td", "num", ""));
   trf.appendChild(el("td", "num" + (totPct === null ? "" : " " + arah(totPct).k),
                      rekPersen(totPct, 1)));
@@ -1973,6 +2059,16 @@ function panelRekomendasi(w) {
   }
   tfoot.appendChild(trf); t.appendChild(tfoot);
   bungkus.appendChild(t); p.appendChild(bungkus);
+
+  p.appendChild(el("div", "bantu", sup.length
+    ? "S1–S3 = harga terendah yang benar-benar pernah tercapai di tiap kelompok " +
+      "titik balik di bawah harga sekarang, dihitung dari " + REK_SUP_HARI +
+      " hari bursa terakhir — bukan dari rentang tanggal yang dipilih di atas. " +
+      "Karena itu angkanya hanya ditulis di baris tanggal terbaru. Sentuh " +
+      "angkanya untuk melihat jaraknya dari harga terakhir."
+    : rek.em + " belum punya cukup riwayat harga untuk membentuk level support. " +
+      "Perlu setidaknya " + (REK_SUP_PIVOT * 2 + 4) + " hari bursa, dan biasanya " +
+      "baru berguna sesudah aplikasi mengunduh beberapa bulan harga."));
 
   if (adaBroker) {
     p.appendChild(el("div", "bantu",
@@ -3157,7 +3253,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-17-4";
+const VERSI_APP = "2026-09-21-1";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
