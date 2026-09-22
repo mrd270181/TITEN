@@ -1774,6 +1774,10 @@ function rekHarga(emiten, dari, sampai) {
     if (!b) return;
     hasil[r.tgl] = {tgl: r.tgl,
                     c: typeof b.c === "number" ? b.c : null,
+                    /* p = penutupan hari bursa SEBELUM hari ini. Dipakai
+                       sebagai penyebut TOT. %HARGA supaya gerakan hari
+                       pertama rentang ikut terhitung - sama dengan screener. */
+                    p: typeof b.p === "number" ? b.p : null,
                     v: b.v || 0,
                     nf: (b.fb || 0) - (b.fs || 0)};
   });
@@ -2124,9 +2128,18 @@ function panelRekomendasi(w) {
 
   const volTot = hr.reduce((a, x) => a + x.v, 0);
   const nfTot = hr.reduce((a, x) => a + x.nf, 0);
-  const c0 = hr[0].c, cN = hr[hr.length - 1].c;
-  /* Dihitung dari penutupan awal ke akhir, BUKAN dengan menjumlahkan persen
-     harian: naik 10% lalu turun 10% menghasilkan -1%, bukan 0%. */
+  /* Penyebutnya penutupan SEBELUM hari pertama rentang (hr[0].p), BUKAN
+     penutupan hari pertama itu sendiri. Memakai hr[0].c membuang gerakan hari
+     pertama: AADI 3-31 Agustus 2026 terbaca +18,96% padahal 31 Juli ditutup
+     9.225 dan 31 Agustus 10.825, yaitu +17,34%. Selisih 1,61 poin itu persis
+     jatuhnya 3 Agustus sendiri (-1,36%), yang hilang dari hitungan.
+     Bukan cuma soal satu emiten: kalau dua belas bulan dikalikan, cara lama
+     meleset dari perubahan setahun di 872 dari 940 emiten (AADI 2025 rugi
+     17,70% terbaca untung 9,24%), cara ini meleset di nol.
+     Screener sudah memakai aturan ini sejak awal (a.buka = x.p). */
+  const c0 = hr[0].p, cN = hr[hr.length - 1].c;
+  /* Dihitung ujung ke ujung, BUKAN dengan menjumlahkan persen harian: naik
+     10% lalu turun 10% menghasilkan -1%, bukan 0%. */
   const totPct = (c0 && cN) ? (cN / c0 - 1) * 100 : null;
   const pnf = volTot ? nfTot / volTot * 100 : null;
   let gross = 0, netPindah = 0;
@@ -2143,7 +2156,7 @@ function panelRekomendasi(w) {
     akhir.c === null ? "—" : "Rp " + rp(akhir.c), "",
     tglID(akhir.tgl) + " · penutupan"));
   kartu.appendChild(rekKartu("TOT. %HARGA", rekPersen(totPct),
-    totPct === null ? "" : arah(totPct).k, "awal → akhir rentang"));
+    totPct === null ? "" : arah(totPct).k, "sebelum rentang → akhir"));
   kartu.appendChild(rekKartu("%NF", rekPersen(pnf),
     pnf === null ? "" : arah(pnf).k, "net asing ÷ volume"));
   kartu.appendChild(rekKartu("%NETT",
@@ -2311,7 +2324,9 @@ function panelRekomendasi(w) {
       "memuat seluruh emiten."));
   }
   p.appendChild(el("div", "bantu",
-    "TOT. %HARGA dihitung dari penutupan hari pertama ke hari terakhir rentang, " +
+    "TOT. %HARGA dihitung dari penutupan SEBELUM hari pertama rentang ke " +
+    "penutupan hari terakhir rentang, jadi gerakan hari pertama ikut terhitung " +
+    "dan angkanya sama dengan screener. " +
     "BUKAN dengan menjumlahkan kolom %Hrg — naik 10% lalu turun 10% " +
     "menghasilkan −1%, bukan 0%. %NETT selalu 0–100% karena rumusnya " +
     "net ÷ gross dan dua-duanya positif: dia mengukur seberapa kuat barang " +
@@ -3479,7 +3494,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-22-6";
+const VERSI_APP = "2026-09-22-7";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
