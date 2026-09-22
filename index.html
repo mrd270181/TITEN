@@ -345,7 +345,7 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
 .rek-bd:first-of-type{border-top:0}
 .rek-bk{font-weight:800}
 .rek-bn{font-weight:800;font-variant-numeric:tabular-nums;text-align:right}
-.rek-bp{font-size:10px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.rek-bp{font-size:12px;color:var(--ink-2);font-variant-numeric:tabular-nums}
 .rek-pindah{outline:1.5px solid currentColor;outline-offset:-2px;border-radius:4px;
   padding:0 3px}
 /* kotak level harga: ATH / R / harga sekarang / S, dibaca dari atas ke bawah */
@@ -1742,7 +1742,19 @@ function panelHargaVol(w) {
    untuk nama yang sama. */
 const REK_BROKER = 5;
 const REK_HARI_BAWAAN = 21;                  /* kira-kira satu bulan bursa */
-const rek = {em: "", dari: "", sampai: ""};
+const REK_PASAR = ["REGULER", "NEGO", "ALL MARKET"];
+const rek = {em: "", dari: "", sampai: "", pasar: "REGULER"};
+
+/* Papan mana yang dibaca. Bawaannya REGULER: NEGO berisi crossing yang
+   sifatnya lain dari perdagangan pasar, dan untuk emiten seperti DSSA
+   porsinya bisa 31% dari volume - kalau ikut tanpa disadari, daftar
+   pemegang terbesar berubah total. Tapi transaksi NEGO tetap perpindahan
+   saham sungguhan, jadi Bapak bisa menggesernya sendiri. */
+function rekPapan() {
+  return rek.pasar === "ALL MARKET" ? PAPAN
+                                    : [rek.pasar === "REGULER" ? "REG"
+                                                               : rek.pasar];
+}
 
 function rekTanggal() {
   const s = new Set();
@@ -1892,13 +1904,14 @@ function rekATH(emiten, sampai) {
 
 function rekBroker(emiten, dari, sampai) {
   const perTgl = {}, total = {};
-  ((semuaTrx() || {}).REG || []).forEach(r => {
+  const trx = semuaTrx() || {};
+  rekPapan().forEach(p => (trx[p] || []).forEach(r => {
     if (r.em !== emiten || r.tgl < dari || r.tgl > sampai) return;
     const d = perTgl[r.tgl] || (perTgl[r.tgl] = {});
     const n = r.beli - r.jual;
     d[r.br] = (d[r.br] || 0) + n;
     total[r.br] = (total[r.br] || 0) + n;
-  });
+  }));
   return {perTgl: perTgl, total: total};
 }
 
@@ -1933,11 +1946,11 @@ function rekKartu(judul, nilai, kelas, kaki) {
    untuk posisi pembuka, jadi avg posisi total tidak bisa dihitung tanpa
    mengarang harga di sekitar cutoff. */
 function rekPosisi(emiten) {
-  const awal = saldoAwal(emiten, "REGULER");
+  const awal = saldoAwal(emiten, rek.pasar);
   /* TANPA batas tanggal sama sekali - bukan rek.sampai. Posisi itu keadaan
      TERKINI, jadi harus ikut data terbaru walau Bapak menggeser kotak Sampai
      untuk melihat periode lama. */
-  const tambah = kumpulkan(emiten, "REGULER", "", "");
+  const tambah = kumpulkan(emiten, rek.pasar, "", "");
   const hasil = {};
   const pakai = k => hasil[k] || (hasil[k] = {awal: 0, delta: 0, posisi: 0});
   Object.keys(awal).forEach(k => { pakai(k).awal = awal[k].net; });
@@ -1952,9 +1965,10 @@ function rekPosisi(emiten) {
      broker baru 18/09), dan label yang memakai tanggal harga akan mengaku
      lebih baru daripada angkanya sendiri. */
   let akhir = "";
-  ((semuaTrx() || {}).REG || []).forEach(r => {
+  const trx = semuaTrx() || {};
+  rekPapan().forEach(p => (trx[p] || []).forEach(r => {
     if (r.em === emiten && r.tgl > akhir) akhir = r.tgl;
-  });
+  }));
   return {pos: hasil, akhir: akhir};
 }
 
@@ -2076,6 +2090,15 @@ function panelRekomendasi(w) {
     if (daftarEm.indexOf(v) >= 0) { rek.em = v; ulang(); } else { inp.value = rek.em; }
   };
   bEm.appendChild(inp); alat.appendChild(bEm);
+  const bPasar = el("label", "bantu", "Papan: ");
+  const selPasar = el("select");
+  REK_PASAR.forEach(v => {
+    const o = el("option", null, v); o.value = v;
+    if (v === rek.pasar) o.selected = true;
+    selPasar.appendChild(o);
+  });
+  selPasar.onchange = () => { rek.pasar = selPasar.value; ulang(); };
+  bPasar.appendChild(selPasar); alat.appendChild(bPasar);
   [["dari", "Dari"], ["sampai", "Sampai"]].forEach(([kunci, label]) => {
     const b = el("label", "bantu", label + ": ");
     b.appendChild(kotakTanggal(rek[kunci], semuaTgl, t => { rek[kunci] = t; ulang(); }));
@@ -2091,7 +2114,7 @@ function panelRekomendasi(w) {
   }
 
   const brk = rekBroker(rek.em, rek.dari, rek.sampai);
-  const agg = kumpulkan(rek.em, "REGULER", rek.dari, rek.sampai);
+  const agg = kumpulkan(rek.em, rek.pasar, rek.dari, rek.sampai);
   const kodeBr = Object.keys(brk.total);
   const brBeli = kodeBr.filter(k => brk.total[k] > 0)
                        .sort((a, b) => brk.total[b] - brk.total[a]).slice(0, REK_BROKER);
@@ -2152,12 +2175,15 @@ function panelRekomendasi(w) {
     const sejak = BRK.cutoff ? tglID(BRK.cutoff) : "awal data";
     const sampaiPos = hasilPos.akhir ? tglID(hasilPos.akhir) : "—";
     const strip = el("div", "rek-strip");
+    /* Papan disebut di judul. Tanpa itu, angka di sini gampang dikira sudah
+       mencakup NEGO - dan untuk emiten yang crossing-nya besar, selisihnya
+       bisa berkali-kali lipat. */
     strip.appendChild(rekSisi(pemegang, pos, "beli",
-      REK_BROKER + " PEMEGANG TERBESAR · saldo awal " + sejak +
+      REK_BROKER + " PEMEGANG TERBESAR · " + rek.pasar + " · saldo awal " + sejak +
       " + net s/d " + sampaiPos));
     strip.appendChild(rekSisi(pengurang, pos, "jual",
-      REK_BROKER + " PENGURANG TERBESAR · posisi turun paling banyak sejak " +
-      sejak));
+      REK_BROKER + " PENGURANG TERBESAR · " + rek.pasar +
+      " · posisi turun paling banyak sejak " + sejak));
     p.appendChild(strip);
     p.appendChild(el("div", "bantu",
       "Kolom tengah memperlihatkan susunannya: saldo awal per " + sejak +
@@ -2170,7 +2196,10 @@ function panelRekomendasi(w) {
       sampaiPos + "), tidak mengikuti kotak Dari/Sampai — posisi itu keadaan " +
       "terkini. Tanggal itu bisa tertinggal dari harga terakhir kalau data " +
       "brokernya memang belum diinput sejauh itu. Kolom broker di tabel bawah " +
-      "sebaliknya: dipilih dari net sepanjang rentang tanggal yang dipilih."));
+      "sebaliknya: dipilih dari net sepanjang rentang tanggal yang dipilih. " +
+      "Seluruh panel ini — termasuk %NETT dan kolom broker — mengikuti papan " +
+      rek.pasar + " yang dipilih di atas. Broker yang besar di NEGO tidak " +
+      "muncul selama papannya REGULER."));
   }
 
   /* ---- kotak level harga ---- */
@@ -3450,7 +3479,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-22-4";
+const VERSI_APP = "2026-09-22-6";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
