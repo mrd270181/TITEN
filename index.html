@@ -346,6 +346,8 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
 .rek-bk{font-weight:800}
 .rek-bn{font-weight:800;font-variant-numeric:tabular-nums;text-align:right}
 .rek-bp{font-size:10px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.rek-pindah{outline:1.5px solid currentColor;outline-offset:-2px;border-radius:4px;
+  padding:0 3px}
 /* kotak level harga: ATH / R / harga sekarang / S, dibaca dari atas ke bawah */
 .rek-kotak{border:1px solid var(--garis);border-radius:11px;background:var(--surface-2);
   padding:9px 10px;margin-top:8px}
@@ -1958,6 +1960,14 @@ function rekPosisi(emiten) {
 
 /* Satu sisi strip posisi. 'kode' sudah diurutkan pemanggilnya. */
 function rekSisi(kode, pos, kelas, judul) {
+  /* Warna dan tanda mengikuti SISI KOLOM, bukan arah delta. Broker yang sedang
+     melepas tapi masih memegang barang tetap hijau di kolom pemegang - yang
+     ditanya kolom itu "berapa yang dipegang", bukan "sedang beli atau jual".
+     Memakai arah delta membuat DR merah padahal masih pegang 3 juta lot.
+
+     Satu-satunya yang ditandai: posisi yang PINDAH SISI - dari memegang jadi
+     minus, atau sebaliknya. Itu perubahan keadaan, bukan sekadar arah harian. */
+  const warna = kelas === "beli" ? "naik" : "turun";
   const d = el("div", "rek-sisi " + kelas);
   d.appendChild(el("div", "rek-sj", judul));
   if (!kode.length) {
@@ -1980,8 +1990,15 @@ function rekSisi(kode, pos, kelas, judul) {
       "awal " + lotSingkat(Math.round(p.awal)) + "  " +
       (p.delta >= 0 ? "+ " : "− ") +
       lotSingkat(Math.round(Math.abs(p.delta))));
-    const nn = el("span", "rek-bn " + arah(p.delta).k,
-                  lotSingkat(Math.round(p.posisi)));
+    const pindah = (p.awal >= 0) !== (p.posisi >= 0);
+    const nn = el("span", "rek-bn " + warna + (pindah ? " rek-pindah" : ""),
+                  (pindah ? (p.posisi < 0 ? "−" : "+") : "") +
+                  lotSingkat(Math.round(Math.abs(p.posisi))));
+    if (pindah) {
+      nn.title = "Pindah sisi: dari " +
+                 (p.awal >= 0 ? "memegang" : "minus") + " jadi " +
+                 (p.posisi >= 0 ? "memegang" : "minus");
+    }
     b.appendChild(kk); b.appendChild(pp); b.appendChild(nn);
     d.appendChild(b);
   });
@@ -2146,7 +2163,10 @@ function panelRekomendasi(w) {
       "Kolom tengah memperlihatkan susunannya: saldo awal per " + sejak +
       " ditambah atau dikurangi net lot sesudahnya. Jadi terlihat mana yang besar " +
       "karena memang sudah lama memegang, dan mana yang besar karena baru " +
-      "mengumpulkan belakangan. Strip ini SELALU memakai data broker terbaru (" +
+      "mengumpulkan belakangan. Warna mengikuti kolomnya, bukan arah jual-beli " +
+      "terakhir: broker yang sedang melepas tapi masih memegang tetap hijau. " +
+      "Angka bergaris kotak berarti posisinya PINDAH SISI — dari memegang jadi " +
+      "minus atau sebaliknya. Strip ini SELALU memakai data broker terbaru (" +
       sampaiPos + "), tidak mengikuti kotak Dari/Sampai — posisi itu keadaan " +
       "terkini. Tanggal itu bisa tertinggal dari harga terakhir kalau data " +
       "brokernya memang belum diinput sejauh itu. Kolom broker di tabel bawah " +
@@ -3430,7 +3450,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-22-3";
+const VERSI_APP = "2026-09-22-4";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
