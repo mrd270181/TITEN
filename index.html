@@ -2009,9 +2009,16 @@ function rekSisi(kode, pos, kelas, judul) {
       (p.delta >= 0 ? "+ " : "− ") +
       lotSingkat(Math.round(Math.abs(p.delta))));
     const pindah = (p.awal >= 0) !== (p.posisi >= 0);
+    /* Tanda minus digambar SETIAP KALI posisinya negatif, bukan cuma saat
+       pindah sisi. Dengan aturan lama, ZP di DSSA tampil "25,32Jt" tanpa tanda
+       - padahal posisinya MINUS 25,32 juta lot. Karena sudah minus sejak saldo
+       awal, dia tidak dianggap pindah, jadi tandanya hilang dan angkanya
+       terbaca persis kebalikan dari keadaan sebenarnya.
+       Tanda "+" tetap hanya untuk yang pindah dari minus jadi memegang - di
+       situ tandanya memberi kabar; pada pemegang biasa cuma jadi ramai. */
+    const tanda = p.posisi < 0 ? "−" : (pindah ? "+" : "");
     const nn = el("span", "rek-bn " + warna + (pindah ? " rek-pindah" : ""),
-                  (pindah ? (p.posisi < 0 ? "−" : "+") : "") +
-                  lotSingkat(Math.round(Math.abs(p.posisi))));
+                  tanda + lotSingkat(Math.round(Math.abs(p.posisi))));
     if (pindah) {
       nn.title = "Pindah sisi: dari " +
                  (p.awal >= 0 ? "memegang" : "minus") + " jadi " +
@@ -3494,7 +3501,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-22-7";
+const VERSI_APP = "2026-09-22-8";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
