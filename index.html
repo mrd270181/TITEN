@@ -1930,9 +1930,12 @@ function rekKartu(judul, nilai, kelas, kaki) {
    beli_lot dan jual_lot - sumbernya BROKER TRACKER tidak pernah memuat harga
    untuk posisi pembuka, jadi avg posisi total tidak bisa dihitung tanpa
    mengarang harga di sekitar cutoff. */
-function rekPosisi(emiten, sampai) {
+function rekPosisi(emiten) {
   const awal = saldoAwal(emiten, "REGULER");
-  const tambah = kumpulkan(emiten, "REGULER", "", sampai);
+  /* TANPA batas tanggal sama sekali - bukan rek.sampai. Posisi itu keadaan
+     TERKINI, jadi harus ikut data terbaru walau Bapak menggeser kotak Sampai
+     untuk melihat periode lama. */
+  const tambah = kumpulkan(emiten, "REGULER", "", "");
   const hasil = {};
   const pakai = k => hasil[k] || (hasil[k] = {awal: 0, delta: 0, posisi: 0});
   Object.keys(awal).forEach(k => { pakai(k).awal = awal[k].net; });
@@ -1942,7 +1945,15 @@ function rekPosisi(emiten, sampai) {
   Object.keys(hasil).forEach(k => {
     hasil[k].posisi = hasil[k].awal + hasil[k].delta;
   });
-  return hasil;
+  /* Tanggal transaksi broker terakhir untuk emiten ini - BUKAN tanggal harga
+     terakhir. Data broker sering tertinggal dari harga (harga sudah 22/09,
+     broker baru 18/09), dan label yang memakai tanggal harga akan mengaku
+     lebih baru daripada angkanya sendiri. */
+  let akhir = "";
+  ((semuaTrx() || {}).REG || []).forEach(r => {
+    if (r.em === emiten && r.tgl > akhir) akhir = r.tgl;
+  });
+  return {pos: hasil, akhir: akhir};
 }
 
 /* Satu sisi strip posisi. 'kode' sudah diurutkan pemanggilnya. */
@@ -1960,12 +1971,17 @@ function rekSisi(kode, pos, kelas, judul) {
     const p = pos[k];
     /* pecahannya ditulis terang-terangan supaya kelihatan mana yang besar karena
        sudah lama memegang, dan mana yang baru bergerak belakangan */
+    /* JANGAN dibagi LOT. saldoAwal() dan kumpulkan() dua-duanya sudah dalam lot
+       - panel SALDO AWAL menampilkan net-nya apa adanya, dan tabel di bawah
+       menulis net broker dengan rekLot() tanpa pembagian. Membaginya di sini
+       membuat angkanya seperseratus, dan itu tidak terlihat salah: bentuknya
+       tetap wajar, cuma DSSA jadi 127,4K padahal 12,7 juta lot. */
     const pp = el("span", "rek-bp",
-      "awal " + lotSingkat(Math.round(p.awal / LOT)) + "  " +
+      "awal " + lotSingkat(Math.round(p.awal)) + "  " +
       (p.delta >= 0 ? "+ " : "− ") +
-      lotSingkat(Math.round(Math.abs(p.delta) / LOT)));
+      lotSingkat(Math.round(Math.abs(p.delta))));
     const nn = el("span", "rek-bn " + arah(p.delta).k,
-                  lotSingkat(Math.round(p.posisi / LOT)));
+                  lotSingkat(Math.round(p.posisi)));
     b.appendChild(kk); b.appendChild(pp); b.appendChild(nn);
     d.appendChild(b);
   });
@@ -2103,7 +2119,8 @@ function panelRekomendasi(w) {
 
   /* ---- strip posisi: 5 pemegang terbesar & 5 pengurang terbesar ---- */
   if (adaBroker) {
-    const pos = rekPosisi(rek.em, rek.sampai);
+    const hasilPos = rekPosisi(rek.em);
+    const pos = hasilPos.pos;
     const kodePos = Object.keys(pos).filter(
       k => pos[k].posisi !== 0 || pos[k].delta !== 0);
     const pemegang = kodePos.filter(k => pos[k].posisi > 0)
@@ -2116,10 +2133,11 @@ function panelRekomendasi(w) {
       .sort((a, b) => pos[a].delta - pos[b].delta).slice(0, REK_BROKER);
 
     const sejak = BRK.cutoff ? tglID(BRK.cutoff) : "awal data";
+    const sampaiPos = hasilPos.akhir ? tglID(hasilPos.akhir) : "—";
     const strip = el("div", "rek-strip");
     strip.appendChild(rekSisi(pemegang, pos, "beli",
       REK_BROKER + " PEMEGANG TERBESAR · saldo awal " + sejak +
-      " + net s/d " + tglID(rek.sampai)));
+      " + net s/d " + sampaiPos));
     strip.appendChild(rekSisi(pengurang, pos, "jual",
       REK_BROKER + " PENGURANG TERBESAR · posisi turun paling banyak sejak " +
       sejak));
@@ -2128,8 +2146,11 @@ function panelRekomendasi(w) {
       "Kolom tengah memperlihatkan susunannya: saldo awal per " + sejak +
       " ditambah atau dikurangi net lot sesudahnya. Jadi terlihat mana yang besar " +
       "karena memang sudah lama memegang, dan mana yang besar karena baru " +
-      "mengumpulkan belakangan. Berbeda dari kolom broker di tabel bawah, yang " +
-      "dipilih dari net sepanjang rentang tanggal saja."));
+      "mengumpulkan belakangan. Strip ini SELALU memakai data broker terbaru (" +
+      sampaiPos + "), tidak mengikuti kotak Dari/Sampai — posisi itu keadaan " +
+      "terkini. Tanggal itu bisa tertinggal dari harga terakhir kalau data " +
+      "brokernya memang belum diinput sejauh itu. Kolom broker di tabel bawah " +
+      "sebaliknya: dipilih dari net sepanjang rentang tanggal yang dipilih."));
   }
 
   /* ---- kotak level harga ---- */
@@ -3409,7 +3430,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-22-1";
+const VERSI_APP = "2026-09-22-3";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
