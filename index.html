@@ -326,7 +326,7 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
 /* SCREENER > REKOMENDASI */
 .rek-kartu{display:grid;gap:6px;grid-template-columns:repeat(2,1fr);margin-top:8px}
 @media(min-width:560px){.rek-kartu{grid-template-columns:repeat(3,1fr)}}
-@media(min-width:860px){.rek-kartu{grid-template-columns:repeat(6,1fr)}}
+@media(min-width:860px){.rek-kartu{grid-template-columns:repeat(auto-fit,minmax(118px,1fr))}}
 .rek-k{background:var(--surface-2);border:1px solid var(--garis);border-radius:10px;
   padding:7px 8px;min-width:0}
 .rek-kj{font-size:9px;letter-spacing:.5px;color:var(--ink-3);font-weight:700}
@@ -340,18 +340,35 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
 .rek-sisi.jual{background:var(--turun-bg);border-color:var(--turun)}
 .rek-sj{font-size:9px;letter-spacing:.5px;font-weight:700;color:var(--ink-2);
   margin-bottom:3px}
-.rek-bd{display:flex;align-items:baseline;gap:7px;padding:1px 0;font-size:12px}
-.rek-bk{font-weight:800;min-width:28px}
-.rek-bn{font-weight:700;font-variant-numeric:tabular-nums;min-width:72px;text-align:right}
-.rek-bp{font-size:10px;color:var(--ink-3)}
+.rek-bd{display:grid;grid-template-columns:30px 1fr auto;gap:8px;align-items:baseline;
+  padding:3px 0;font-size:12px;border-top:1px solid rgba(255,255,255,.05)}
+.rek-bd:first-of-type{border-top:0}
+.rek-bk{font-weight:800}
+.rek-bn{font-weight:800;font-variant-numeric:tabular-nums;text-align:right}
+.rek-bp{font-size:10px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+/* kotak level harga: ATH / R / harga sekarang / S, dibaca dari atas ke bawah */
+.rek-kotak{border:1px solid var(--garis);border-radius:11px;background:var(--surface-2);
+  padding:9px 10px;margin-top:8px}
+.rek-kh{font-size:9px;letter-spacing:.5px;font-weight:700;color:var(--ink-3);
+  display:flex;justify-content:space-between;gap:8px;margin-bottom:6px}
+.rek-tangga{display:grid;gap:3px}
+.rek-anak{display:grid;grid-template-columns:40px 1fr auto;gap:9px;align-items:center;
+  padding:5px 8px;border-radius:7px;background:var(--surface-1)}
+.rek-anak .lbl{font-size:10.5px;font-weight:800;letter-spacing:.4px}
+.rek-anak .hrg{font-size:15px;font-weight:800;font-variant-numeric:tabular-nums}
+.rek-anak .jrk{font-size:11px;font-weight:700;font-variant-numeric:tabular-nums;
+  text-align:right}
+.rek-anak.ath{background:rgba(216,161,58,.13)}
+.rek-anak.ath .lbl{color:#d8a13a}
+.rek-anak.res{background:var(--turun-bg)} .rek-anak.res .lbl{color:var(--turun)}
+.rek-anak.sup{background:var(--naik-bg)} .rek-anak.sup .lbl{color:var(--naik)}
+.rek-anak.kini{background:var(--ink-1)}
+.rek-anak.kini .lbl,.rek-anak.kini .hrg{color:#111}
+.rek-anak.kini .jrk{color:#555}
 th.rek-b,td.rek-b{background:var(--naik-bg)}
 th.rek-j,td.rek-j{background:var(--turun-bg)}
 th.rek-gb,th.rek-gj{text-align:center}
 td.rek-lawan{outline:1.5px solid currentColor;outline-offset:-3px;font-weight:800}
-th.rek-s,td.rek-s{background:rgba(63,174,92,.07);font-variant-numeric:tabular-nums}
-th.rek-s1,td.rek-s1{border-left:2px solid var(--merek)}
-th.rek-s3,td.rek-s3{border-right:2px solid var(--merek)}
-td.rek-s{font-weight:700}
 tfoot td{border-top:2px solid var(--garis);font-weight:800;background:var(--surface-2)}
 #barisVersi{
   position:fixed; left:0; right:0; z-index:60;
@@ -1721,7 +1738,7 @@ function panelHargaVol(w) {
    daftarHari yang juga reguler, dan %NETT di halaman %NET dihitung dengan dasar
    yang sama. Mencampur nego ke sini membuat dua halaman memberi angka berbeda
    untuk nama yang sama. */
-const REK_BROKER = 3;
+const REK_BROKER = 5;
 const REK_HARI_BAWAAN = 21;                  /* kira-kira satu bulan bursa */
 const rek = {em: "", dari: "", sampai: ""};
 
@@ -1809,6 +1826,68 @@ function rekSupport(emiten, sampai) {
               .slice(0, REK_SUP_JUMLAH);
 }
 
+/* Cerminan rekSupport untuk sisi atas. Bedanya satu: nilai yang diambil dari
+   tiap kelompok adalah harga TERTINGGI yang pernah tersentuh, bukan terendah —
+   pilihan user, supaya sejajar dengan cara S1 memakai titik terendah. */
+const REK_RES_JUMLAH = 2;
+
+function rekResist(emiten, sampai) {
+  const per = {};
+  daftarHari.forEach(r => {
+    if (!r.tgl || r.tgl > sampai || per[r.tgl]) return;
+    const b = r.baris && r.baris[emiten];
+    if (!b) return;
+    const h = typeof b.h === "number" ? b.h : null;
+    const c = typeof b.c === "number" ? b.c : null;
+    if (!h || h <= 0 || !c || c <= 0) return;
+    per[r.tgl] = {h: h, c: c};
+  });
+  const tgl = Object.keys(per).sort().slice(-REK_SUP_HARI);
+  if (tgl.length < REK_SUP_PIVOT * 2 + 4) return [];
+  const tinggi = tgl.map(t => per[t].h);
+  const kini = per[tgl[tgl.length - 1]].c;
+
+  const piv = [];
+  for (let i = REK_SUP_PIVOT; i < tinggi.length - REK_SUP_PIVOT; i++) {
+    let max = -Infinity;
+    for (let j = i - REK_SUP_PIVOT; j <= i + REK_SUP_PIVOT; j++) {
+      if (tinggi[j] > max) max = tinggi[j];
+    }
+    if (tinggi[i] >= max) piv.push(tinggi[i]);
+  }
+
+  const puncak = [];
+  piv.sort((a, b) => b - a).forEach(h => {
+    const akhir = puncak.length ? puncak[puncak.length - 1] : null;
+    if (akhir === null || h < akhir * (1 - REK_SUP_TOL)) puncak.push(h);
+  });
+
+  /* menaik: R1 terdekat di atas harga, lalu R2 */
+  return puncak.filter(h => h > kini).sort((a, b) => a - b)
+               .slice(0, REK_RES_JUMLAH);
+}
+
+/* "Tertinggi" sejauh riwayat yang ADA di HP — bukan all-time high sungguhan.
+   Aplikasi cuma menyimpan BULAN_HARGA bulan terakhir dan BATAS_HARI hari bursa,
+   jadi puncak yang lebih tua dari itu tidak pernah ada di mana pun. Karena itu
+   kartunya menyebut sejak tanggal berapa, supaya angkanya tidak disalahbaca. */
+function rekATH(emiten, sampai) {
+  const per = {};
+  daftarHari.forEach(r => {
+    if (!r.tgl || r.tgl > sampai || per[r.tgl]) return;
+    const b = r.baris && r.baris[emiten];
+    if (!b) return;
+    const h = typeof b.h === "number" ? b.h : null;
+    if (!h || h <= 0) return;
+    per[r.tgl] = h;
+  });
+  const tgl = Object.keys(per).sort();
+  if (!tgl.length) return null;
+  let harga = 0, kapan = "";
+  tgl.forEach(t => { if (per[t] > harga) { harga = per[t]; kapan = t; } });
+  return {harga: harga, tgl: kapan, awal: tgl[0], hari: tgl.length};
+}
+
 function rekBroker(emiten, dari, sampai) {
   const perTgl = {}, total = {};
   ((semuaTrx() || {}).REG || []).forEach(r => {
@@ -1842,7 +1921,32 @@ function rekKartu(judul, nilai, kelas, kaki) {
   return k;
 }
 
-function rekSisi(kode, total, volTot, kelas, judul) {
+/* Posisi tiap broker = saldo awal per cutoff + net lot seluruh transaksi yang ada
+   (mulai hari pertama data broker, sekarang 3 Agustus) sampai tanggal 'sampai'.
+   Sengaja TIDAK dibatasi rentang tanggal panel: yang ditanya di sini "siapa yang
+   memegang", dan itu pertanyaan kumulatif, bukan pertanyaan per rentang.
+
+   Harga rata-rata sengaja tidak ditampilkan. Tabel saldo_awal hanya punya
+   beli_lot dan jual_lot - sumbernya BROKER TRACKER tidak pernah memuat harga
+   untuk posisi pembuka, jadi avg posisi total tidak bisa dihitung tanpa
+   mengarang harga di sekitar cutoff. */
+function rekPosisi(emiten, sampai) {
+  const awal = saldoAwal(emiten, "REGULER");
+  const tambah = kumpulkan(emiten, "REGULER", "", sampai);
+  const hasil = {};
+  const pakai = k => hasil[k] || (hasil[k] = {awal: 0, delta: 0, posisi: 0});
+  Object.keys(awal).forEach(k => { pakai(k).awal = awal[k].net; });
+  Object.keys(tambah).forEach(k => {
+    pakai(k).delta = tambah[k].beli - tambah[k].jual;
+  });
+  Object.keys(hasil).forEach(k => {
+    hasil[k].posisi = hasil[k].awal + hasil[k].delta;
+  });
+  return hasil;
+}
+
+/* Satu sisi strip posisi. 'kode' sudah diurutkan pemanggilnya. */
+function rekSisi(kode, pos, kelas, judul) {
   const d = el("div", "rek-sisi " + kelas);
   d.appendChild(el("div", "rek-sj", judul));
   if (!kode.length) {
@@ -1853,13 +1957,54 @@ function rekSisi(kode, total, volTot, kelas, judul) {
     const b = el("div", "rek-bd");
     const kk = el("span", "rek-bk", k);
     kk.title = namaBroker(k);
-    const nn = el("span", "rek-bn " + arah(total[k]).k, rekLot(total[k]));
-    const pp = el("span", "rek-bp", volTot
-      ? (Math.abs(total[k]) / volTot * 100).toFixed(1).replace(".", ",") + "% vol"
-      : "");
-    b.appendChild(kk); b.appendChild(nn); b.appendChild(pp);
+    const p = pos[k];
+    /* pecahannya ditulis terang-terangan supaya kelihatan mana yang besar karena
+       sudah lama memegang, dan mana yang baru bergerak belakangan */
+    const pp = el("span", "rek-bp",
+      "awal " + lotSingkat(Math.round(p.awal / LOT)) + "  " +
+      (p.delta >= 0 ? "+ " : "− ") +
+      lotSingkat(Math.round(Math.abs(p.delta) / LOT)));
+    const nn = el("span", "rek-bn " + arah(p.delta).k,
+                  lotSingkat(Math.round(p.posisi / LOT)));
+    b.appendChild(kk); b.appendChild(pp); b.appendChild(nn);
     d.appendChild(b);
   });
+  return d;
+}
+
+/* Kotak LEVEL HARGA: ATH, R2, R1, harga sekarang, S1..S3 - satu tangga dari atas
+   ke bawah. Dipisah dari tabel supaya enak dibaca; dulu ini kolom S1-S3 di dalam
+   tabel dan angkanya terulang di tiap baris tanpa berarti apa-apa. */
+function rekKotakLevel(ath, res, sup, kini, tglAkhir) {
+  const d = el("div", "rek-kotak");
+  const kh = el("div", "rek-kh");
+  kh.appendChild(el("span", null, "LEVEL HARGA"));
+  kh.appendChild(el("span", null, REK_SUP_HARI + " hari bursa terakhir"));
+  d.appendChild(kh);
+
+  const t = el("div", "rek-tangga");
+  const anak = (kelas, label, harga, kanan, kelasKanan) => {
+    const a = el("div", "rek-anak " + kelas);
+    a.appendChild(el("span", "lbl", label));
+    a.appendChild(el("span", "hrg", rp(harga)));
+    a.appendChild(el("span", "jrk" + (kelasKanan ? " " + kelasKanan : ""), kanan));
+    t.appendChild(a);
+  };
+  const jarak = h => rekPersen((h / kini - 1) * 100, 1);
+
+  if (ath) anak("ath", "ATH", ath.harga, jarak(ath.harga), "turun");
+  for (let i = res.length - 1; i >= 0; i--) {
+    anak("res", "R" + (i + 1), res[i], jarak(res[i]), "turun");
+  }
+  anak("kini", "HARGA", kini, tglID(tglAkhir), "");
+  sup.forEach((h, i) => anak("sup", "S" + (i + 1), h, jarak(h), "naik"));
+  d.appendChild(t);
+
+  if (ath) {
+    d.appendChild(el("div", "bantu",
+      "ATH = tertinggi sejauh riwayat yang ada di HP (sejak " + tglID(ath.awal) +
+      ", " + ath.hari + " hari bursa), bukan sepanjang sejarah emiten."));
+  }
   return d;
 }
 
@@ -1956,23 +2101,59 @@ function panelRekomendasi(w) {
     tglID(akhir.tgl) + " · reguler"));
   p.appendChild(kartu);
 
+  /* ---- strip posisi: 5 pemegang terbesar & 5 pengurang terbesar ---- */
   if (adaBroker) {
+    const pos = rekPosisi(rek.em, rek.sampai);
+    const kodePos = Object.keys(pos).filter(
+      k => pos[k].posisi !== 0 || pos[k].delta !== 0);
+    const pemegang = kodePos.filter(k => pos[k].posisi > 0)
+      .sort((a, b) => pos[b].posisi - pos[a].posisi).slice(0, REK_BROKER);
+    /* "pengurang" = posisinya paling banyak BERKURANG sejak cutoff. Saldo awal
+       itu kepemilikan, jadi hampir tidak ada broker yang posisinya negatif -
+       memilih "posisi terkecil" akan menghasilkan daftar broker remeh, bukan
+       daftar penjual. */
+    const pengurang = kodePos.filter(k => pos[k].delta < 0)
+      .sort((a, b) => pos[a].delta - pos[b].delta).slice(0, REK_BROKER);
+
+    const sejak = BRK.cutoff ? tglID(BRK.cutoff) : "awal data";
     const strip = el("div", "rek-strip");
-    strip.appendChild(rekSisi(brBeli, brk.total, volTot / LOT, "beli",
-      "3 BROKER BELI TERBESAR · sepanjang rentang"));
-    strip.appendChild(rekSisi(brJual, brk.total, volTot / LOT, "jual",
-      "3 BROKER JUAL TERBESAR · sepanjang rentang"));
+    strip.appendChild(rekSisi(pemegang, pos, "beli",
+      REK_BROKER + " PEMEGANG TERBESAR · saldo awal " + sejak +
+      " + net s/d " + tglID(rek.sampai)));
+    strip.appendChild(rekSisi(pengurang, pos, "jual",
+      REK_BROKER + " PENGURANG TERBESAR · posisi turun paling banyak sejak " +
+      sejak));
     p.appendChild(strip);
+    p.appendChild(el("div", "bantu",
+      "Kolom tengah memperlihatkan susunannya: saldo awal per " + sejak +
+      " ditambah atau dikurangi net lot sesudahnya. Jadi terlihat mana yang besar " +
+      "karena memang sudah lama memegang, dan mana yang besar karena baru " +
+      "mengumpulkan belakangan. Berbeda dari kolom broker di tabel bawah, yang " +
+      "dipilih dari net sepanjang rentang tanggal saja."));
+  }
+
+  /* ---- kotak level harga ---- */
+  const ath = rekATH(rek.em, rek.sampai);
+  const sup = rekSupport(rek.em, rek.sampai);
+  const res = rekResist(rek.em, rek.sampai);
+  if (akhir.c && (ath || sup.length || res.length)) {
+    p.appendChild(rekKotakLevel(ath, res, sup, akhir.c, akhir.tgl));
+  } else {
+    p.appendChild(el("div", "bantu",
+      rek.em + " belum punya cukup riwayat harga untuk membentuk level. Perlu " +
+      "setidaknya " + (REK_SUP_PIVOT * 2 + 4) + " hari bursa, dan biasanya baru " +
+      "berguna sesudah aplikasi mengunduh beberapa bulan harga."));
   }
 
   const bungkus = el("div", "tbl-bungkus");
   const t = el("table");
   const thead = el("thead");
   const tr1 = el("tr"), tr2 = el("tr");
-  [["Tanggal", null], ["S1", "rek-s rek-s1 num"], ["S2", "rek-s num"],
-   ["S3", "rek-s rek-s3 num"], ["Tutup", null], ["%Hrg", null],
-   ["Net Foreign", null], ["Volume", null]].forEach(([judul, kelas]) => {
-    const th = el("th", kelas, judul); th.rowSpan = 2; tr1.appendChild(th);
+  /* Level harga TIDAK lagi jadi kolom di sini - sudah pindah ke kotak LEVEL HARGA
+     di atas tabel. Sebagai kolom, angkanya terulang di tiap baris padahal cuma
+     berlaku untuk tanggal terbaru. */
+  ["Tanggal", "Tutup", "%Hrg", "Net Foreign", "Volume"].forEach(judul => {
+    const th = el("th", null, judul); th.rowSpan = 2; tr1.appendChild(th);
   });
   if (adaBroker) {
     if (brBeli.length) {
@@ -1999,23 +2180,10 @@ function panelRekomendasi(w) {
      bukan per tanggal. Karena itu cuma ditulis di baris tanggal terbaru - kalau
      diulang di tiap baris, kolomnya penuh angka sama yang tidak berarti apa-apa
      pada tanggal-tanggal lama itu. */
-  const sup = rekSupport(rek.em, rek.sampai);
-
   const tbody = el("tbody");
   hr.forEach((x, i) => {
     const tr = el("tr");
     tr.appendChild(el("td", null, tglID(x.tgl)));
-    const barisAkhir = (i === hr.length - 1);
-    for (let s = 0; s < REK_SUP_JUMLAH; s++) {
-      const kelas = "num rek-s" + (s === 0 ? " rek-s1" : "") +
-                    (s === REK_SUP_JUMLAH - 1 ? " rek-s3" : "");
-      const td = el("td", kelas, (barisAkhir && sup[s] != null) ? rp(sup[s]) : "");
-      if (barisAkhir && sup[s] != null) {
-        td.title = "S" + (s + 1) + " · " +
-                   rekPersen((sup[s] / x.c - 1) * 100, 1) + " dari harga terakhir";
-      }
-      tr.appendChild(td);
-    }
     tr.appendChild(el("td", "num", x.c === null ? "—" : rp(x.c)));
     const sblm = i ? hr[i - 1].c : null;
     const d = (i && sblm && x.c) ? (x.c / sblm - 1) * 100 : null;
@@ -2042,10 +2210,6 @@ function panelRekomendasi(w) {
 
   const tfoot = el("tfoot"); const trf = el("tr");
   trf.appendChild(el("td", null, "TOTAL"));
-  for (let s = 0; s < REK_SUP_JUMLAH; s++) {
-    trf.appendChild(el("td", "num rek-s" + (s === 0 ? " rek-s1" : "") +
-                       (s === REK_SUP_JUMLAH - 1 ? " rek-s3" : ""), ""));
-  }
   trf.appendChild(el("td", "num", ""));
   trf.appendChild(el("td", "num" + (totPct === null ? "" : " " + arah(totPct).k),
                      rekPersen(totPct, 1)));
@@ -2060,19 +2224,11 @@ function panelRekomendasi(w) {
   tfoot.appendChild(trf); t.appendChild(tfoot);
   bungkus.appendChild(t); p.appendChild(bungkus);
 
-  p.appendChild(el("div", "bantu", sup.length
-    ? "S1–S3 = harga terendah yang benar-benar pernah tercapai di tiap kelompok " +
-      "titik balik di bawah harga sekarang, dihitung dari " + REK_SUP_HARI +
-      " hari bursa terakhir — bukan dari rentang tanggal yang dipilih di atas. " +
-      "Karena itu angkanya hanya ditulis di baris tanggal terbaru. Sentuh " +
-      "angkanya untuk melihat jaraknya dari harga terakhir."
-    : rek.em + " belum punya cukup riwayat harga untuk membentuk level support. " +
-      "Perlu setidaknya " + (REK_SUP_PIVOT * 2 + 4) + " hari bursa, dan biasanya " +
-      "baru berguna sesudah aplikasi mengunduh beberapa bulan harga."));
 
   if (adaBroker) {
     p.appendChild(el("div", "bantu",
-      "Enam kolom berkode broker itu dipilih dari TOTAL sepanjang rentang, lalu " +
+      (REK_BROKER * 2) + " kolom berkode broker itu dipilih dari TOTAL " +
+      "sepanjang rentang tanggal yang dipilih, lalu " +
       "isinya net lot broker itu per tanggal. Sel bergaris kotak = hari yang " +
       "arahnya berlawanan dengan arah broker itu sepanjang rentang — pembeli " +
       "terbesar yang ternyata net jual hari itu, atau sebaliknya. Justru hari " +
@@ -3253,7 +3409,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-21-1";
+const VERSI_APP = "2026-09-22-1";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
