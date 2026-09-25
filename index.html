@@ -914,8 +914,8 @@ let hvDari = "", hvSampai = "", hvAkhir = "";
 let hvPilih = [];
 /* Bawaan HARGA & VOL: emiten yang penutupannya naik minimal hvMin hari bursa
    berturut-turut sampai tanggal Sampai. "semua" = tampilan lama. */
-let hvMode = "naik", hvMin = 3, hvMinRp = 1;
-const HV_MIN_HARI = [3, 4, 5];
+let hvMode = "naik", hvMin = 2, hvMinRp = 1;
+const HV_MIN_HARI = [2, 3, 4, 5];
 const HV_MIN_RP = [0, 1, 2, 3, 4, 5];      /* miliar per hari; 0 = tanpa batas */
 
 /* Deret naik tiap emiten yang berakhir di tanggal `sampai`. Naik = penutupan
@@ -1779,7 +1779,7 @@ function panelHargaVol(w) {
       const c0 = el("td");
       c0.appendChild(el("span", "kode", r.kode));
       c0.appendChild(el("span", "nm", r.nama));
-      if (r.naik && r.naik.st >= (hvMode === "naik" ? hvMin : 3))
+      if (r.naik && r.naik.st >= hvMin)
         c0.appendChild(el("span", "hv-bdg", "\u25b2 " + r.naik.st + " hari \u00b7 +" +
           r.naik.tot.toFixed(1).replace(".", ",") + "%"));
       c0.style.position = "sticky"; c0.style.left = "0"; c0.style.zIndex = "2";
@@ -4069,7 +4069,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-26-1";
+const VERSI_APP = "2026-09-26-2";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
