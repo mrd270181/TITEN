@@ -323,6 +323,14 @@ table.kalender.foreign td{height:62px}
 .grafik{margin-top:8px;color:var(--ink)}
 .grafik svg{display:block}
 td.num{text-align:right;font-variant-numeric:tabular-nums}
+/* SCREENER > HARGA & VOL: naik beruntun */
+.hv-naik{margin:8px 0 4px}
+.hv-naik-atur{display:flex;gap:10px;flex-wrap:wrap;margin-top:7px}
+.hv-naik-atur label{display:flex;align-items:center;gap:5px;margin:0}
+.hv-naik-atur select{width:auto;padding:6px 8px;font-size:13px}
+.hv-bdg{display:inline-block;margin-top:3px;font-size:10px;font-weight:800;
+  color:var(--naik);background:var(--naik-bg);border-radius:5px;padding:1px 5px}
+td.hv-deret{background:var(--naik-bg)!important}
 /* SCREENER > FOREIGN AKUM */
 .fa-tabel td.kunci,.fa-tabel th.kunci{position:sticky;left:0;text-align:left;z-index:1}
 .fa-tabel th.kunci{z-index:3}
@@ -904,6 +912,37 @@ let favUrut = "vol", favArah = -1;
 let hvDari = "", hvSampai = "", hvAkhir = "";
 /* Emiten yang dipilih untuk ditampilkan. Kosong = tampilkan semua. */
 let hvPilih = [];
+/* Bawaan HARGA & VOL: emiten yang penutupannya naik minimal hvMin hari bursa
+   berturut-turut sampai tanggal Sampai. "semua" = tampilan lama. */
+let hvMode = "naik", hvMin = 3, hvMinRp = 1;
+const HV_MIN_HARI = [3, 4, 5];
+const HV_MIN_RP = [0, 1, 2, 3, 4, 5];      /* miliar per hari; 0 = tanpa batas */
+
+/* Deret naik tiap emiten yang berakhir di tanggal `sampai`. Naik = penutupan
+   lebih tinggi dari penutupan SEBELUMNYA menurut IDX (kolom p). Hari tanpa
+   transaksi, atau harga tetap/turun, memutus deret. Sumbernya daftarHari
+   (Ringkasan Saham IDX), jadi seluruh emiten bursa ikut diperiksa - bukan
+   cuma yang punya data broker. Satu tanggal di dua rekaman: yang pertama. */
+function hvDeretNaik(sampai) {
+  const perTgl = {};
+  daftarHari.forEach(r => {
+    if (r.tgl && r.tgl <= sampai && !perTgl[r.tgl]) perTgl[r.tgl] = r.baris || {};
+  });
+  const tgl = Object.keys(perTgl).sort().reverse();       /* terbaru dulu */
+  const hasil = {};
+  const em = new Set(Object.keys(perTgl[sampai] || {}));
+  em.forEach(k => {
+    let st = 0, awal = null, nilai = 0;
+    for (const t of tgl) {
+      const x = perTgl[t][k];
+      if (!x || !x.v || !x.p || !x.c || x.c <= x.p) break;
+      st++; awal = x.p; nilai += x.n || 0;
+    }
+    if (st) hasil[k] = {st, tot: (perTgl[sampai][k].c / awal - 1) * 100,
+                        nilaiRata: nilai / st, hari: tgl.slice(0, st)};
+  });
+  return hasil;
+}
 const HV_HARI = 10;              /* paling banyak 10 hari = 20 kolom angka */
 
 function siapkanFavorit() {
@@ -1503,10 +1542,13 @@ function panelHargaVol(w) {
     w.appendChild(p0); return;
   }
   const akhir = tgl[tgl.length - 1];
+  /* Dari dan Sampai sama-sama melompat ke tanggal terbaru tiap ada
+     pembaruan masuk. Untuk melihat hari-hari sebelumnya, Dari dimundurkan
+     sendiri (paling banyak 10 hari ditampilkan). */
   if (akhir !== hvAkhir) {
     hvAkhir = akhir;
     hvSampai = akhir;
-    hvDari = tgl[Math.max(0, tgl.length - HV_HARI)];
+    hvDari = akhir;
   }
   if (tgl.indexOf(hvDari) < 0) hvDari = tgl[Math.max(0, tgl.length - HV_HARI)];
   if (tgl.indexOf(hvSampai) < 0) hvSampai = akhir;
@@ -1539,11 +1581,39 @@ function panelHargaVol(w) {
   alat.appendChild(dc);
   p.appendChild(alat);
 
+  const kotakNaik = el("div", "hv-naik");
+  const sw = el("div", "saklar");
+  [["naik", "NAIK BERUNTUN"], ["semua", "SEMUA EMITEN"]].forEach(([k, j]) => {
+    const b = el("button", hvMode === k ? "aktif" : null, j);
+    b.type = "button";
+    b.onclick = () => { hvMode = k; halScreener(); };
+    sw.appendChild(b);
+  });
+  kotakNaik.appendChild(sw);
+  if (hvMode === "naik") {
+    const bar = el("div", "hv-naik-atur");
+    const lh = el("label", "bantu", "Naik minimal ");
+    const sh = el("select");
+    HV_MIN_HARI.forEach(x => { const o = el("option", null, x + " hari"); o.value = x;
+      if (hvMin === x) o.selected = true; sh.appendChild(o); });
+    sh.onchange = () => { hvMin = +sh.value; halScreener(); };
+    lh.appendChild(sh); bar.appendChild(lh);
+    const lr = el("label", "bantu", "Transaksi min. ");
+    const sr = el("select");
+    HV_MIN_RP.forEach(x => { const o = el("option", null,
+      x ? "Rp" + x + " miliar/hari" : "tanpa batas"); o.value = x;
+      if (hvMinRp === x) o.selected = true; sr.appendChild(o); });
+    sr.onchange = () => { hvMinRp = +sr.value; halScreener(); };
+    lr.appendChild(sr); bar.appendChild(lr);
+    kotakNaik.appendChild(bar);
+  }
+  p.appendChild(kotakNaik);
+
   /* Daftar saran memakai datalist bawaan peramban: di HP muncul sebagai
      daftar yang bisa diketuk, jadi tidak perlu mengetik kode dengan benar. */
   const dl = el("datalist"); dl.id = "daftarEmHV";
-  (BRK.em || []).forEach(k => { const o = el("option"); o.value = k;
-                                dl.appendChild(o); });
+  kfDaftarEmiten().forEach(k => { const o = el("option"); o.value = k;
+                                  dl.appendChild(o); });
   p.appendChild(dl);
 
   const barisChip = el("div");
@@ -1560,8 +1630,10 @@ function panelHargaVol(w) {
   const nm = {};
   (DATA.scr || []).forEach(b => { nm[b[0]] = b[1] || ""; });
 
-  const semua = (BRK.em || []).map(k => ({
-    kode: k, nama: nm[k] || "",
+  const deret = hvDeretNaik(hvSampai);
+  const emBroker = new Set(BRK.em || []);
+  const semua = kfDaftarEmiten().map(k => ({
+    kode: k, nama: nm[k] || "", naik: deret[k] || null,
     sel: hari.map(t => {
       const x = peta[t][k];
       if (!x || !x.c) return null;
@@ -1621,9 +1693,11 @@ function panelHargaVol(w) {
   function gambarChip() {
     barisChip.innerHTML = "";
     if (!hvPilih.length) {
-      const t0 = el("span", "bantu",
-        "Belum ada emiten dipilih \u2014 seluruh " + rp(semua.length) +
-        " emiten ditampilkan. Ketik kode di atas lalu Enter untuk mempersempit.");
+      const t0 = el("span", "bantu", hvMode === "naik"
+        ? "Menampilkan emiten yang naik beruntun. Ketik kode di atas lalu Enter " +
+          "untuk melihat emiten tertentu."
+        : "Belum ada emiten dipilih \u2014 seluruh " + rp(daftarLama.length) +
+          " emiten ditampilkan. Ketik kode di atas lalu Enter untuk mempersempit.");
       t0.style.margin = "0";
       barisChip.appendChild(t0);
       return;
@@ -1672,14 +1746,26 @@ function panelHargaVol(w) {
     if (tambahEm(inCari.value)) { inCari.value = ""; gambarChip(); isiBaris(); }
   };
 
+  /* NAIK BERUNTUN: diurutkan dari deret terpanjang, lalu total kenaikan.
+     SEMUA EMITEN: tampilan lama, emiten yang punya data broker. */
+  const daftarNaik = semua.filter(r => r.naik && r.naik.st >= hvMin &&
+      r.naik.nilaiRata >= hvMinRp * 1e9)
+    .sort((a, b) => (b.naik.st - a.naik.st) || (b.naik.tot - a.naik.tot));
+  const daftarLama = semua.filter(r => emBroker.has(r.kode));
+
   function isiBaris() {
     tbody.innerHTML = "";
+    const dasar = hvMode === "naik" ? daftarNaik : daftarLama;
     const pilihEm = hvPilih.length
       ? hvPilih.map(k => semua.find(r => r.kode === k)).filter(Boolean)
-      : semua;
-    hitung.textContent = (hvPilih.length
-      ? rp(pilihEm.length) + " dari " + rp(semua.length) : rp(semua.length)) +
-      " emiten";
+      : dasar;
+    hitung.textContent = hvPilih.length
+      ? rp(pilihEm.length) + " emiten dipilih"
+      : hvMode === "naik"
+        ? rp(pilihEm.length) + " emiten naik \u2265" + hvMin + " hari beruntun s/d " +
+          tglID(hvSampai) + (hvMinRp ? " \u00b7 transaksi \u2265 Rp" + hvMinRp +
+          " miliar/hari" : "")
+        : rp(pilihEm.length) + " emiten";
     if (!pilihEm.length) {
       const tr = el("tr");
       const td = el("td", null, "Tidak ada emiten yang cocok");
@@ -1693,6 +1779,9 @@ function panelHargaVol(w) {
       const c0 = el("td");
       c0.appendChild(el("span", "kode", r.kode));
       c0.appendChild(el("span", "nm", r.nama));
+      if (r.naik && r.naik.st >= (hvMode === "naik" ? hvMin : 3))
+        c0.appendChild(el("span", "hv-bdg", "\u25b2 " + r.naik.st + " hari \u00b7 +" +
+          r.naik.tot.toFixed(1).replace(".", ",") + "%"));
       c0.style.position = "sticky"; c0.style.left = "0"; c0.style.zIndex = "2";
       c0.style.background = i % 2 === 0 ? "var(--surface-2)" : "var(--surface-1)";
       tr.appendChild(c0);
@@ -1702,6 +1791,8 @@ function panelHargaVol(w) {
         const x = r.sel[j];
         const ch = el("td", "num");
         ch.style.borderLeft = "2px solid var(--garis)";
+        const dalamDeret = r.naik && r.naik.st >= hvMin && r.naik.hari.indexOf(t2) >= 0;
+        if (dalamDeret) ch.classList.add("hv-deret");
         if (!x) ch.textContent = "\u2013";
         else {
           const u = x.ubah;
@@ -1716,7 +1807,8 @@ function panelHargaVol(w) {
           ch.appendChild(hg);
         }
         tr.appendChild(ch);
-        tr.appendChild(el("td", "num", x ? rp(x.v) : "\u2013"));
+        const cv = el("td", "num" + (dalamDeret ? " hv-deret" : ""), x ? rp(x.v) : "\u2013");
+        tr.appendChild(cv);
       });
       tbody.appendChild(tr);
     });
@@ -3977,7 +4069,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-24-2";
+const VERSI_APP = "2026-09-26-1";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
