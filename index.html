@@ -331,6 +331,12 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
 .hv-bdg{display:inline-block;margin-top:3px;font-size:10px;font-weight:800;
   color:var(--naik);background:var(--naik-bg);border-radius:5px;padding:1px 5px}
 td.hv-deret{background:var(--naik-bg)!important}
+.hv-bintang{color:#d8a13a;font-weight:800;margin-left:3px}
+.hv-ciri{display:flex;gap:3px;margin-top:3px;flex-wrap:wrap}
+.hv-cp{font-size:9.5px;font-weight:700;border-radius:5px;padding:1px 5px;
+  border:1px solid var(--garis);color:var(--ink-2)}
+.hv-cp.ok{color:var(--naik);border-color:var(--naik)}
+.hv-cp.no{color:var(--turun);border-color:var(--turun)}
 .hv-hl{font-size:9.5px;line-height:1.25;margin-top:2px;font-weight:400}
 .hv-hl span{font-weight:400}
 /* SCREENER > FOREIGN AKUM */
@@ -916,7 +922,12 @@ let hvDari = "", hvSampai = "", hvAkhir = "";
 let hvPilih = [];
 /* Bawaan HARGA & VOL: emiten yang penutupannya naik minimal hvMin hari bursa
    berturut-turut sampai tanggal Sampai. "semua" = tampilan lama. */
-let hvMode = "naik", hvMin = 2, hvMinRp = 1;
+let hvMode = "naik", hvMin = 2, hvMinRp = 1, hvUrut = "ciri";
+/* Ciri yang lebih sering berlanjut (uji 27 ribu kejadian 2025-2026, sepertiga
+   terbaik): harga buka dekat penutupan kemarin (gap <= 0,5%) dan net asing
+   positif terhadap volume (NF >= +1,7%). Peluang hijau >= 4 kali naik dari
+   ~16% ke ~18-19% - cukup untuk MENGURUTKAN, bukan untuk memastikan. */
+const HV_GAP_OK = 0.5, HV_NF_OK = 1.7, HV_NF_JELEK = -0.6;
 const HV_MIN_HARI = [2, 3, 4, 5];
 const HV_MIN_RP = [0, 1, 2, 3, 4, 5];      /* miliar per hari; 0 = tanpa batas */
 
@@ -925,6 +936,12 @@ const HV_MIN_RP = [0, 1, 2, 3, 4, 5];      /* miliar per hari; 0 = tanpa batas *
    transaksi, atau harga tetap/turun, memutus deret. Sumbernya daftarHari
    (Ringkasan Saham IDX), jadi seluruh emiten bursa ikut diperiksa - bukan
    cuma yang punya data broker. Satu tanggal di dua rekaman: yang pertama. */
+const hvGapOk = n => n.gap !== null && n.gap <= HV_GAP_OK;
+const hvNfOk = n => n.nf !== null && n.nf >= HV_NF_OK;
+const hvSkor = n => (hvGapOk(n) && hvNfOk(n) ? 2 : 0) + (hvGapOk(n) ? 1 : 0);
+const hvPersen = v => (v > 0 ? "+" : v < 0 ? "\u2212" : "") +
+  Math.abs(v).toFixed(1).replace(".", ",") + "%";
+
 function hvDeretNaik(sampai) {
   const perTgl = {};
   daftarHari.forEach(r => {
@@ -940,8 +957,12 @@ function hvDeretNaik(sampai) {
       if (!x || !x.v || !x.p || !x.c || x.c <= x.p) break;
       st++; awal = x.p; nilai += x.n || 0;
     }
-    if (st) hasil[k] = {st, tot: (perTgl[sampai][k].c / awal - 1) * 100,
-                        nilaiRata: nilai / st, hari: tgl.slice(0, st)};
+    const a = perTgl[sampai][k];
+    const nf = a.v && (a.fb != null || a.fs != null)
+      ? ((a.fb || 0) - (a.fs || 0)) / a.v * 100 : null;
+    if (st) hasil[k] = {st, tot: (a.c / awal - 1) * 100,
+                        nilaiRata: nilai / st, hari: tgl.slice(0, st),
+                        gap: a.o && a.p ? (a.o / a.p - 1) * 100 : null, nf};
   });
   return hasil;
 }
@@ -1607,7 +1628,19 @@ function panelHargaVol(w) {
       if (hvMinRp === x) o.selected = true; sr.appendChild(o); });
     sr.onchange = () => { hvMinRp = +sr.value; halScreener(); };
     lr.appendChild(sr); bar.appendChild(lr);
+    const lu = el("label", "bantu", "Urut ");
+    const su = el("select");
+    [["ciri", "Ciri lanjut dulu"], ["deret", "Deret terpanjang"]].forEach(([v, j]) => {
+      const o = el("option", null, j); o.value = v;
+      if (hvUrut === v) o.selected = true; su.appendChild(o); });
+    su.onchange = () => { hvUrut = su.value; halScreener(); };
+    lu.appendChild(su); bar.appendChild(lu);
     kotakNaik.appendChild(bar);
+    kotakNaik.appendChild(el("div", "bantu",
+      "Gap = harga buka dibanding penutupan kemarin, NF = net asing \u00f7 volume, " +
+      "keduanya di hari terakhir. Hijau: gap \u2264 0,5% / NF \u2265 +1,7%. " +
+      "\u2605 = keduanya hijau. Ciri ini hanya sedikit menaikkan peluang " +
+      "berlanjut (\u00b116% \u2192 \u00b118\u201319%), bukan jaminan."));
   }
   p.appendChild(kotakNaik);
 
@@ -1752,7 +1785,8 @@ function panelHargaVol(w) {
      SEMUA EMITEN: tampilan lama, emiten yang punya data broker. */
   const daftarNaik = semua.filter(r => r.naik && r.naik.st >= hvMin &&
       r.naik.nilaiRata >= hvMinRp * 1e9)
-    .sort((a, b) => (b.naik.st - a.naik.st) || (b.naik.tot - a.naik.tot));
+    .sort((a, b) => (hvUrut === "ciri" ? (hvSkor(b.naik) - hvSkor(a.naik)) : 0) ||
+                    (b.naik.st - a.naik.st) || (b.naik.tot - a.naik.tot));
   const daftarLama = semua.filter(r => emBroker.has(r.kode));
 
   function isiBaris() {
@@ -1781,9 +1815,22 @@ function panelHargaVol(w) {
       const c0 = el("td");
       c0.appendChild(el("span", "kode", r.kode));
       c0.appendChild(el("span", "nm", r.nama));
-      if (r.naik && r.naik.st >= hvMin)
-        c0.appendChild(el("span", "hv-bdg", "\u25b2 " + r.naik.st + " hari \u00b7 +" +
-          r.naik.tot.toFixed(1).replace(".", ",") + "%"));
+      if (r.naik && r.naik.st >= hvMin) {
+        const n = r.naik;
+        if (hvGapOk(n) && hvNfOk(n)) {
+          const b = el("span", "hv-bintang", "\u2605");
+          b.title = "Gap kecil dan NF positif";
+          c0.insertBefore(b, c0.children[1]);
+        }
+        c0.appendChild(el("span", "hv-bdg", "\u25b2 " + n.st + " hari \u00b7 +" +
+          n.tot.toFixed(1).replace(".", ",") + "%"));
+        const ciri = el("div", "hv-ciri");
+        ciri.appendChild(el("span", "hv-cp" + (n.gap === null ? "" : hvGapOk(n) ? " ok" : " no"),
+          "Gap " + (n.gap === null ? "\u2013" : hvPersen(n.gap))));
+        ciri.appendChild(el("span", "hv-cp" + (n.nf === null ? "" : hvNfOk(n) ? " ok"
+          : n.nf < HV_NF_JELEK ? " no" : ""), "NF " + (n.nf === null ? "\u2013" : hvPersen(n.nf))));
+        c0.appendChild(ciri);
+      }
       c0.style.position = "sticky"; c0.style.left = "0"; c0.style.zIndex = "2";
       c0.style.background = i % 2 === 0 ? "var(--surface-2)" : "var(--surface-1)";
       tr.appendChild(c0);
@@ -4081,7 +4128,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-26-4";
+const VERSI_APP = "2026-09-27-1";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
