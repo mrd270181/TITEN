@@ -943,7 +943,7 @@ function hvDeretNaik(sampai) {
   });
   return hasil;
 }
-const HV_HARI = 10;              /* paling banyak 10 hari = 20 kolom angka */
+const HV_HARI = 22;              /* paling banyak 22 hari = 44 kolom angka */
 
 function siapkanFavorit() {
   const tgl = tanggalTersedia();
@@ -1530,7 +1530,7 @@ function panelFavorit(w) {
   w.appendChild(hs);
 }
 
-/* Tabel harga & volume sepuluh hari bursa, dua kolom per hari.
+/* Tabel harga & volume sampai 22 hari bursa, dua kolom per hari.
    Semestanya emiten yang punya data broker (BRK.em), sama dengan ANALISA
    FAVORIT - halaman ini pendamping bacanya, jadi daftarnya harus sama.
    Angkanya sendiri murni dari Ringkasan Saham IDX, bukan dari data broker. */
@@ -1544,7 +1544,7 @@ function panelHargaVol(w) {
   const akhir = tgl[tgl.length - 1];
   /* Dari dan Sampai sama-sama melompat ke tanggal terbaru tiap ada
      pembaruan masuk. Untuk melihat hari-hari sebelumnya, Dari dimundurkan
-     sendiri (paling banyak 10 hari ditampilkan). */
+     sendiri (paling banyak 22 hari ditampilkan). */
   if (akhir !== hvAkhir) {
     hvAkhir = akhir;
     hvSampai = akhir;
@@ -1553,8 +1553,8 @@ function panelHargaVol(w) {
   if (tgl.indexOf(hvDari) < 0) hvDari = tgl[Math.max(0, tgl.length - HV_HARI)];
   if (tgl.indexOf(hvSampai) < 0) hvSampai = akhir;
   if (hvDari > hvSampai) { const x = hvDari; hvDari = hvSampai; hvSampai = x; }
-  /* Kalau rentangnya lebih panjang dari sepuluh hari, yang diambil sepuluh
-     TERAKHIR - bukan sepuluh pertama. Yang dicari orang selalu keadaan
+  /* Kalau rentangnya lebih panjang dari 22 hari, yang diambil 22
+     TERAKHIR - bukan 22 pertama. Yang dicari orang selalu keadaan
      terbaru; hari paling lama tinggal digeser sendiri lewat kotak Dari. */
   let hari = tgl.filter(t => t >= hvDari && t <= hvSampai);
   if (hari.length > HV_HARI) hari = hari.slice(-HV_HARI);
@@ -4069,7 +4069,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-26-2";
+const VERSI_APP = "2026-09-26-3";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
