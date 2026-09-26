@@ -331,6 +331,8 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
 .hv-bdg{display:inline-block;margin-top:3px;font-size:10px;font-weight:800;
   color:var(--naik);background:var(--naik-bg);border-radius:5px;padding:1px 5px}
 td.hv-deret{background:var(--naik-bg)!important}
+.hv-hl{font-size:9.5px;line-height:1.25;margin-top:2px;font-weight:400}
+.hv-hl span{font-weight:400}
 /* SCREENER > FOREIGN AKUM */
 .fa-tabel td.kunci,.fa-tabel th.kunci{position:sticky;left:0;text-align:left;z-index:1}
 .fa-tabel th.kunci{z-index:3}
@@ -1641,7 +1643,7 @@ function panelHargaVol(w) {
          di sebelahnya. Dengan begitu hari bursa paling lama pun tetap punya
          persentase, dan emiten yang kemarin tidak diperdagangkan tidak
          dibandingkan dengan hari yang terpaut jauh. */
-      return {c: x.c,
+      return {c: x.c, h: x.h || null, l: x.l || null,
               ubah: x.p ? (x.c - x.p) / x.p * 100 : null,
               v: Math.round((x.v || 0) / LOT)};
     }),
@@ -1805,6 +1807,15 @@ function panelHargaVol(w) {
           hg.style.opacity = ".7";
           hg.style.color = "var(--ink-2)";
           ch.appendChild(hg);
+          /* Tertinggi & terendah hari itu dari Ringkasan Saham IDX, ditaruh
+             di sel yang sama supaya tabel tetap dua kolom per tanggal. */
+          if (x.h || x.l) {
+            const hl = el("div", "hv-hl");
+            hl.appendChild(el("span", "naik", "T " + (x.h ? rp(x.h) : "\u2013")));
+            hl.appendChild(el("br"));
+            hl.appendChild(el("span", "turun", "R " + (x.l ? rp(x.l) : "\u2013")));
+            ch.appendChild(hl);
+          }
         }
         tr.appendChild(ch);
         const cv = el("td", "num" + (dalamDeret ? " hv-deret" : ""), x ? rp(x.v) : "\u2013");
@@ -1831,7 +1842,8 @@ function panelHargaVol(w) {
     "SEBELUMNYA menurut IDX \u2014 bukan selisih dengan kolom di sebelahnya, " +
     "jadi hari terlama pun tetap terisi dan emiten yang kemarin tidak " +
     "diperdagangkan tidak dibandingkan dengan hari yang terpaut jauh. " +
-    "Angka kecil di bawahnya harga penutupan hari itu. Kolom Emiten dan " +
+    "Angka kecil di bawahnya harga penutupan hari itu, lalu T = harga tertinggi " +
+    "dan R = harga terendah hari itu menurut IDX. Kolom Emiten dan " +
     "kedua baris kepala sama-sama beku. Urutan barisnya mengikuti urutan " +
     "Anda memilih, bukan diurutkan sendiri \u2014 supaya emiten yang " +
     "sengaja disandingkan tetap bersebelahan."));
@@ -4069,7 +4081,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-26-3";
+const VERSI_APP = "2026-09-26-4";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
