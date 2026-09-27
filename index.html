@@ -369,16 +369,27 @@ svg.fa-pola{display:block}
   overflow-wrap:anywhere}
 .rek-kk{font-size:9.5px;color:var(--ink-3)}
 .rek-strip{display:grid;gap:6px;grid-template-columns:1fr;margin-top:8px}
+.uw-tag{display:inline-block;font-size:8.5px;font-weight:800;color:#fff;background:#7c3aed;border-radius:4px;padding:0 4px;margin-left:3px;vertical-align:2px;line-height:14px;letter-spacing:.3px}
+.uw-tag.kecil{background:transparent;color:#7c3aed;border:1px solid #7c3aed;line-height:12px}
+tr.uw-baris td{background:rgba(124,58,237,.08)}
+.uwk{border:1.5px solid #7c3aed;border-radius:12px;padding:9px 10px;margin-top:8px;background:rgba(124,58,237,.06)}
+.uwk-j{font-size:10.5px;font-weight:800;color:#7c3aed;letter-spacing:.4px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.uwk-g{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:6px;margin-top:7px}
+.uwk-c{background:var(--kartu);border:1px solid var(--garis);border-radius:8px;padding:5px 7px}
+.uwk-c b{font-size:13px}.uwk-p{font-size:9.5px;color:#7c3aed;font-weight:700;margin-left:4px}
+.uwk-n{font-weight:800;font-variant-numeric:tabular-nums;font-size:12.5px}.uwk-s{font-size:10px;color:var(--ink-3)}
+.uwk-k{font-size:10.5px;color:var(--ink-3);margin-top:6px}
+@media (prefers-color-scheme:dark){.uw-tag{background:#8b5cf6}.uwk-j,.uwk-p{color:#c4a5ff}.uw-tag.kecil{color:#c4a5ff;border-color:#c4a5ff;background:transparent}}
 @media(min-width:560px){.rek-strip{grid-template-columns:1fr 1fr}}
 .rek-sisi{border:1px solid var(--garis);border-radius:10px;padding:7px 9px}
 .rek-sisi.beli{background:var(--naik-bg);border-color:var(--naik)}
 .rek-sisi.jual{background:var(--turun-bg);border-color:var(--turun)}
 .rek-sj{font-size:9px;letter-spacing:.5px;font-weight:700;color:var(--ink-2);
   margin-bottom:3px}
-.rek-bd{display:grid;grid-template-columns:30px 1fr auto;gap:8px;align-items:baseline;
+.rek-bd{display:grid;grid-template-columns:minmax(30px,auto) 1fr auto;gap:8px;align-items:baseline;
   padding:3px 0;font-size:12px;border-top:1px solid rgba(255,255,255,.05)}
 .rek-bd:first-of-type{border-top:0}
-.rek-bk{font-weight:800}
+.rek-bk{font-weight:800;white-space:nowrap}
 .rek-bn{font-weight:800;font-variant-numeric:tabular-nums;text-align:right}
 .rek-bp{font-size:12px;color:var(--ink-2);font-variant-numeric:tabular-nums}
 .rek-av{font-size:10.5px;color:var(--ink-3);font-weight:500;font-variant-numeric:tabular-nums}
@@ -2160,6 +2171,73 @@ function rekPosisi(emiten) {
   return {pos: hasil, akhir: akhir};
 }
 
+/* Broker penjamin emisi (underwriter) IPO per emiten. Sumber: tabel "susunan dan
+   jumlah porsi penjaminan" di prospektus IPO idx.co.id (2020-2026); INET dari
+   e-IPO; COCO/KOTA/SINI/TEBE (IPO 2019) dari berita. l: [kode, P=pelaksana /
+   A=anggota, porsi %, nama]. Emiten yang IPO sebelum 2019 belum ada datanya. */
+const UW = {"COCO":{"t":"2019-03-20","s":"berita","l":[["AI","P",null,"UOB Kay Hian Sekuritas"]]},"KOTA":{"t":"2019-07-09","s":"berita","l":[["II","P",null,"Danatama Makmur Sekuritas"]]},"SINI":{"t":"2019-11-08","s":"berita","l":[["PG","P",null,"Panca Global Sekuritas"]]},"TEBE":{"t":"2019-11-18","s":"berita","l":[["MI","P",null,"Victoria Sekuritas Indonesia"],["SF","P",null,"Surya Fajar Sekuritas"]]},"UANG":{"t":"2020-07-06","s":"prospektus","l":[["DH","P",100,"Sinarmas Sekuritas"]]},"PGUN":{"t":"2020-07-07","s":"prospektus","l":[["IN","P",51.11,"Investindo Nusantara Sekuritas"],["GR","A",25.56,"Panin Sekuritas"],["PG","A",23.33,"Panca Global Sekuritas"]]},"WIFI":{"t":"2020-12-30","s":"prospektus","l":[["IU","P",100,"Indo Capital Sekuritas"]]},"DCII":{"t":"2021-01-06","s":"prospektus","l":[["RF","P",100,"Buana Capital Sekuritas"]]},"BANK":{"t":"2021-02-01","s":"prospektus","l":[["XA","P",100,"NH Korindo Sekuritas Indonesia"]]},"MGLV":{"t":"2021-06-08","s":"prospektus","l":[["II","P",90.74,"Danatama Makmur Sekuritas"],["HP","A",9.26,"Henan Putihrai Sekuritas"]]},"ARCI":{"t":"2021-06-28","s":"prospektus","l":[["AI","P",67.05,"UOB Kay Hian Sekuritas"],["CC","P",17.65,"Mandiri Sekuritas"],["CG","P",6.97,"Citigroup Sekuritas Indonesia"],["CS","P",6.97,"Credit Suisse Sekuritas Indonesia"],["NI","P",1.36,"BNI Sekuritas"]]},"BUKA":{"t":"2021-08-06","s":"prospektus","l":[["CC","P",30.28,"Mandiri Sekuritas"],["RF","P",16.654,"Buana Capital Sekuritas"],["AK","A",52.99,"UBS Sekuritas Indonesia"],["YP","A",0.046,"Mirae Asset Sekuritas Indonesia"],["DX","A",0.005,"Bahana Sekuritas"],["NI","A",0.005,"BNI Sekuritas"],["OD","A",0.005,"BRI Danareksa Sekuritas"],["SQ","A",0.002,"BCA Sekuritas"],["KI","A",0.001,"Ciptadana Sekuritas Asia"],["IN","A",0.001,"Investindo Nusantara Sekuritas"],["YJ","A",0.001,"Lotus Andalan Sekuritas"],["GR","A",0.001,"Panin Sekuritas"],["KK","A",0.001,"Phillip Sekuritas Indonesia"],["IF","A",0.001,"Samuel Sekuritas Indonesia"],["DH","A",0.001,"Sinarmas Sekuritas"],["AZ","A",0.001,"Sucor Sekuritas"],["LG","A",0.001,"Trimegah Sekuritas Indonesia"],["CP","A",0.001,"Valbury Sekuritas Indonesia"],["MI","A",0.001,"Victoria Sekuritas Indonesia"],["AN","A",0.001,"Wanteg Sekuritas"],["FS","A",0.001,"Yuanta Sekuritas Indonesia"]]},"MTEL":{"t":"2021-11-22","s":"prospektus","l":[["CC","P",20.998,"Mandiri Sekuritas"],["OD","P",18.998,"BRI Danareksa Sekuritas"],["GW","A",19.998,"HSBC Sekuritas Indonesia"],["BK","A",19.998,"J.P. Morgan Sekuritas Indonesia"],["MS","A",19.998,"Morgan Stanley Sekuritas Indonesia"],["PF","A",0.001,"Danasakti Sekuritas Indonesia"],["IN","A",0.001,"Investindo Nusantara Sekuritas"],["GR","A",0.001,"Panin Sekuritas"],["IF","A",0.001,"Samuel Sekuritas Indonesia"],["CP","A",0.001,"Valbury Sekuritas Indonesia"],["RS","A",0.001,"Yulie Sekuritas Indonesia"]]},"CMRY":{"t":"2021-12-06","s":"prospektus","l":[["CC","P",64.995,"Mandiri Sekuritas"],["KZ","P",34.998,"CLSA Sekuritas Indonesia"],["GR","A",0.007,"Panin Sekuritas"]]},"RMKE":{"t":"2021-12-07","s":"prospektus","l":[["MI","P",61.03,"Victoria Sekuritas Indonesia"],["IU","P",27.46,"Indo Capital Sekuritas"],["AO","P",11.1,"Erdikha Elit Sekuritas"],["MG","P",0.14,"Semesta Indovest Sekuritas"],["KK","A",0.28,"Phillip Sekuritas Indonesia"]]},"ADMR":{"t":"2022-01-03","s":"prospektus","l":[["KI","P",100,"Ciptadana Sekuritas Asia"]]},"GOTO":{"t":"2022-04-11","s":"prospektus","l":[["PD","P",33.241,"Indo Premier Sekuritas"],["CC","P",33.241,"Mandiri Sekuritas"],["LG","P",33.241,"Trimegah Sekuritas Indonesia"],["","A",0.232,"Nilai Inti Sekuritas"],["","A",0.015,"CIMB Niaga Sekuritas"],["CS","A",0.007,"Credit Suisse Sekuritas Indonesia"],["KZ","A",0.007,"CLSA Sekuritas Indonesia"],["DB","A",0.007,"Deutsche Sekuritas Indonesia"],["PP","A",0.002,"Aldiracita Sekuritas Indonesia"],["NI","A",0.002,"BNI Sekuritas"],["GR","A",0.002,"Panin Sekuritas"],["AZ","A",0.002,"Sucor Sekuritas"],["CP","A",0.002,"KB Valbury Sekuritas"]]},"ARKO":{"t":"2022-07-08","s":"prospektus","l":[["YP","P",55.46,"Mirae Asset Sekuritas Indonesia"],["YJ","P",44.54,"Lotus Andalan Sekuritas"]]},"JARR":{"t":"2022-08-04","s":"prospektus","l":[["IN","P",27.03,"Investindo Nusantara Sekuritas"],["PG","A",26.68,"Panca Global Sekuritas"],["AR","A",24.07,"Binaartha Sekuritas"],["YJ","A",22.22,"Lotus Andalan Sekuritas"]]},"ELPI":{"t":"2022-08-08","s":"prospektus","l":[["LG","P",100,"Trimegah Sekuritas Indonesia"]]},"CBRE":{"t":"2023-01-09","s":"prospektus","l":[["DR","P",74.91,"RHB Sekuritas Indonesia (kini OSO)"],["HD","A",25.09,"KGI Sekuritas Indonesia"]]},"PACK":{"t":"2023-02-08","s":"prospektus","l":[["XA","P",100,"NH Korindo Sekuritas Indonesia"]]},"PGEO":{"t":"2023-02-24","s":"prospektus","l":[["CS","P",34.998,"Credit Suisse Sekuritas Indonesia"],["KZ","P",27.498,"CLSA Sekuritas Indonesia"],["CC","P",27.498,"Mandiri Sekuritas"],["GW","A",9.999,"HSBC Sekuritas Indonesia"],["DX","A",0.003,"Bahana Sekuritas"],["IF","A",0.003,"Samuel Sekuritas Indonesia"],["PF","A",0.001,"Danasakti Sekuritas Indonesia"]]},"CUAN":{"t":"2023-03-08","s":"prospektus","l":[["HP","P",67.1,"Henan Putihrai Sekuritas"],["OD","P",32.9,"BRI Danareksa Sekuritas"]]},"NSSS":{"t":"2023-03-10","s":"prospektus","l":[["IF","P",96.35,"Samuel Sekuritas Indonesia"],["OD","P",1.43,"BRI Danareksa Sekuritas"],["AZ","P",1.1,"Sucor Sekuritas"],["YP","P",0.84,"Mirae Asset Sekuritas Indonesia"],["RS","A",0.25,"Yulie Sekuritas Indonesia"],["KK","A",0.02,"Phillip Sekuritas Indonesia"],["PF","A",0.01,"Danasakti Sekuritas"]]},"NCKL":{"t":"2023-04-12","s":"prospektus","l":[["BW","P",21.25,"BNP Paribas Sekuritas Indonesia"],["CG","P",21.25,"Citigroup Sekuritas Indonesia"],["CS","P",21.25,"Credit Suisse Sekuritas Indonesia"],["CC","P",21.25,"Mandiri Sekuritas"],["DP","A",5,"DBS Vickers Sekuritas Indonesia"],["TP","A",5,"OCBC Sekuritas Indonesia"],["AI","A",5,"UOB Kay Hian Sekuritas"]]},"MBMA":{"t":"2023-04-18","s":"prospektus","l":[["PD","P",19.95,"Indo Premier Sekuritas"],["LG","P",19.95,"Trimegah Sekuritas Indonesia"],["AK","A",29.93,"UBS Sekuritas Indonesia"],["RX","A",29.93,"Macquarie Sekuritas Indonesia"],["AZ","A",0.22,"Sucor Sekuritas"],["PP","A",0.01,"Aldiracita Sekuritas Indonesia"],["KI","A",0.01,"Ciptadana Sekuritas Asia"]]},"VKTR":{"t":"2023-06-19","s":"prospektus","l":[["KI","P",88.23,"Ciptadana Sekuritas Asia"],["LG","P",11.52,"Trimegah Sekuritas Indonesia"],["IF","P",0.25,"Samuel Sekuritas Indonesia"]]},"AMMN":{"t":"2023-07-07","s":"prospektus","l":[["CC","P",54.996,"Mandiri Sekuritas"],["NI","P",14.998,"BNI Sekuritas"],["KZ","P",14.998,"CLSA Sekuritas Indonesia"],["DP","P",14.998,"DBS Vickers Sekuritas Indonesia"],["OD","A",0.005,"BRI Danareksa Sekuritas"],["IF","A",0.005,"Samuel Sekuritas Indonesia"],["ZP","A",0.001,"Maybank Sekuritas Indonesia"]]},"INET":{"t":"2023-07-24","s":"e-IPO","l":[["AH","P",null,"Shinhan Sekuritas Indonesia"]]},"HUMI":{"t":"2023-08-09","s":"prospektus","l":[["LS","P",100,"Reliance Sekuritas Indonesia"]]},"BREN":{"t":"2023-10-09","s":"prospektus","l":[["NI","P",95.22,"BNI Sekuritas"],["TP","A",4.78,"OCBC Sekuritas Indonesia"]]},"UDNG":{"t":"2023-10-31","s":"prospektus","l":[["BQ","P",75,"Korea Investment & Sekuritas Indonesia"],["EP","P",25,"MNC Sekuritas"]]},"DATA":{"t":"2024-05-07","s":"prospektus","l":[["AI","P",100,"UOB Kay Hian Sekuritas"]]},"AADI":{"t":"2024-12-05","s":"prospektus","l":[["LG","P",100,"Trimegah Sekuritas Indonesia"]]},"RATU":{"t":"2025-01-08","s":"prospektus","l":[["HP","P",85,"Henan Putihrai Sekuritas"],["AZ","P",15,"Sucor Sekuritas"]]},"CBDK":{"t":"2025-01-13","s":"prospektus","l":[["LG","P",100,"Trimegah Sekuritas Indonesia"]]},"CDIA":{"t":"2025-07-09","s":"prospektus","l":[["HP","P",74.24,"Henan Putihrai Sekuritas"],["LG","P",11.69,"Trimegah Sekuritas Indonesia"],["TP","P",7.06,"OCBC Sekuritas Indonesia"],["NI","P",3.06,"BNI Sekuritas"],["SQ","P",1.98,"BCA Sekuritas"],["DP","P",1.97,"DBS Vickers Sekuritas Indonesia"]]},"EMAS":{"t":"2025-09-23","s":"prospektus","l":[["DH","P",45.84,"Sinarmas Sekuritas"],["PD","P",35.71,"Indo Premier Sekuritas"],["LG","P",18.41,"Trimegah Sekuritas Indonesia"],["PP","A",0.01,"Aldiracita Sekuritas Indonesia"],["YO","A",0.01,"Amantara Sekuritas Indonesia"],["TP","A",0.01,"OCBC Sekuritas Indonesia"],["AI","A",0.01,"UOB Kay Hian Sekuritas"]]},"RLCO":{"t":"2025-12-08","s":"prospektus","l":[["IF","P",100,"Samuel Sekuritas Indonesia"]]},"SUPA":{"t":"2025-12-17","s":"prospektus","l":[["CC","P",58.674,"Mandiri Sekuritas"],["LG","P",37.606,"Trimegah Sekuritas Indonesia"],["KZ","P",3.231,"CLSA Sekuritas Indonesia"],["AZ","P",0.459,"Sucor Sekuritas"],["DX","A",0.015,"Bahana Sekuritas"],["BQ","A",0.015,"Korea Investment & Sekuritas Indonesia"]]},"WBSA":{"t":"2026-04-10","s":"prospektus","l":[["MG","P",72.07,"Semesta Indovest Sekuritas"],["TP","P",27.83,"OCBC Sekuritas Indonesia"],["IU","A",0.1,"Indo Capital Sekuritas"]]},"JELI":{"t":"2026-07-07","s":"prospektus","l":[["AZ","P",100,"Sucor Sekuritas"]]},"JECX":{"t":"2026-07-07","s":"prospektus","l":[["LG","P",100,"Trimegah Sekuritas Indonesia"]]},"EMMI":{"t":"2026-07-08","s":"prospektus","l":[["RB","P",57.85,"INA Sekuritas Indonesia"],["OD","P",29.93,"BRI Danareksa Sekuritas"],["RS","A",12.21,"Yulie Sekuritas Indonesia"],["IN","A",0.02,"Investindo Nusantara Sekuritas"]]},"BACH":{"t":"2026-07-08","s":"prospektus","l":[["AO","P",81.3,"Erdikha Elit Sekuritas"],["PO","A",18.7,"Pilarmas Investindo Sekuritas"]]},"PRDL":{"t":"2026-07-09","s":"prospektus","l":[["AZ","P",100,"Sucor Sekuritas"]]},"RANS":{"t":"2026-07-10","s":"prospektus","l":[["LG","P",100,"Trimegah Sekuritas Indonesia"]]}};
+function uwInfo(em, br) {
+  const d = UW[em];
+  if (!d || !br) return null;
+  const x = d.l.find(r => r[0] === br);
+  return x ? {peran: x[1], porsi: x[2], nama: x[3]} : null;
+}
+/* Label UW. Porsi < 1% (anggota formalitas) digambar garis saja, supaya yang
+   benar-benar memegang jatah IPO langsung kelihatan. */
+function tagUW(em, br) {
+  const u = uwInfo(em, br);
+  if (!u) return null;
+  const kecil = u.porsi !== null && u.porsi < 1;
+  const t = el("span", "uw-tag" + (kecil ? " kecil" : ""), "UW");
+  t.title = "Underwriter IPO " + em + ": " +
+    (u.peran === "P" ? "penjamin pelaksana" : "anggota sindikasi") +
+    (u.porsi !== null ? " · porsi " + u.porsi.toLocaleString("id-ID") + "%" : "");
+  return t;
+}
+/* Kotak ungu REKOMENDASI: semua underwriter + posisi terkininya. */
+function rekKotakUW(em, pos, sampaiPos) {
+  const d = UW[em];
+  if (!d) return null;
+  const k = el("div", "uwk");
+  const j = el("div", "uwk-j");
+  j.appendChild(el("span", null, "UNDERWRITER IPO · " + em +
+    (d.t ? " · " + tglID(d.t) + " " + d.t.slice(0, 4) : "")));
+  j.appendChild(el("span", null, "posisi s/d " + sampaiPos));
+  k.appendChild(j);
+  const g = el("div", "uwk-g");
+  const besar = d.l.filter(r => r[0] && (r[1] === "P" || r[2] === null || r[2] >= 1));
+  const kecil = d.l.filter(r => besar.indexOf(r) < 0);
+  besar.forEach(([kd, peran, porsi, nama]) => {
+    const c = el("div", "uwk-c");
+    c.title = nama;
+    const h = el("div");
+    h.appendChild(el("b", null, kd));
+    h.appendChild(el("span", "uwk-p", (peran === "P" ? "★ " : "") +
+      (porsi !== null ? porsi.toLocaleString("id-ID", {maximumFractionDigits: 1}) + "%" :
+       peran === "P" ? "pelaksana" : "anggota")));
+    c.appendChild(h);
+    const p = pos[kd];
+    if (p) {
+      const n = el("div", "uwk-n " + (p.posisi >= 0 ? "naik" : "turun"),
+        (p.posisi < 0 ? "−" : "") + lotSingkat(Math.round(Math.abs(p.posisi))));
+      if (Math.round(p.posisi)) n.appendChild(el("span", "rek-av", " (" + hargaAvg(p.aPos) + ")"));
+      c.appendChild(n);
+      c.appendChild(el("div", "uwk-s", "net " + (p.delta >= 0 ? "+" : "−") +
+        lotSingkat(Math.round(Math.abs(p.delta))) + " sejak awal data"));
+    } else {
+      c.appendChild(el("div", "uwk-s", "tidak ada posisi"));
+    }
+    g.appendChild(c);
+  });
+  k.appendChild(g);
+  if (kecil.length) {
+    k.appendChild(el("div", "uwk-k", "+ " + kecil.length + " anggota porsi <1%: " +
+      kecil.map(r => r[0] || r[3]).join(", ")));
+  }
+  k.appendChild(el("div", "uwk-k", "★ = penjamin pelaksana · % = porsi penjaminan · UW penuh = porsi ≥1%, UW garis = porsi <1% · sumber " + d.s));
+  return k;
+}
+
 /* Satu sisi strip posisi. 'kode' sudah diurutkan pemanggilnya. */
 function rekSisi(kode, pos, kelas, judul) {
   /* Warna dan tanda mengikuti SISI KOLOM, bukan arah delta. Broker yang sedang
@@ -2180,6 +2258,8 @@ function rekSisi(kode, pos, kelas, judul) {
     const b = el("div", "rek-bd");
     const kk = el("span", "rek-bk", k);
     kk.title = namaBroker(k);
+    const uwt = tagUW(rek.em, k);
+    if (uwt) kk.appendChild(uwt);
     const p = pos[k];
     /* pecahannya ditulis terang-terangan supaya kelihatan mana yang besar karena
        sudah lama memegang, dan mana yang baru bergerak belakangan */
@@ -2382,6 +2462,8 @@ function panelRekomendasi(w) {
 
     const sejak = BRK.cutoff ? tglID(BRK.cutoff) : "awal data";
     const sampaiPos = hasilPos.akhir ? tglID(hasilPos.akhir) : "—";
+    const kotakUW = rekKotakUW(rek.em, pos, sampaiPos);
+    if (kotakUW) p.appendChild(kotakUW);
     const strip = el("div", "rek-strip");
     /* Papan disebut di judul. Tanpa itu, angka di sini gampang dikira sudah
        mencakup NEGO - dan untuk emiten yang crossing-nya besar, selisihnya
@@ -4143,7 +4225,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-27-4";
+const VERSI_APP = "2026-09-28-1";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -5688,6 +5770,7 @@ function tabelUrut(kepala, baris, kunciAwal, bekukan) {
     kepala.forEach(k => {
       const nilai = r[k.kunci];
       const kosong = nilai === null || nilai === undefined;
+      if (k.tag && r._kelas) tr.className = r._kelas;
       const td = el("td", k.angka ? "num" : null,
                     !k.angka ? String(nilai)
                     : kosong ? "–"
@@ -5695,6 +5778,7 @@ function tabelUrut(kepala, baris, kunciAwal, bekukan) {
                     : nilai.toLocaleString("id-ID"));
       if (k.warna && typeof nilai === "number")
         td.style.color = nilai > 0 ? "var(--naik)" : nilai < 0 ? "var(--turun)" : "";
+      if (k.tag) { const t = k.tag(r); if (t) td.appendChild(t); }
       /* k.sub: nama kolom lain yang isinya avg, ditulis kecil "(avg)" di bawah angka */
       if (k.sub && !kosong && r[k.sub] > 0)
         td.appendChild(el("span", "av-sub", "(" + hargaAvg(r[k.sub]) + ")"));
@@ -5848,11 +5932,29 @@ function panelPosisi(w) {
     const sa = saldo[k] ? saldo[k].a : null, ta = avgNet(tambah[k]);
     return {broker: k, nama: namaBroker(k), saldo: s, tambahan: t, posisi: s + t,
             saldoA: s ? sa : null, tambahA: t ? ta : null,
-            posisiA: avgPosisi(s, sa, t, ta)};
+            posisiA: avgPosisi(s, sa, t, ta),
+            _kelas: uwInfo(pilih.emiten, k) ? "uw-baris" : ""};
   });
   const p = el("div", "panel");
   p.appendChild(el("h2", null, "Posisi broker — " + pilih.emiten));
   tombolMode(p);
+  /* saring underwriter - hanya muncul kalau emiten ini punya data underwriter */
+  let tampil = baris;
+  if (UW[pilih.emiten]) {
+    const alat = el("div", "alat");
+    [[false, "Semua broker"], [true, "Hanya underwriter"]].forEach(([v, teks]) => {
+      const b = el("button", !!pilih.hanyaUW === v ? "aktif" : null, teks);
+      b.style.padding = "4px 12px"; b.style.fontSize = "11px";
+      if (!!pilih.hanyaUW === v) {
+        const w = v ? "#7c3aed" : "var(--merek)";
+        b.style.background = w; b.style.borderColor = w; b.style.color = "#fff";
+      }
+      b.onclick = () => { pilih.hanyaUW = v; halBroker(); };
+      alat.appendChild(b);
+    });
+    p.appendChild(alat);
+    if (pilih.hanyaUW) tampil = baris.filter(r => uwInfo(pilih.emiten, r.broker));
+  }
   p.appendChild(ringkasBroker(tambah,
     periksaGross(pilih.emiten, pilih.pasar, pilih.dari, pilih.sampai).semuaGross,
     false));
@@ -5862,12 +5964,12 @@ function panelPosisi(w) {
     "jual kalau net jual; posisi = gabungan keduanya (kalau net mengurangi posisi, " +
     "avg saldo tetap). Ketuk judul kolom untuk mengurutkan."));
   p.appendChild(tabelUrut([
-    {judul: "Broker", kunci: "broker"},
+    {judul: "Broker", kunci: "broker", tag: r => tagUW(pilih.emiten, r.broker)},
     {judul: "Nama", kunci: "nama"},
     {judul: "Saldo Awal", kunci: "saldo", angka: true, sub: "saldoA"},
     {judul: "Net Tambahan", kunci: "tambahan", angka: true, warna: true, sub: "tambahA"},
     {judul: "Posisi Saat Ini", kunci: "posisi", angka: true, warna: true, sub: "posisiA"},
-  ], baris, "posisi", true));
+  ], tampil, "posisi", true));
   w.appendChild(p);
 }
 
