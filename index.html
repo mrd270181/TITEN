@@ -4143,7 +4143,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-27-3";
+const VERSI_APP = "2026-09-27-4";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -9952,9 +9952,26 @@ async function sinkron(diam) {
       .filter(bl => !sudahSegar.has(bl)));
     if (!blnNett.size) tglNett.clear();     /* bulannya sudah pernah disegarkan */
 
+    /* Bulan broker yang ISINYA di server sudah berubah (sidik di manifest beda
+       dengan sidik waktu diunduh). Tanpa ini, tanggal yang sudah ada di HP tidak
+       pernah diambil ulang - emiten yang dimasukkan belakangan untuk tanggal
+       lama (mis. TPIA 1-18 Sep) atau perbaikan --ulang tidak akan pernah sampai.
+       Rekaman lama yang belum punya sidik ikut diunduh ulang sekali. */
+    const sidikBrk = {};
+    (man.berkas || []).forEach(b => {
+      const m = b && b.berkas && /^broker-(\d{4}-\d{2})\.json$/.exec(b.berkas);
+      if (m) sidikBrk[m[1]] = b.sidik;
+    });
+    const blnBrkBeda = new Set();
+    daftarHariBroker.forEach(r => {
+      if (r.berkas !== "sinkron") return;
+      const bl = bulanDari(r.tgl);
+      if (bolehBrk.has(bl) && sidikBrk[bl] && r.sd !== sidikBrk[bl]) blnBrkBeda.add(bl);
+    });
     const blnBrk = [...new Set((man.tanggal_broker || [])
       .filter(t => bolehBrk.has(bulanDari(t)) &&
-                   (!adaBrk.has(t) || tglNett.has(t))).map(bulanDari))];
+                   (!adaBrk.has(t) || tglNett.has(t) ||
+                    blnBrkBeda.has(bulanDari(t)))).map(bulanDari))];
     const adaHrg = new Set(daftarHari.map(r => r.tgl).concat(ASLI.tglVol || []));
     /* Data harian yang tersimpan sebelum grafik candle ada tidak menyimpan
        harga pembukaan. Bulan-bulan itu diunduh ulang sekali supaya candle
@@ -10008,9 +10025,10 @@ async function sinkron(diam) {
       const j = await ambilGudang("broker-" + bl + ".json");
       const perTgl = {};
       const tulisUlang = blnNett.has(bl);
+      const gantiSemua = blnBrkBeda.has(bl);
       for (let i = 0; i < j.t.length; i++) {
         const t = j.tanggal[j.t[i]];
-        if (adaBrk.has(t) && !tglNett.has(t)) continue;
+        if (adaBrk.has(t) && !tglNett.has(t) && !gantiSemua) continue;
         if (!perTgl[t]) perTgl[t] = {REG: [], NEGO: [], TUNAI: []};
         perTgl[t][PAPAN_GUDANG[j.p[i]]].push({
           tgl: t, em: kamusGudang.emiten[j.e[i]], br: kamusGudang.broker[j.b[i]],
@@ -10020,7 +10038,7 @@ async function sinkron(diam) {
         const isi = perTgl[t];
         const jml = PAPAN_GUDANG.reduce((a, p) => a + isi[p].length, 0);
         await dbSimpan({tgl: t, berkas: "sinkron", jumlah: jml, waktu: Date.now(),
-                        tanggal: [t], isi: isi}, "broker");
+                        sd: sidikBrk[bl] || "", tanggal: [t], isi: isi}, "broker");
         masuk++;
       }
       if (tulisUlang) {
