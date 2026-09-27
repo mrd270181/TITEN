@@ -4225,7 +4225,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-28-1";
+const VERSI_APP = "2026-09-28-2";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -5031,10 +5031,101 @@ function gambarUlang() {
   halWatchlist(); halScreener(); halVolume(); halBroker(); halCari(); halData();
 }
 
+/* ---------- penyesuaian stock split & aksi korporasi ----------
+   Data harian IDX tidak disesuaikan: harga sebelum split tetap skala lama. Tapi
+   pada hari aksi korporasi berlaku, IDX menulis harga "sebelumnya" (kolom p)
+   yang SUDAH disesuaikan. Jadi rasio = penutupan H-1 / p hari itu. Contoh DSSA
+   9 Apr 2026: tutup H-1 67.000, p 2.680 -> rasio 25 (split 1:25).
+
+   Syarat supaya bukan salah data: (1) hari sebelumnya di HP memang hari bursa
+   tepat sebelumnya - kalau ada hari yang bolong (mis. 25 Agu 2026 tidak ada),
+   p berasal dari hari yang tidak kita punya dan rasionya palsu; (2) rasio
+   >= 1,8 atau <= 0,55 - pergerakan sebesar itu mustahil dalam sehari (ARA/ARB
+   maks ~35%); (3) penutupan hari itu wajar terhadap p (0,6-1,6x). Rights issue
+   dengan rasio kecil sengaja tidak ikut: bedanya kecil, risiko salahnya besar. Semua harga sebelum tanggal
+   itu dibagi rasio, volume dikali rasio. Hasilnya idempoten: data yang sudah
+   disesuaikan tidak memicu penyesuaian lagi, karena rasionya jadi 1.
+
+   Split sungguhan (jumlah saham tercatat ls ikut berlipat) juga dipakai untuk
+   data broker: lot dikali, avg dibagi. Rights issue hanya harga - lot lama
+   nasabah tidak berlipat. */
+let SPLIT_EV = {};   /* emiten -> [{tgl, r, split}] urut naik */
+function sesuaikanSplitHarga(rekaman) {
+  SPLIT_EV = {};
+  const perEm = {};
+  rekaman.forEach(r => Object.keys(r.baris || {}).forEach(k => {
+    (perEm[k] || (perEm[k] = [])).push(r);
+  }));
+  const ubah = {};                     /* tgl -> {kode: faktor} */
+  const semuaTgl = [...new Set(rekaman.map(r => r.tgl))].sort();
+  const tglSebelum = {};
+  semuaTgl.forEach((t, i) => { if (i) tglSebelum[t] = semuaTgl[i - 1]; });
+  /* jarak normal: hari berikutnya, atau Jumat -> Senin. Selain itu mungkin ada
+     hari bursa yang tidak kita punya (atau libur) - hanya dipercaya kalau jumlah
+     saham tercatat ikut berubah sesuai rasio. */
+  const jarakNormal = t => {
+    const a = new Date(tglSebelum[t] + "T00:00:00Z"), b = new Date(t + "T00:00:00Z");
+    const hari = Math.round((b - a) / 864e5);
+    return hari === 1 || (hari === 3 && b.getUTCDay() === 1);
+  };
+  Object.keys(perEm).forEach(k => {
+    const L = perEm[k].slice().sort((a, b) => a.tgl < b.tgl ? -1 : 1);
+    const ev = [];
+    let cKemarin = 0, lsKemarin = 0, tKemarin = "";
+    L.forEach(r => {
+      const b = r.baris[k];
+      if (b.p > 0 && cKemarin > 0 && b.c > 0 && tKemarin === tglSebelum[r.tgl]) {
+        const rasio = cKemarin / b.p, wajar = b.c / b.p;
+        if ((rasio >= 1.8 || rasio <= 0.55) && wajar > 0.6 && wajar < 1.6) {
+          const lsR = (b.ls > 0 && lsKemarin > 0) ? b.ls / lsKemarin : 0;
+          const lsCocok = lsR > 0 && Math.abs(lsR / rasio - 1) < 0.1;
+          const bulat = Math.abs(rasio - Math.round(rasio)) < 0.06 && rasio >= 1.9;
+          /* harga naik tajam (rasio < 1, reverse split) hanya dipercaya kalau
+             saham tercatat ikut menyusut; jarak tanggal janggal juga begitu */
+          const percaya = lsCocok || (rasio >= 1.8 && jarakNormal(r.tgl));
+          if (percaya) ev.push({tgl: r.tgl, r: rasio, split: lsCocok || bulat});
+        }
+      }
+      if (b.c > 0) { cKemarin = b.c; tKemarin = r.tgl; }
+      if (b.ls > 0) lsKemarin = b.ls;
+    });
+    if (!ev.length) return;
+    SPLIT_EV[k] = ev;
+    L.forEach(r => {
+      let f = 1;
+      ev.forEach(e => { if (r.tgl < e.tgl) f *= e.r; });
+      if (f !== 1) (ubah[r.tgl] || (ubah[r.tgl] = {}))[k] = f;
+    });
+  });
+  rekaman.forEach(r => {
+    const u = ubah[r.tgl];
+    if (!u) return;
+    /* salinan, bukan mengubah objek yang tersimpan */
+    r.baris = Object.assign({}, r.baris);
+    Object.keys(u).forEach(k => {
+      const f = u[k], b = Object.assign({}, r.baris[k]);
+      const bul = v => v >= 100 ? Math.round(v) : Math.round(v * 100) / 100;
+      ["c", "p", "o", "h", "l"].forEach(x => { if (b[x]) b[x] = bul(b[x] / f); });
+      ["v", "fb", "fs", "nrv"].forEach(x => { if (b[x]) b[x] = Math.round(b[x] * f); });
+      b.adj = f;
+      r.baris[k] = b;
+    });
+  });
+}
+/* faktor broker: lot dikali, avg dibagi, untuk transaksi sebelum split */
+function faktorSplitBroker(em, tgl) {
+  const ev = SPLIT_EV[em];
+  if (!ev) return 1;
+  let f = 1;
+  ev.forEach(e => { if (e.split && tgl < e.tgl) f *= e.r; });
+  return f;
+}
+
 async function muatDanTerapkan() {
   try {
     const rec = await dbSemua("hari");
     daftarHari = (rec || []).slice().sort((a, b) => a.tgl < b.tgl ? 1 : -1);
+    sesuaikanSplitHarga(daftarHari);
     const urut = (x) => (x || []).slice().sort((a, b) => a.tgl < b.tgl ? 1 : -1);
     daftarMilik = urut(await dbSemua("milik"));
     daftarFunda = urut(await dbSemua("funda"));
@@ -7963,7 +8054,11 @@ async function muatBroker() {
       const pakai = new Set([...tglRek].filter(t => !sudah.has(t)));
       if (!pakai.size) return;
       PAPAN.forEach(p => (r.isi[p] || []).forEach(x => {
-        if (pakai.has(x.tgl)) trxImpor[p].push(x);
+        if (!pakai.has(x.tgl)) return;
+        const f = faktorSplitBroker(x.em, x.tgl);
+        trxImpor[p].push(f === 1 ? x : Object.assign({}, x, {
+          beli: x.beli * f, jual: x.jual * f,
+          avgB: x.avgB / f, avgJ: x.avgJ / f}));
       }));
       pakai.forEach(t => sudah.add(t));
     });
