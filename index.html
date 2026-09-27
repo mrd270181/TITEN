@@ -381,6 +381,10 @@ svg.fa-pola{display:block}
 .rek-bk{font-weight:800}
 .rek-bn{font-weight:800;font-variant-numeric:tabular-nums;text-align:right}
 .rek-bp{font-size:12px;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.rek-av{font-size:10.5px;color:var(--ink-3);font-weight:500;font-variant-numeric:tabular-nums}
+.rek-bn .rek-av{display:block}
+.av-sub{display:block;font-size:10.5px;color:var(--ink-3);font-weight:500;font-variant-numeric:tabular-nums}
+td.kol-avg{color:#a16207;font-weight:600}
 .rek-pindah{outline:1.5px solid currentColor;outline-offset:-2px;border-radius:4px;
   padding:0 3px}
 /* kotak level harga: ATH / R / harga sekarang / S, dibaca dari atas ke bawah */
@@ -619,10 +623,13 @@ function bangunBRK(k) {
     let b = peta[kunci];
     if (!b) {
       b = peta[kunci] = {em: k.emiten[s.e[i]], br: k.broker[s.b[i]]};
-      PAPAN_GUDANG.forEach(x => b[x] = {net: 0, buy: 0, sell: 0, m: bulan.map(() => 0)});
+      PAPAN_GUDANG.forEach(x => b[x] = {net: 0, buy: 0, sell: 0, a: 0, m: bulan.map(() => 0)});
       daftar.push(b);
     }
     b[p].net += s.n[i] || 0;
+    /* avg saldo awal (kamus 'a', dari tabel saldo_avg). Satu baris kamus = satu
+       (emiten, broker, papan), jadi cukup disalin; 0 = belum ada avg. */
+    if ((s.a || [])[i]) b[p].a = s.a[i];
     b[p].buy += (s.bl || [])[i] || 0;
     b[p].sell += (s.jl || [])[i] || 0;
     for (let j = 0; j < bulan.length; j++)
@@ -2119,10 +2126,9 @@ function rekKartu(judul, nilai, kelas, kaki) {
    Sengaja TIDAK dibatasi rentang tanggal panel: yang ditanya di sini "siapa yang
    memegang", dan itu pertanyaan kumulatif, bukan pertanyaan per rentang.
 
-   Harga rata-rata sengaja tidak ditampilkan. Tabel saldo_awal hanya punya
-   beli_lot dan jual_lot - sumbernya BROKER TRACKER tidak pernah memuat harga
-   untuk posisi pembuka, jadi avg posisi total tidak bisa dihitung tanpa
-   mengarang harga di sekitar cutoff. */
+   Harga rata-rata: avg saldo awal dari berkas saldo IPOT (tabel saldo_avg,
+   dikirim di kamus.json kolom 'a'); avg net dari transaksi (net beli -> avg
+   beli, net jual -> avg jual); avg posisi digabung dengan avgPosisi(). */
 function rekPosisi(emiten) {
   const awal = saldoAwal(emiten, rek.pasar);
   /* TANPA batas tanggal sama sekali - bukan rek.sampai. Posisi itu keadaan
@@ -2130,13 +2136,17 @@ function rekPosisi(emiten) {
      untuk melihat periode lama. */
   const tambah = kumpulkan(emiten, rek.pasar, "", "");
   const hasil = {};
-  const pakai = k => hasil[k] || (hasil[k] = {awal: 0, delta: 0, posisi: 0});
-  Object.keys(awal).forEach(k => { pakai(k).awal = awal[k].net; });
+  const pakai = k => hasil[k] || (hasil[k] = {awal: 0, delta: 0, posisi: 0,
+                                             aAwal: null, aDelta: null, aPos: null});
+  Object.keys(awal).forEach(k => { pakai(k).awal = awal[k].net; pakai(k).aAwal = awal[k].a; });
   Object.keys(tambah).forEach(k => {
     pakai(k).delta = tambah[k].beli - tambah[k].jual;
+    pakai(k).aDelta = avgNet(tambah[k]);
   });
   Object.keys(hasil).forEach(k => {
-    hasil[k].posisi = hasil[k].awal + hasil[k].delta;
+    const h = hasil[k];
+    h.posisi = h.awal + h.delta;
+    h.aPos = avgPosisi(h.awal, h.aAwal, h.delta, h.aDelta);
   });
   /* Tanggal transaksi broker terakhir untuk emiten ini - BUKAN tanggal harga
      terakhir. Data broker sering tertinggal dari harga (harga sudah 22/09,
@@ -2178,10 +2188,13 @@ function rekSisi(kode, pos, kelas, judul) {
        menulis net broker dengan rekLot() tanpa pembagian. Membaginya di sini
        membuat angkanya seperseratus, dan itu tidak terlihat salah: bentuknya
        tetap wajar, cuma DSSA jadi 127,4K padahal 12,7 juta lot. */
-    const pp = el("span", "rek-bp",
-      "awal " + lotSingkat(Math.round(p.awal)) + "  " +
-      (p.delta >= 0 ? "+ " : "− ") +
-      lotSingkat(Math.round(Math.abs(p.delta))));
+    const pp = el("span", "rek-bp");
+    const av = a => el("span", "rek-av", " (" + hargaAvg(a) + ")");
+    pp.appendChild(document.createTextNode("awal " + lotSingkat(Math.round(p.awal))));
+    if (p.awal) pp.appendChild(av(p.aAwal));
+    pp.appendChild(document.createTextNode("  " + (p.delta >= 0 ? "+ " : "− ") +
+      lotSingkat(Math.round(Math.abs(p.delta)))));
+    if (Math.round(p.delta)) pp.appendChild(av(p.aDelta));
     const pindah = (p.awal >= 0) !== (p.posisi >= 0);
     /* Tanda minus digambar SETIAP KALI posisinya negatif, bukan cuma saat
        pindah sisi. Dengan aturan lama, ZP di DSSA tampil "25,32Jt" tanpa tanda
@@ -2198,6 +2211,7 @@ function rekSisi(kode, pos, kelas, judul) {
                  (p.awal >= 0 ? "memegang" : "minus") + " jadi " +
                  (p.posisi >= 0 ? "memegang" : "minus");
     }
+    if (Math.round(p.posisi)) nn.appendChild(el("span", "rek-av", "(" + hargaAvg(p.aPos) + ")"));
     b.appendChild(kk); b.appendChild(pp); b.appendChild(nn);
     d.appendChild(b);
   });
@@ -4129,7 +4143,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-27-2";
+const VERSI_APP = "2026-09-27-3";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -5465,10 +5479,15 @@ function kumpulkan(emiten, pasar, dari, sampai) {
     if (r.em !== emiten) return;
     if (dari && r.tgl < dari) return;
     if (sampai && r.tgl > sampai) return;
-    const a = hasil[r.br] || (hasil[r.br] = {beli: 0, jual: 0, nilaiB: 0, nilaiJ: 0});
+    const a = hasil[r.br] || (hasil[r.br] = {beli: 0, jual: 0, nilaiB: 0, nilaiJ: 0,
+                                             lotB: 0, lotJ: 0});
     a.beli += r.beli; a.jual += r.jual;
     a.nilaiB += r.beli * r.avgB * 100;
     a.nilaiJ += r.jual * r.avgJ * 100;
+    /* lot yang harganya diketahui - pembagi avg. Baris tanpa avg tidak boleh
+       ikut membagi, nanti avg-nya terseret ke bawah. */
+    if (r.avgB > 0) a.lotB += r.beli;
+    if (r.avgJ > 0) a.lotJ += r.jual;
   }));
   return hasil;
 }
@@ -5479,14 +5498,57 @@ function saldoAwal(emiten, pasar) {
   const jmlBulan = (BRK.bulanSaldo || []).length;
   semuaSaldo().forEach(b => {
     if (b.em !== emiten) return;
-    const o = {net: 0, buy: 0, sell: 0, m: new Array(jmlBulan).fill(0)};
+    const o = {net: 0, buy: 0, sell: 0, a: null, m: new Array(jmlBulan).fill(0)};
     papanDipakai.forEach(p => {
       o.net += b[p].net; o.buy += b[p].buy; o.sell += b[p].sell;
       for (let j = 0; j < jmlBulan; j++) o.m[j] += b[p].m[j] || 0;
     });
+    /* avg ALL MARKET: rata-rata tertimbang lot dari papan yang SEARAH dengan
+       saldo gabungannya. Papan yang berlawanan cuma mengurangi lot, tidak
+       mengubah harga modal sisi yang menang. */
+    let lot = 0, nilai = 0;
+    papanDipakai.forEach(p => {
+      const x = b[p];
+      if (x.a > 0 && x.net && (x.net > 0) === (o.net > 0)) {
+        lot += Math.abs(x.net); nilai += Math.abs(x.net) * x.a;
+      }
+    });
+    if (lot) o.a = nilai / lot;
     hasil[b.br] = o;
   });
   return hasil;
+}
+
+/* Avg net rentang: net beli -> rata-rata harga BELI, net jual -> rata-rata harga
+   JUAL. null kalau net 0 atau harganya tidak ada. */
+function avgNet(t) {
+  if (!t) return null;
+  const n = t.beli - t.jual;
+  if (n > 0) return t.lotB ? t.nilaiB / (t.lotB * 100) : null;
+  if (n < 0) return t.lotJ ? t.nilaiJ / (t.lotJ * 100) : null;
+  return null;
+}
+
+/* Avg posisi = saldo (s lot @ sa) lalu ditambah net (n lot @ na):
+   - searah (menambah)          -> rata-rata tertimbang lot
+   - berlawanan, belum berbalik -> avg saldo tetap (mengurangi tidak mengubah modal)
+   - berbalik sisi              -> avg net
+   Aturan yang sama dipakai tambah_avg_saldo.py untuk menggabung periode saldo. */
+function avgPosisi(s, sa, n, na) {
+  const pos = s + n;
+  if (!pos) return null;
+  if (!n || !na) return (pos > 0) === (s > 0) ? sa : null;
+  if (!s || !sa) return (pos > 0) === (n > 0) ? na : null;
+  if ((s > 0) === (n > 0))
+    return (Math.abs(s) * sa + Math.abs(n) * na) / (Math.abs(s) + Math.abs(n));
+  return (pos > 0) === (s > 0) ? sa : na;
+}
+
+/* harga avg untuk tampilan: bulat, kecuali harga di bawah 100 (1 desimal) */
+function hargaAvg(a) {
+  if (a === null || a === undefined || !(a > 0)) return "–";
+  return a < 100 ? a.toLocaleString("id-ID", {maximumFractionDigits: 1})
+                 : Math.round(a).toLocaleString("id-ID");
 }
 
 /* ---------- kontrol bersama ---------- */
@@ -5633,6 +5695,11 @@ function tabelUrut(kepala, baris, kunciAwal, bekukan) {
                     : nilai.toLocaleString("id-ID"));
       if (k.warna && typeof nilai === "number")
         td.style.color = nilai > 0 ? "var(--naik)" : nilai < 0 ? "var(--turun)" : "";
+      /* k.sub: nama kolom lain yang isinya avg, ditulis kecil "(avg)" di bawah angka */
+      if (k.sub && !kosong && r[k.sub] > 0)
+        td.appendChild(el("span", "av-sub", "(" + hargaAvg(r[k.sub]) + ")"));
+      /* k.avg: kolom harga avg - bulat, "–" kalau belum ada */
+      if (k.avg) { td.textContent = hargaAvg(nilai); td.className = "num kol-avg"; }
       /* Kolom %Net punya dua hal untuk disampaikan sekaligus: ARAH (bersih membeli
          atau bersih menjual) dan BESARNYA (kecil berarti beli dan jual hampir
          seimbang - ciri transaksi bolak-balik, bukan akumulasi sungguhan).
@@ -5778,7 +5845,10 @@ function panelPosisi(w) {
   const baris = [...kode].map(k => {
     const s = saldo[k] ? saldo[k].net : 0;
     const t = tambah[k] ? tambah[k].beli - tambah[k].jual : 0;
-    return {broker: k, nama: namaBroker(k), saldo: s, tambahan: t, posisi: s + t};
+    const sa = saldo[k] ? saldo[k].a : null, ta = avgNet(tambah[k]);
+    return {broker: k, nama: namaBroker(k), saldo: s, tambahan: t, posisi: s + t,
+            saldoA: s ? sa : null, tambahA: t ? ta : null,
+            posisiA: avgPosisi(s, sa, t, ta)};
   });
   const p = el("div", "panel");
   p.appendChild(el("h2", null, "Posisi broker — " + pilih.emiten));
@@ -5787,13 +5857,16 @@ function panelPosisi(w) {
     periksaGross(pilih.emiten, pilih.pasar, pilih.dari, pilih.sampai).semuaGross,
     false));
   p.appendChild(el("div", "bantu", "Posisi = saldo awal per " + tglCutoff() +
-    " ditambah net lot dalam rentang tanggal. Ketuk judul kolom untuk mengurutkan."));
+    " ditambah net lot dalam rentang tanggal. Angka kecil dalam kurung = harga " +
+    "rata-rata (avg): saldo awal dari IPOT; net = avg beli kalau net beli, avg " +
+    "jual kalau net jual; posisi = gabungan keduanya (kalau net mengurangi posisi, " +
+    "avg saldo tetap). Ketuk judul kolom untuk mengurutkan."));
   p.appendChild(tabelUrut([
     {judul: "Broker", kunci: "broker"},
     {judul: "Nama", kunci: "nama"},
-    {judul: "Saldo Awal", kunci: "saldo", angka: true},
-    {judul: "Net Tambahan", kunci: "tambahan", angka: true, warna: true},
-    {judul: "Posisi Saat Ini", kunci: "posisi", angka: true, warna: true},
+    {judul: "Saldo Awal", kunci: "saldo", angka: true, sub: "saldoA"},
+    {judul: "Net Tambahan", kunci: "tambahan", angka: true, warna: true, sub: "tambahA"},
+    {judul: "Posisi Saat Ini", kunci: "posisi", angka: true, warna: true, sub: "posisiA"},
   ], baris, "posisi", true));
   w.appendChild(p);
 }
@@ -5803,7 +5876,8 @@ function panelSaldo(w) {
   const bulan = BRK.bulanSaldo || [];
   const baris = Object.keys(saldo).map(k => {
     const r = {broker: k, nama: namaBroker(k),
-               buy: saldo[k].buy, sell: saldo[k].sell, net: saldo[k].net};
+               buy: saldo[k].buy, sell: saldo[k].sell, net: saldo[k].net,
+               avg: saldo[k].net ? saldo[k].a : null};
     bulan.forEach((b, j) => r["m" + j] = saldo[k].m[j]);
     return r;
   });
@@ -5815,6 +5889,7 @@ function panelSaldo(w) {
   kolom.push({judul: "Buy TOTAL", kunci: "buy", angka: true});
   kolom.push({judul: "Sell TOTAL", kunci: "sell", angka: true});
   kolom.push({judul: "Saldo Awal", kunci: "net", angka: true, warna: true});
+  kolom.push({judul: "Avg", kunci: "avg", angka: true, avg: true});
   const p = el("div", "panel");
   p.appendChild(el("h2", null, "Detail saldo awal per periode"));
   /* Ringkasannya sengaja BEDA dengan panel lain: di sini tidak ada rentang
