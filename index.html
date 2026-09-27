@@ -4225,7 +4225,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-28-2";
+const VERSI_APP = "2026-09-28-3";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -5113,6 +5113,8 @@ function sesuaikanSplitHarga(rekaman) {
   });
 }
 /* faktor broker: lot dikali, avg dibagi, untuk transaksi sebelum split */
+/* tanggal akhir periode saldo awal di database */
+const SALDO_SAMPAI = "2026-07-31";
 function faktorSplitBroker(em, tgl) {
   const ev = SPLIT_EV[em];
   if (!ev) return 1;
@@ -5687,6 +5689,16 @@ function saldoAwal(emiten, pasar) {
       }
     });
     if (lot) o.a = nilai / lot;
+    /* Split SESUDAH tanggal saldo awal (31 Jul 2026): seluruh saldo awal masih
+       hitungan lama, jadi ikut dikali rasio - otomatis, tanpa impor ulang.
+       Split sebelum tanggal itu sudah dikonversi di database
+       (tambah_split_saldo.py), jadi tidak dihitung dua kali. */
+    const f = faktorSplitBroker(emiten, BRK.cutoff || SALDO_SAMPAI);
+    if (f !== 1) {
+      o.net *= f; o.buy *= f; o.sell *= f;
+      o.m = o.m.map(x => x * f);
+      if (o.a) o.a /= f;
+    }
     hasil[b.br] = o;
   });
   return hasil;
