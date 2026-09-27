@@ -925,10 +925,11 @@ let hvPilih = [];
 let hvMode = "naik", hvMin = 2, hvMinRp = 1, hvUrut = "ciri";
 /* Ciri yang lebih sering berlanjut (uji 27 ribu kejadian 2025-2026, sepertiga
    terbaik): harga buka dekat penutupan kemarin (gap <= 0,5%) dan net asing
-   positif terhadap volume (NF >= +1,7%). Peluang hijau >= 4 kali naik dari
-   ~16% ke ~18-19% - cukup untuk MENGURUTKAN, bukan untuk memastikan. */
+   positif terhadap volume (NF >= +1,7%). Setelah data harga-buka-0 dibuang,
+   selisih peluang hijau >= 4 kali cuma 1-4 poin (mis. 17,4% vs 13,7% di 2026)
+   - cukup untuk MENGURUTKAN, bukan untuk memastikan. */
 const HV_GAP_OK = 0.5, HV_NF_OK = 1.7, HV_NF_JELEK = -0.6;
-const HV_MIN_HARI = [2, 3, 4, 5];
+const HV_MIN_HARI = [1, 2, 3, 4, 5];
 const HV_MIN_RP = [0, 1, 2, 3, 4, 5];      /* miliar per hari; 0 = tanpa batas */
 
 /* Deret naik tiap emiten yang berakhir di tanggal `sampai`. Naik = penutupan
@@ -1639,8 +1640,8 @@ function panelHargaVol(w) {
     kotakNaik.appendChild(el("div", "bantu",
       "Gap = harga buka dibanding penutupan kemarin, NF = net asing \u00f7 volume, " +
       "keduanya di hari terakhir. Hijau: gap \u2264 0,5% / NF \u2265 +1,7%. " +
-      "\u2605 = keduanya hijau. Ciri ini hanya sedikit menaikkan peluang " +
-      "berlanjut (\u00b116% \u2192 \u00b118\u201319%), bukan jaminan."));
+      "\u2605 = keduanya hijau. Selisih peluang berlanjutnya kecil (1\u20134 poin), " +
+      "jadi pakai untuk menyaring, bukan jaminan."));
   }
   p.appendChild(kotakNaik);
 
@@ -4128,7 +4129,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-27-1";
+const VERSI_APP = "2026-09-27-2";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
