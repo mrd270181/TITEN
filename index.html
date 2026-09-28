@@ -369,6 +369,8 @@ svg.fa-pola{display:block}
   overflow-wrap:anywhere}
 .rek-kk{font-size:9.5px;color:var(--ink-3)}
 .rek-strip{display:grid;gap:6px;grid-template-columns:1fr;margin-top:8px}
+.fca-k{display:inline-block;min-width:16px;text-align:center;font-size:10px;font-weight:800;color:#fff;background:#b91c1c;border-radius:4px;padding:0 4px;margin-right:3px;line-height:15px}
+.fca-ket{font-size:11.5px;color:var(--ink-2);margin-top:10px;display:grid;gap:3px}
 .uw-tag{display:inline-block;font-size:8.5px;font-weight:800;color:#fff;background:#7c3aed;border-radius:4px;padding:0 4px;margin-left:3px;vertical-align:2px;line-height:14px;letter-spacing:.3px}
 .uw-tag.kecil{background:transparent;color:#7c3aed;border:1px solid #7c3aed;line-height:12px}
 tr.uw-baris td{background:rgba(124,58,237,.08)}
@@ -3525,7 +3527,17 @@ function panelVolPilihan(st, judul, jenis, urutTgl) {
    Bawaan: kapitalisasi <= Rp1 T, diurut FF x 50% dari yang terkecil. */
 const MINI_BATAS = [[0, "Semua"], [100e9, "\u2264 100 M"], [500e9, "\u2264 500 M"],
                     [1e12, "\u2264 1 T"], [5e12, "\u2264 5 T"]];
-let miniBatas = 1e12, miniUrut = "ff50", miniArah = 1, miniCari = "";
+let miniBatas = 1e12, miniUrut = "ff50", miniArah = 1, miniCari = "", miniFca = "semua";
+/* Papan Pemantauan Khusus (Full Call Auction) - emiten yang MASIH di papan itu
+   (tanggal keluar kosong) menurut berkas IDX Efek_Pada_Papan_Pemantauan_Khusus
+   per 28 Sep 2026. k = nomor kriteria, m = tanggal masuk. */
+const FCA_PER = "2026-09-28";
+const FCA = {"CMPP":{"k":[5],"m":"2022-05-31"},"KARW":{"k":[5],"m":"2024-08-08"},"MARI":{"k":[5],"m":"2025-06-23"},"BATA":{"k":[5],"m":"2025-06-23"},"ABBA":{"k":[5],"m":"2025-11-28"},"CNKO":{"k":[5],"m":"2025-11-28"},"FOOD":{"k":[5],"m":"2025-12-01"},"INPS":{"k":[5],"m":"2026-01-21"},"MPPA":{"k":[5],"m":"2026-02-19"},"IBFN":{"k":[5],"m":"2026-02-27"},"INTA":{"k":[5],"m":"2026-02-27"},"MDRN":{"k":[5],"m":"2026-02-27"},"CANI":{"k":[5],"m":"2026-02-27"},"ACST":{"k":[5],"m":"2026-04-02"},"TIRT":{"k":[5],"m":"2026-04-06"},"MYTX":{"k":[5],"m":"2026-05-29"},"HILL":{"k":[5,9],"m":"2026-08-04"},"GTBO":{"k":[3],"m":"2026-08-26"},"TGUK":{"k":[11],"m":"2026-08-31"},"TAMA":{"k":[5],"m":"2026-09-03"},"CASH":{"k":[5],"m":"2026-09-22"},"BTEL":{"k":[5],"m":"2026-09-28"},"COWL":{"k":[2,5,8],"m":"2026-09-28"},"COAL":{"k":[3],"m":"2026-09-28"},"DEAL":{"k":[5,8],"m":"2026-09-28"},"DIGI":{"k":[5],"m":"2026-09-28"},"ENVY":{"k":[5],"m":"2026-09-28"},"ARTI":{"k":[5],"m":"2026-09-28"},"BIMA":{"k":[2],"m":"2026-09-28"},"BOSS":{"k":[5,9],"m":"2026-09-28"},"BIKA":{"k":[5],"m":"2026-09-28"},"GOLL":{"k":[9],"m":"2026-09-28"},"GLOB":{"k":[5],"m":"2026-09-28"},"ETWA":{"k":[5],"m":"2026-09-28"},"HKMU":{"k":[2,5],"m":"2026-09-28"},"HOTL":{"k":[8,9],"m":"2026-09-28"},"INAF":{"k":[5],"m":"2026-09-28"},"LMAS":{"k":[2,5],"m":"2026-09-28"},"MABA":{"k":[2],"m":"2026-09-28"},"KBRI":{"k":[3],"m":"2026-09-28"},"KAYU":{"k":[2],"m":"2026-09-28"},"KOIN":{"k":[5],"m":"2026-09-28"},"JSKY":{"k":[5],"m":"2026-09-28"},"OCAP":{"k":[2,3,5],"m":"2026-09-28"},"PMMP":{"k":[2,5],"m":"2026-09-28"},"MTFN":{"k":[5],"m":"2026-09-28"},"MTPS":{"k":[3],"m":"2026-09-28"},"MTRA":{"k":[2,5,8],"m":"2026-09-28"},"MKNT":{"k":[5],"m":"2026-09-28"},"PTDU":{"k":[5],"m":"2026-09-28"},"POLY":{"k":[2,5],"m":"2026-09-28"},"POSA":{"k":[5],"m":"2026-09-28"},"PURE":{"k":[5],"m":"2026-09-28"},"SRIL":{"k":[5,8],"m":"2026-09-28"},"SMRU":{"k":[5],"m":"2026-09-28"},"SIMA":{"k":[5],"m":"2026-09-28"},"SBAT":{"k":[3,8],"m":"2026-09-28"},"WICO":{"k":[5],"m":"2026-09-28"},"WSBP":{"k":[5],"m":"2026-09-28"},"ZBRA":{"k":[9],"m":"2026-09-28"},"ZINC":{"k":[2],"m":"2026-09-28"},"TELE":{"k":[2,5,8],"m":"2026-09-28"},"TDPM":{"k":[8],"m":"2026-09-28"},"TGRA":{"k":[3],"m":"2026-09-28"},"TRIO":{"k":[5],"m":"2026-09-28"},"TOYS":{"k":[8],"m":"2026-09-28"},"TOPS":{"k":[3],"m":"2026-09-28"}};
+const FCA_KRIT = {"1":"Dihapus","2":"Laporan Keuangan Auditan terakhir mendapatkan opini tidak menyatakan pendapat (disclaimer).","3":"Tidak membukukan pendapatan atau tidak terdapat perubahan pendapatan pada Laporan Keuangan Auditan dan/atau Laporan Keuangan Interim terakhir dibandingkan dengan laporan keuangan yang disampaikan sebelumnya.","4":"Perusahaan Tercatat yang merupakan perusahaan tambang minerba atau induk dari perusahaan tambang minerba yang belum memperoleh pendapatan dari core business hingga tahun buku ke-4 (keempat) sejak tercatat di Bursa.","5":"Memiliki ekuitas negatif pada laporan Keuangan terakhir.","6":"Dihapus","7":"Dihapus","8":"Perusahaan Tercatat dalam kondisi dimohonkan PKPU, pailit, atau pembatalan perdamaian.","9":"Anak perusahaan yang kontribusi pendapatannya material terhadap Perusahaan Tercatat, dalam kondisi dimohonkan PKPU, pailit, atau pembatalan perdamaian.","10":"Dihapus","11":"Kondisi lain yang ditetapkan oleh Bursa setelah memperoleh persetujuan atau perintah Otoritas Jasa Keuangan."};
+const FCA_SINGKAT = {2: "Opini disclaimer", 3: "Tanpa/tak ada perubahan pendapatan",
+  4: "Tambang belum berpendapatan", 5: "Ekuitas negatif", 8: "PKPU / pailit",
+  9: "Anak usaha PKPU / pailit", 11: "Kondisi lain (OJK)"};
+const fcaTeks = k => FCA_SINGKAT[k] || (FCA_KRIT[k] === "Dihapus" ? "kriteria lama (sudah dihapus)" : (FCA_KRIT[k] || ""));
 function rpSingkat(v) {
   if (v === null || v === undefined || isNaN(v)) return "\u2013";
   const a = Math.abs(v);
@@ -3548,7 +3560,10 @@ function panelEmitenMini(w) {
     let ffLbr = ambilM(r, "Saham free float (lembar)");
     const lembar = ambilM(r, "Jumlah saham (lembar)");
     if (!ffLbr && ffp !== null && lembar) ffLbr = ffp * lembar;
+    const f = FCA[k];
     semua.push({kode: k, nama: r[1] || "", harga: harga,
+                fca: f ? f.k[0] : null, fcaK: f ? f.k : null, fcaM: f ? f.m : "",
+                ffLot: ffLbr ? ffLbr / 100 : null,
                 mcap: mcapM !== null ? mcapM * 1e9 : null,
                 value: ambilM(r, "Nilai transaksi (Rp)"),
                 ffp: ffp !== null ? ffp * 100 : null,
@@ -3567,6 +3582,15 @@ function panelEmitenMini(w) {
     alat.appendChild(b);
   });
   p.appendChild(alat);
+  const alat2 = el("div", "alat");
+  [["semua", "Semua"], ["fca", "Hanya FCA"], ["bukan", "Tanpa FCA"]].forEach(([v, teks]) => {
+    const b = el("button", null, teks);
+    b.style.padding = "4px 10px"; b.style.fontSize = "11px";
+    if (miniFca === v) { b.style.background = "#b91c1c"; b.style.borderColor = "#b91c1c"; b.style.color = "#fff"; }
+    b.onclick = () => { miniFca = v; halVolume(); };
+    alat2.appendChild(b);
+  });
+  p.appendChild(alat2);
   const cari = el("input", "cari");
   cari.placeholder = "Cari kode / nama\u2026";
   cari.value = miniCari;
@@ -3578,12 +3602,14 @@ function panelEmitenMini(w) {
   const wadah = el("div");
   p.appendChild(wadah);
   const KOL = [
-    ["kode", "Emiten", false], ["harga", "Harga", true], ["mcap", "Market Cap", true],
-    ["value", "Value", true], ["ffp", "Free Float", true], ["ff50", "FF \u00d7 Harga \u00d7 50%", true]];
+    ["kode", "Emiten", false], ["fca", "FCA", true], ["harga", "Harga", true],
+    ["mcap", "Market Cap", true], ["value", "Value", true], ["ffLot", "Free Float", true],
+    ["ff50", "FF \u00d7 Harga \u00d7 50%", true]];
 
   function gambar() {
     const q = miniCari.trim().toUpperCase();
     let L = semua.filter(x => (!miniBatas || (x.mcap !== null && x.mcap <= miniBatas)) &&
+      (miniFca === "semua" || (miniFca === "fca" ? x.fca !== null : x.fca === null)) &&
       (!q || x.kode.indexOf(q) >= 0 || x.nama.toUpperCase().indexOf(q) >= 0));
     const angka = miniUrut !== "kode";
     L.sort((a, b) => {
@@ -3601,7 +3627,7 @@ function panelEmitenMini(w) {
     const t = el("table");
     const trh = el("tr");
     KOL.forEach(([k, judul, num]) => {
-      const th = el("th", num ? "num" : null,
+      const th = el("th", num && k !== "fca" ? "num" : null,
         judul + (miniUrut === k ? (miniArah > 0 ? " \u25b2" : " \u25bc") : ""));
       th.style.cursor = "pointer";
       th.onclick = () => {
@@ -3618,11 +3644,28 @@ function panelEmitenMini(w) {
       td0.appendChild(el("b", null, x.kode));
       td0.appendChild(el("span", "nm", x.nama));
       tr.appendChild(td0);
+      const tdF = el("td");
+      tdF.style.textAlign = "left"; tdF.style.maxWidth = "170px"; tdF.style.whiteSpace = "normal";
+      if (x.fcaK) {
+        x.fcaK.forEach(k => {
+          const c = el("span", "fca-k", String(k));
+          c.title = "Kriteria " + k + ": " + (FCA_KRIT[k] || "");
+          tdF.appendChild(c);
+        });
+        const tk = el("span", "nm", x.fcaK.map(fcaTeks).join(" · "));
+        tk.style.whiteSpace = "normal";
+        tdF.appendChild(tk);
+        tdF.appendChild(el("span", "nm", "sejak " + tglID(x.fcaM) + " " + x.fcaM.slice(0, 4)));
+      } else tdF.textContent = "";
+      tr.appendChild(tdF);
       tr.appendChild(el("td", "num", x.harga.toLocaleString("id-ID")));
       tr.appendChild(el("td", "num", rpSingkat(x.mcap)));
       tr.appendChild(el("td", "num", x.value === null ? "\u2013" : x.value ? rpSingkat(x.value) : "0"));
-      tr.appendChild(el("td", "num", x.ffp === null ? "\u2013" :
-        x.ffp.toLocaleString("id-ID", {maximumFractionDigits: 1}) + "%"));
+      const tdFF = el("td", "num", x.ffLot === null ? "\u2013" :
+        Math.round(x.ffLot).toLocaleString("id-ID") + " lot");
+      if (x.ffp !== null)
+        tdFF.appendChild(el("span", "nm", x.ffp.toLocaleString("id-ID", {maximumFractionDigits: 1}) + "%"));
+      tr.appendChild(tdFF);
       const tdf = el("td", "num", rpSingkat(x.ff50));
       tdf.style.fontWeight = "700";
       tr.appendChild(tdf);
@@ -3635,7 +3678,20 @@ function panelEmitenMini(w) {
     "FF \u00d7 Harga \u00d7 50% = jumlah saham free float \u00d7 harga terakhir \u00d7 50%. " +
     "Market cap = harga \u00d7 jumlah saham tercatat. Free float dari pengumuman free float IDX " +
     "terakhir yang ada di aplikasi. Value = nilai transaksi hari bursa terakhir. " +
-    "\u2013 berarti datanya belum ada."));
+    "\u2013 berarti datanya belum ada. Free Float: jumlah lot (angka besar) dan persen " +
+    "free float (angka kecil)."));
+  /* keterangan kriteria FCA 1-11 */
+  const kk = el("div", "fca-ket");
+  kk.appendChild(el("b", null, "FCA = Papan Pemantauan Khusus (per " + tglID(FCA_PER) + " " +
+    FCA_PER.slice(0, 4) + ", " + Object.keys(FCA).length + " emiten). Kriteria:"));
+  Object.keys(FCA_KRIT).forEach(k => {
+    const d = el("div");
+    d.appendChild(el("span", "fca-k", k));
+    d.appendChild(document.createTextNode(" " + FCA_KRIT[k]));
+    if (FCA_KRIT[k] === "Dihapus") d.style.color = "var(--ink-3)";
+    kk.appendChild(d);
+  });
+  p.appendChild(kk);
   w.appendChild(p);
 }
 
@@ -4349,7 +4405,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-28-5";
+const VERSI_APP = "2026-09-28-6";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
