@@ -672,6 +672,12 @@ function gagalMuat(pesan) {
 try {
   manifestGudang = await ambilGudang("manifest.json");
 } catch (e) { manifestGudang = null; }
+/* Papan Pemantauan Khusus dari database (tambah_fca.py -> data/fca.json).
+   Kalau berkasnya belum ada di server, dipakai daftar bawaan di atas. */
+let fcaGudang = null;
+try {
+  fcaGudang = await ambilGudang("fca.json");
+} catch (e) { fcaGudang = null; }
 try {
   DATA = await ambilGudang("awal-lk.json");
 } catch (e) {
@@ -3531,9 +3537,9 @@ let miniBatas = 1e12, miniUrut = "ff50", miniArah = 1, miniCari = "", miniFca = 
 /* Papan Pemantauan Khusus (Full Call Auction) - emiten yang MASIH di papan itu
    (tanggal keluar kosong) menurut berkas IDX Efek_Pada_Papan_Pemantauan_Khusus
    per 28 Sep 2026. k = nomor kriteria, m = tanggal masuk. */
-const FCA_PER = "2026-09-28";
-const FCA = {"CMPP":{"k":[5],"m":"2022-05-31"},"KARW":{"k":[5],"m":"2024-08-08"},"MARI":{"k":[5],"m":"2025-06-23"},"BATA":{"k":[5],"m":"2025-06-23"},"ABBA":{"k":[5],"m":"2025-11-28"},"CNKO":{"k":[5],"m":"2025-11-28"},"FOOD":{"k":[5],"m":"2025-12-01"},"INPS":{"k":[5],"m":"2026-01-21"},"MPPA":{"k":[5],"m":"2026-02-19"},"IBFN":{"k":[5],"m":"2026-02-27"},"INTA":{"k":[5],"m":"2026-02-27"},"MDRN":{"k":[5],"m":"2026-02-27"},"CANI":{"k":[5],"m":"2026-02-27"},"ACST":{"k":[5],"m":"2026-04-02"},"TIRT":{"k":[5],"m":"2026-04-06"},"MYTX":{"k":[5],"m":"2026-05-29"},"HILL":{"k":[5,9],"m":"2026-08-04"},"GTBO":{"k":[3],"m":"2026-08-26"},"TGUK":{"k":[11],"m":"2026-08-31"},"TAMA":{"k":[5],"m":"2026-09-03"},"CASH":{"k":[5],"m":"2026-09-22"},"BTEL":{"k":[5],"m":"2026-09-28"},"COWL":{"k":[2,5,8],"m":"2026-09-28"},"COAL":{"k":[3],"m":"2026-09-28"},"DEAL":{"k":[5,8],"m":"2026-09-28"},"DIGI":{"k":[5],"m":"2026-09-28"},"ENVY":{"k":[5],"m":"2026-09-28"},"ARTI":{"k":[5],"m":"2026-09-28"},"BIMA":{"k":[2],"m":"2026-09-28"},"BOSS":{"k":[5,9],"m":"2026-09-28"},"BIKA":{"k":[5],"m":"2026-09-28"},"GOLL":{"k":[9],"m":"2026-09-28"},"GLOB":{"k":[5],"m":"2026-09-28"},"ETWA":{"k":[5],"m":"2026-09-28"},"HKMU":{"k":[2,5],"m":"2026-09-28"},"HOTL":{"k":[8,9],"m":"2026-09-28"},"INAF":{"k":[5],"m":"2026-09-28"},"LMAS":{"k":[2,5],"m":"2026-09-28"},"MABA":{"k":[2],"m":"2026-09-28"},"KBRI":{"k":[3],"m":"2026-09-28"},"KAYU":{"k":[2],"m":"2026-09-28"},"KOIN":{"k":[5],"m":"2026-09-28"},"JSKY":{"k":[5],"m":"2026-09-28"},"OCAP":{"k":[2,3,5],"m":"2026-09-28"},"PMMP":{"k":[2,5],"m":"2026-09-28"},"MTFN":{"k":[5],"m":"2026-09-28"},"MTPS":{"k":[3],"m":"2026-09-28"},"MTRA":{"k":[2,5,8],"m":"2026-09-28"},"MKNT":{"k":[5],"m":"2026-09-28"},"PTDU":{"k":[5],"m":"2026-09-28"},"POLY":{"k":[2,5],"m":"2026-09-28"},"POSA":{"k":[5],"m":"2026-09-28"},"PURE":{"k":[5],"m":"2026-09-28"},"SRIL":{"k":[5,8],"m":"2026-09-28"},"SMRU":{"k":[5],"m":"2026-09-28"},"SIMA":{"k":[5],"m":"2026-09-28"},"SBAT":{"k":[3,8],"m":"2026-09-28"},"WICO":{"k":[5],"m":"2026-09-28"},"WSBP":{"k":[5],"m":"2026-09-28"},"ZBRA":{"k":[9],"m":"2026-09-28"},"ZINC":{"k":[2],"m":"2026-09-28"},"TELE":{"k":[2,5,8],"m":"2026-09-28"},"TDPM":{"k":[8],"m":"2026-09-28"},"TGRA":{"k":[3],"m":"2026-09-28"},"TRIO":{"k":[5],"m":"2026-09-28"},"TOYS":{"k":[8],"m":"2026-09-28"},"TOPS":{"k":[3],"m":"2026-09-28"}};
-const FCA_KRIT = {"1":"Dihapus","2":"Laporan Keuangan Auditan terakhir mendapatkan opini tidak menyatakan pendapat (disclaimer).","3":"Tidak membukukan pendapatan atau tidak terdapat perubahan pendapatan pada Laporan Keuangan Auditan dan/atau Laporan Keuangan Interim terakhir dibandingkan dengan laporan keuangan yang disampaikan sebelumnya.","4":"Perusahaan Tercatat yang merupakan perusahaan tambang minerba atau induk dari perusahaan tambang minerba yang belum memperoleh pendapatan dari core business hingga tahun buku ke-4 (keempat) sejak tercatat di Bursa.","5":"Memiliki ekuitas negatif pada laporan Keuangan terakhir.","6":"Dihapus","7":"Dihapus","8":"Perusahaan Tercatat dalam kondisi dimohonkan PKPU, pailit, atau pembatalan perdamaian.","9":"Anak perusahaan yang kontribusi pendapatannya material terhadap Perusahaan Tercatat, dalam kondisi dimohonkan PKPU, pailit, atau pembatalan perdamaian.","10":"Dihapus","11":"Kondisi lain yang ditetapkan oleh Bursa setelah memperoleh persetujuan atau perintah Otoritas Jasa Keuangan."};
+let FCA_PER = "2026-09-28";
+let FCA = {"CMPP":{"k":[5],"m":"2022-05-31"},"KARW":{"k":[5],"m":"2024-08-08"},"MARI":{"k":[5],"m":"2025-06-23"},"BATA":{"k":[5],"m":"2025-06-23"},"ABBA":{"k":[5],"m":"2025-11-28"},"CNKO":{"k":[5],"m":"2025-11-28"},"FOOD":{"k":[5],"m":"2025-12-01"},"INPS":{"k":[5],"m":"2026-01-21"},"MPPA":{"k":[5],"m":"2026-02-19"},"IBFN":{"k":[5],"m":"2026-02-27"},"INTA":{"k":[5],"m":"2026-02-27"},"MDRN":{"k":[5],"m":"2026-02-27"},"CANI":{"k":[5],"m":"2026-02-27"},"ACST":{"k":[5],"m":"2026-04-02"},"TIRT":{"k":[5],"m":"2026-04-06"},"MYTX":{"k":[5],"m":"2026-05-29"},"HILL":{"k":[5,9],"m":"2026-08-04"},"GTBO":{"k":[3],"m":"2026-08-26"},"TGUK":{"k":[11],"m":"2026-08-31"},"TAMA":{"k":[5],"m":"2026-09-03"},"CASH":{"k":[5],"m":"2026-09-22"},"BTEL":{"k":[5],"m":"2026-09-28"},"COWL":{"k":[2,5,8],"m":"2026-09-28"},"COAL":{"k":[3],"m":"2026-09-28"},"DEAL":{"k":[5,8],"m":"2026-09-28"},"DIGI":{"k":[5],"m":"2026-09-28"},"ENVY":{"k":[5],"m":"2026-09-28"},"ARTI":{"k":[5],"m":"2026-09-28"},"BIMA":{"k":[2],"m":"2026-09-28"},"BOSS":{"k":[5,9],"m":"2026-09-28"},"BIKA":{"k":[5],"m":"2026-09-28"},"GOLL":{"k":[9],"m":"2026-09-28"},"GLOB":{"k":[5],"m":"2026-09-28"},"ETWA":{"k":[5],"m":"2026-09-28"},"HKMU":{"k":[2,5],"m":"2026-09-28"},"HOTL":{"k":[8,9],"m":"2026-09-28"},"INAF":{"k":[5],"m":"2026-09-28"},"LMAS":{"k":[2,5],"m":"2026-09-28"},"MABA":{"k":[2],"m":"2026-09-28"},"KBRI":{"k":[3],"m":"2026-09-28"},"KAYU":{"k":[2],"m":"2026-09-28"},"KOIN":{"k":[5],"m":"2026-09-28"},"JSKY":{"k":[5],"m":"2026-09-28"},"OCAP":{"k":[2,3,5],"m":"2026-09-28"},"PMMP":{"k":[2,5],"m":"2026-09-28"},"MTFN":{"k":[5],"m":"2026-09-28"},"MTPS":{"k":[3],"m":"2026-09-28"},"MTRA":{"k":[2,5,8],"m":"2026-09-28"},"MKNT":{"k":[5],"m":"2026-09-28"},"PTDU":{"k":[5],"m":"2026-09-28"},"POLY":{"k":[2,5],"m":"2026-09-28"},"POSA":{"k":[5],"m":"2026-09-28"},"PURE":{"k":[5],"m":"2026-09-28"},"SRIL":{"k":[5,8],"m":"2026-09-28"},"SMRU":{"k":[5],"m":"2026-09-28"},"SIMA":{"k":[5],"m":"2026-09-28"},"SBAT":{"k":[3,8],"m":"2026-09-28"},"WICO":{"k":[5],"m":"2026-09-28"},"WSBP":{"k":[5],"m":"2026-09-28"},"ZBRA":{"k":[9],"m":"2026-09-28"},"ZINC":{"k":[2],"m":"2026-09-28"},"TELE":{"k":[2,5,8],"m":"2026-09-28"},"TDPM":{"k":[8],"m":"2026-09-28"},"TGRA":{"k":[3],"m":"2026-09-28"},"TRIO":{"k":[5],"m":"2026-09-28"},"TOYS":{"k":[8],"m":"2026-09-28"},"TOPS":{"k":[3],"m":"2026-09-28"}};
+let FCA_KRIT = {"1":"Dihapus","2":"Laporan Keuangan Auditan terakhir mendapatkan opini tidak menyatakan pendapat (disclaimer).","3":"Tidak membukukan pendapatan atau tidak terdapat perubahan pendapatan pada Laporan Keuangan Auditan dan/atau Laporan Keuangan Interim terakhir dibandingkan dengan laporan keuangan yang disampaikan sebelumnya.","4":"Perusahaan Tercatat yang merupakan perusahaan tambang minerba atau induk dari perusahaan tambang minerba yang belum memperoleh pendapatan dari core business hingga tahun buku ke-4 (keempat) sejak tercatat di Bursa.","5":"Memiliki ekuitas negatif pada laporan Keuangan terakhir.","6":"Dihapus","7":"Dihapus","8":"Perusahaan Tercatat dalam kondisi dimohonkan PKPU, pailit, atau pembatalan perdamaian.","9":"Anak perusahaan yang kontribusi pendapatannya material terhadap Perusahaan Tercatat, dalam kondisi dimohonkan PKPU, pailit, atau pembatalan perdamaian.","10":"Dihapus","11":"Kondisi lain yang ditetapkan oleh Bursa setelah memperoleh persetujuan atau perintah Otoritas Jasa Keuangan."};
 const FCA_SINGKAT = {2: "Opini disclaimer", 3: "Tanpa/tak ada perubahan pendapatan",
   4: "Tambang belum berpendapatan", 5: "Ekuitas negatif", 8: "PKPU / pailit",
   9: "Anak usaha PKPU / pailit", 11: "Kondisi lain (OJK)"};
@@ -3547,7 +3553,15 @@ function rpSingkat(v) {
   if (a >= 1e6) return f(v / 1e6, " Jt");
   return Math.round(v).toLocaleString("id-ID");
 }
+function pakaiFcaGudang() {
+  if (!fcaGudang || !fcaGudang.aktif) return;
+  FCA = fcaGudang.aktif;
+  if (fcaGudang.kriteria && Object.keys(fcaGudang.kriteria).length) FCA_KRIT = fcaGudang.kriteria;
+  if (fcaGudang.per) FCA_PER = fcaGudang.per;
+  fcaGudang = null;
+}
 function panelEmitenMini(w) {
+  pakaiFcaGudang();
   const p = el("div", "panel");
   p.appendChild(el("h2", null, "Emiten mini"));
   const semua = [];
@@ -4405,7 +4419,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-28-6";
+const VERSI_APP = "2026-09-28-7";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
