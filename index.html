@@ -4349,7 +4349,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-28-4";
+const VERSI_APP = "2026-09-28-5";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -4935,6 +4935,10 @@ function terapkanFunda() {
 function terapkanFF() {
   if (!daftarFF.length) return;
   const f = daftarFF[0];
+  /* Free float dari server (awal-lk.json, kolom ff_per) lebih baru daripada
+     berkas yang dulu diimpor sendiri di HP -> yang di HP diabaikan. Tanpa ini
+     impor lama di HP menimpa data server terbaru selamanya. */
+  if (DATA && DATA.ff_per && (!f.tgl || f.tgl < DATA.ff_per)) return;
   Object.keys(f.baris).forEach(k => {
     const b = f.baris[k]; const row = barisScr[k];
     if (!row) return;
