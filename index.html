@@ -3588,11 +3588,15 @@ function panelEmitenMini(w) {
   /* tanggal pembanding */
   const tglUrut = [...new Set(daftarHari.map(r => r.tgl))].sort();
   const tAkhir = tglUrut[tglUrut.length - 1] || "";
-  const sampai = miniSampai && tglUrut.indexOf(miniSampai) >= 0 ? miniSampai : tAkhir;
-  const iS = tglUrut.indexOf(sampai);
-  const dari = miniDari && tglUrut.indexOf(miniDari) >= 0 && miniDari < sampai
-    ? miniDari : (iS > 0 ? tglUrut[iS - 1] : sampai);
-  const pS = miniPeta(tglUrut, sampai), pD = miniPeta(tglUrut, dari);
+  let sampai = miniSampai && tglUrut.indexOf(miniSampai) >= 0 ? miniSampai : tAkhir;
+  let dari = miniDari && tglUrut.indexOf(miniDari) >= 0 ? miniDari : "";
+  /* Dari boleh dipilih bebas, termasuk tanggal terakhir. Kalau lebih baru dari
+     Sampai, keduanya ditukar. Kalau sama dengan Sampai, tabel menampilkan angka
+     hari itu saja dan kolom perubahan dikosongkan (tidak ada pembanding). */
+  if (dari && dari > sampai) { const t = dari; dari = sampai; sampai = t; }
+  if (!dari) { const iS = tglUrut.indexOf(sampai); dari = iS > 0 ? tglUrut[iS - 1] : sampai; }
+  const samaHari = dari === sampai;
+  const pS = miniPeta(tglUrut, sampai), pD = samaHari ? {} : miniPeta(tglUrut, dari);
   const rt = el("div", "rentang");
   const lab = t => { const l = el("label"); l.textContent = t; return l; };
   const bD = el("div"); bD.appendChild(lab("Dari:"));
@@ -3694,7 +3698,9 @@ function panelEmitenMini(w) {
     });
     ket.textContent = L.length.toLocaleString("id-ID") + " emiten" +
       (L.length > 400 ? " \u00b7 ditampilkan 400 pertama" : "") +
-      " \u00b7 angka per " + tglID(sampai) + ", \u0394 dibanding " + tglID(dari) +
+      " \u00b7 angka per " + tglID(sampai) + (samaHari
+        ? " (Dari = Sampai, tidak ada pembanding \u2014 pilih Dari lebih awal)"
+        : ", \u0394 dibanding " + tglID(dari)) +
       " \u00b7 ketuk judul kolom untuk mengurutkan";
     wadah.innerHTML = "";
     const bungkus = el("div", "tbl-bungkus tbl-kunci");
@@ -3702,7 +3708,13 @@ function panelEmitenMini(w) {
     const trh = el("tr");
     KOL.forEach(([k, judul, num]) => {
       const th = el("th", num && k !== "fca" ? "num" : null,
-        judul + (miniUrut === k ? (miniArah > 0 ? " \u25b2" : " \u25bc") : ""));
+        judul + (miniUrut === k && k !== "harga" ? (miniArah > 0 ? " \u25b2" : " \u25bc") : ""));
+      if (k === "harga") {
+        const tg = el("span", "nm", tglID(sampai));
+        tg.style.color = "inherit"; tg.style.opacity = ".85"; tg.style.fontWeight = "400";
+        th.appendChild(tg);
+      }
+      if (k === "harga") th.title = "Harga penutupan " + tglID(sampai) + " \u2014 ketuk untuk mengurutkan";
       th.style.cursor = "pointer";
       th.onclick = () => {
         if (miniUrut === k) miniArah = -miniArah; else { miniUrut = k; miniArah = 1; }
@@ -3732,7 +3744,8 @@ function panelEmitenMini(w) {
         tdF.appendChild(el("span", "nm", "sejak " + tglID(x.fcaM) + " " + x.fcaM.slice(0, 4)));
       } else tdF.textContent = "";
       tr.appendChild(tdF);
-      tr.appendChild(el("td", "num", x.harga.toLocaleString("id-ID")));
+      const tdH = el("td", "num", x.harga.toLocaleString("id-ID"));
+      tr.appendChild(tdH);
       tr.appendChild(tdUbah(x.dHarga));
       const tdM = el("td", "num", rpSingkat(x.mcap));
       if (x.mcapDari !== null) tdM.appendChild(el("span", "nm", "dari " + rpSingkat(x.mcapDari)));
@@ -4498,7 +4511,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-29-2";
+const VERSI_APP = "2026-09-29-4";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
