@@ -3534,6 +3534,8 @@ function panelVolPilihan(st, judul, jenis, urutTgl) {
 const MINI_BATAS = [[0, "Semua"], [100e9, "\u2264 100 M"], [500e9, "\u2264 500 M"],
                     [1e12, "\u2264 1 T"], [5e12, "\u2264 5 T"]];
 let miniBatas = 1e12, miniUrut = "ff50", miniArah = 1, miniCari = "", miniFca = "semua";
+/* rentang pembanding EMITEN MINI; "" = otomatis (Sampai = hari terakhir, Dari = hari sebelumnya) */
+let miniDari = "", miniSampai = "";
 /* Papan Pemantauan Khusus (Full Call Auction) - emiten yang MASIH di papan itu
    (tanggal keluar kosong) menurut berkas IDX Efek_Pada_Papan_Pemantauan_Khusus
    per 28 Sep 2026. k = nomor kriteria, m = tanggal masuk. */
@@ -3560,16 +3562,57 @@ function pakaiFcaGudang() {
   if (fcaGudang.per) FCA_PER = fcaGudang.per;
   fcaGudang = null;
 }
+/* Nilai satu emiten pada tanggal t: pakai rekaman hari itu, atau hari bursa
+   terakhir sebelumnya (maks 10 hari) kalau emiten tidak ada di tanggal itu.
+   Harga sudah disesuaikan split (b.adj), jadi market cap memakai harga MENTAH
+   x saham tercatat hari itu supaya tidak meleset di hari sebelum split. */
+function miniPeta(tglUrut, sampai) {
+  const i0 = tglUrut.indexOf(sampai);
+  const peta = {};
+  const perTgl = {};
+  daftarHari.forEach(r => { if (!perTgl[r.tgl]) perTgl[r.tgl] = r.baris || {}; });
+  for (let i = i0; i >= 0 && i > i0 - 10; i--) {
+    const b = perTgl[tglUrut[i]] || {};
+    Object.keys(b).forEach(k => {
+      if (peta[k] || !(b[k].c > 0)) return;
+      const x = b[k];
+      peta[k] = {c: x.c, n: x.n, mcap: x.ls > 0 ? x.c * (x.adj || 1) * x.ls : null};
+    });
+  }
+  return peta;
+}
 function panelEmitenMini(w) {
   pakaiFcaGudang();
   const p = el("div", "panel");
   p.appendChild(el("h2", null, "Emiten mini"));
+  /* tanggal pembanding */
+  const tglUrut = [...new Set(daftarHari.map(r => r.tgl))].sort();
+  const tAkhir = tglUrut[tglUrut.length - 1] || "";
+  const sampai = miniSampai && tglUrut.indexOf(miniSampai) >= 0 ? miniSampai : tAkhir;
+  const iS = tglUrut.indexOf(sampai);
+  const dari = miniDari && tglUrut.indexOf(miniDari) >= 0 && miniDari < sampai
+    ? miniDari : (iS > 0 ? tglUrut[iS - 1] : sampai);
+  const pS = miniPeta(tglUrut, sampai), pD = miniPeta(tglUrut, dari);
+  const rt = el("div", "rentang");
+  const lab = t => { const l = el("label"); l.textContent = t; return l; };
+  const bD = el("div"); bD.appendChild(lab("Dari:"));
+  bD.appendChild(kotakTanggal(dari, tglUrut, t => { miniDari = t; halVolume(); }));
+  const bS = el("div"); bS.appendChild(lab("Sampai:"));
+  bS.appendChild(kotakTanggal(sampai, tglUrut, t => { miniSampai = t; halVolume(); }));
+  rt.appendChild(bD); rt.appendChild(bS);
+  const bT = el("button", null, "Terbaru");
+  bT.style.padding = "6px 14px"; bT.style.fontSize = "11px"; bT.style.alignSelf = "flex-end"; bT.style.flex = "0 0 auto"; bT.style.width = "auto";
+  bT.onclick = () => { miniDari = ""; miniSampai = ""; halVolume(); };
+  rt.appendChild(bT);
+  p.appendChild(rt);
+  const pct = (a, b) => (a !== null && a !== undefined && b) ? (a / b - 1) * 100 : null;
   const semua = [];
   Object.keys(barisScr).forEach(k => {
     const r = barisScr[k];
-    const harga = ambilM(r, "Harga penutupan");
+    const s1 = pS[k], s0 = pD[k];
+    const harga = s1 ? s1.c : ambilM(r, "Harga penutupan");
     if (!harga || harga <= 0) return;
-    const mcapM = ambilM(r, "Kapitalisasi pasar (Rp miliar)");
+    const mcapM = s1 && s1.mcap ? s1.mcap / 1e9 : ambilM(r, "Kapitalisasi pasar (Rp miliar)");
     const ffp = ambilM(r, "Free float (%)");
     let ffLbr = ambilM(r, "Saham free float (lembar)");
     const lembar = ambilM(r, "Jumlah saham (lembar)");
@@ -3579,9 +3622,17 @@ function panelEmitenMini(w) {
                 fca: f ? f.k[0] : null, fcaK: f ? f.k : null, fcaM: f ? f.m : "",
                 ffLot: ffLbr ? ffLbr / 100 : null,
                 mcap: mcapM !== null ? mcapM * 1e9 : null,
-                value: ambilM(r, "Nilai transaksi (Rp)"),
+                value: s1 ? (s1.n || 0) : ambilM(r, "Nilai transaksi (Rp)"),
                 ffp: ffp !== null ? ffp * 100 : null,
-                ff50: ffLbr ? ffLbr * harga * 0.5 : null});
+                ff50: ffLbr ? ffLbr * harga * 0.5 : null,
+                /* perubahan Sampai vs Dari */
+                dHarga: s0 ? pct(harga, s0.c) : null,
+                dMcap: s0 && s0.mcap && mcapM ? pct(mcapM * 1e9, s0.mcap) : null,
+                dValue: s0 && s0.n ? pct(s1 ? s1.n || 0 : null, s0.n) : null,
+                mcapDari: s0 && s0.mcap ? s0.mcap : null,
+                ff50Dari: s0 && ffLbr ? ffLbr * s0.c * 0.5 : null,
+                dFf50: s0 && ffLbr ? pct(harga, s0.c) : null,
+                valueDari: s0 ? (s0.n || 0) : null});
   });
 
   /* saringan */
@@ -3617,9 +3668,17 @@ function panelEmitenMini(w) {
   p.appendChild(wadah);
   const KOL = [
     ["kode", "Emiten", false], ["fca", "FCA", true], ["harga", "Harga", true],
-    ["mcap", "Market Cap", true], ["value", "Value", true], ["ffLot", "Free Float", true],
-    ["ff50", "FF \u00d7 Harga \u00d7 50%", true]];
+    ["dHarga", "\u0394 Harga", true], ["mcap", "Market Cap", true], ["dMcap", "\u0394 Market Cap", true],
+    ["value", "Value", true], ["dValue", "\u0394 Value", true], ["ffLot", "Free Float", true],
+    ["ff50", "FF \u00d7 Harga \u00d7 50%", true], ["dFf50", "\u0394 FF \u00d7 50%", true]];
 
+  function tdUbah(v) {
+    const a = arah(v);
+    const td = el("td", "num " + a.k, v === null ? "\u2013" :
+      a.t + (v > 0 ? "+" : "") + v.toLocaleString("id-ID", {maximumFractionDigits: 1}) + "%");
+    td.style.fontWeight = "700";
+    return td;
+  }
   function gambar() {
     const q = miniCari.trim().toUpperCase();
     let L = semua.filter(x => (!miniBatas || (x.mcap !== null && x.mcap <= miniBatas)) &&
@@ -3635,7 +3694,8 @@ function panelEmitenMini(w) {
     });
     ket.textContent = L.length.toLocaleString("id-ID") + " emiten" +
       (L.length > 400 ? " \u00b7 ditampilkan 400 pertama" : "") +
-      " \u00b7 harga & value hari bursa terakhir \u00b7 ketuk judul kolom untuk mengurutkan";
+      " \u00b7 angka per " + tglID(sampai) + ", \u0394 dibanding " + tglID(dari) +
+      " \u00b7 ketuk judul kolom untuk mengurutkan";
     wadah.innerHTML = "";
     const bungkus = el("div", "tbl-bungkus tbl-kunci");
     const t = el("table");
@@ -3673,8 +3733,19 @@ function panelEmitenMini(w) {
       } else tdF.textContent = "";
       tr.appendChild(tdF);
       tr.appendChild(el("td", "num", x.harga.toLocaleString("id-ID")));
-      tr.appendChild(el("td", "num", rpSingkat(x.mcap)));
-      tr.appendChild(el("td", "num", x.value === null ? "\u2013" : x.value ? rpSingkat(x.value) : "0"));
+      tr.appendChild(tdUbah(x.dHarga));
+      const tdM = el("td", "num", rpSingkat(x.mcap));
+      if (x.mcapDari !== null) tdM.appendChild(el("span", "nm", "dari " + rpSingkat(x.mcapDari)));
+      tr.appendChild(tdM);
+      const tdDM = tdUbah(x.dMcap);
+      if (x.dMcap !== null && Math.abs(x.dMcap - (x.dHarga || 0)) > 0.5)
+        tdDM.title = "Berbeda dari \u0394 Harga: jumlah saham tercatat ikut berubah";
+      tr.appendChild(tdDM);
+      const tdV = el("td", "num", x.value === null ? "\u2013" : x.value ? rpSingkat(x.value) : "0");
+      if (x.valueDari !== null)
+        tdV.appendChild(el("span", "nm", "dari " + (x.valueDari ? rpSingkat(x.valueDari) : "0")));
+      tr.appendChild(tdV);
+      tr.appendChild(tdUbah(x.dValue));
       const tdFF = el("td", "num", x.ffLot === null ? "\u2013" :
         Math.round(x.ffLot).toLocaleString("id-ID") + " lot");
       if (x.ffp !== null)
@@ -3682,14 +3753,22 @@ function panelEmitenMini(w) {
       tr.appendChild(tdFF);
       const tdf = el("td", "num", rpSingkat(x.ff50));
       tdf.style.fontWeight = "700";
+      if (x.ff50Dari !== null) tdf.appendChild(el("span", "nm", "dari " + rpSingkat(x.ff50Dari)));
       tr.appendChild(tdf);
+      tr.appendChild(tdUbah(x.dFf50));
       tb.appendChild(tr);
     });
     t.appendChild(tb); bungkus.appendChild(t); wadah.appendChild(bungkus);
   }
   gambar();
   p.appendChild(el("div", "bantu",
-    "FF \u00d7 Harga \u00d7 50% = jumlah saham free float \u00d7 harga terakhir \u00d7 50%. " +
+    "\u0394 Harga dan \u0394 Value = perubahan tanggal Sampai dibanding tanggal Dari " +
+    "(value = nilai transaksi satu hari itu, bukan dijumlah sepanjang rentang). " +
+    "Harga sudah disesuaikan stock split. Angka kecil \"dari ...\" = nilai pada tanggal Dari. " +
+    "\u0394 Market Cap bisa berbeda dari \u0394 Harga kalau jumlah saham tercatat berubah " +
+    "(rights issue, private placement). Free float (lot) tidak dibandingkan karena hanya " +
+    "berubah per pengumuman IDX. " +
+    "FF \u00d7 Harga \u00d7 50% = jumlah saham free float \u00d7 harga tanggal Sampai \u00d7 50%. " +
     "Market cap = harga \u00d7 jumlah saham tercatat. Free float dari pengumuman free float IDX " +
     "terakhir yang ada di aplikasi. Value = nilai transaksi hari bursa terakhir. " +
     "\u2013 berarti datanya belum ada. Free Float: jumlah lot (angka besar) dan persen " +
@@ -4419,7 +4498,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-28-7";
+const VERSI_APP = "2026-09-29-2";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
