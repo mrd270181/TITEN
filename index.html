@@ -423,6 +423,7 @@ th.rek-b,td.rek-b{background:var(--naik-bg)}
 th.rek-j,td.rek-j{background:var(--turun-bg)}
 th.rek-gb,th.rek-gj{text-align:center}
 td.rek-lawan{outline:1.5px solid currentColor;outline-offset:-3px;font-weight:800}
+.rek-avg{margin-left:4px;font-weight:400;opacity:.7;font-size:.88em;white-space:nowrap}
 tfoot td{border-top:2px solid var(--garis);font-weight:800;background:var(--surface-2)}
 #barisVersi{
   position:fixed; left:0; right:0; z-index:60;
@@ -2107,16 +2108,40 @@ function rekATH(emiten, sampai) {
 }
 
 function rekBroker(emiten, dari, sampai) {
-  const perTgl = {}, total = {};
+  const perTgl = {}, total = {}, avgTgl = {}, avgTot = {};
   const trx = semuaTrx() || {};
+  /* lot & nilai per sisi dikumpulkan terpisah supaya harga rata-rata bisa
+     dihitung: net beli -> avg sisi beli, net jual -> avg sisi jual */
+  const tambah = (o, k, r) => {
+    const a = o[k] || (o[k] = {bL: 0, bV: 0, jL: 0, jV: 0});
+    if (r.beli && r.avgB > 0) { a.bL += r.beli; a.bV += r.beli * r.avgB; }
+    if (r.jual && r.avgJ > 0) { a.jL += r.jual; a.jV += r.jual * r.avgJ; }
+  };
   rekPapan().forEach(p => (trx[p] || []).forEach(r => {
     if (r.em !== emiten || r.tgl < dari || r.tgl > sampai) return;
     const d = perTgl[r.tgl] || (perTgl[r.tgl] = {});
     const n = r.beli - r.jual;
     d[r.br] = (d[r.br] || 0) + n;
     total[r.br] = (total[r.br] || 0) + n;
+    tambah(avgTgl[r.tgl] || (avgTgl[r.tgl] = {}), r.br, r);
+    tambah(avgTot, r.br, r);
   }));
-  return {perTgl: perTgl, total: total};
+  return {perTgl: perTgl, total: total, avgTgl: avgTgl, avgTot: avgTot};
+}
+
+/* harga rata-rata sisi yang sesuai arah net: net beli -> avg beli,
+   net jual -> avg jual, net nol -> tidak ada */
+function rekAvgSisi(a, net) {
+  if (!a || !net) return null;
+  if (net > 0) return a.bL ? a.bV / a.bL : null;
+  return a.jL ? a.jV / a.jL : null;
+}
+
+/* sel lot + harga rata-rata dalam kurung di kanannya */
+function rekSelLot(kelas, v, avg) {
+  const td = el("td", kelas, rekLot(v));
+  if (avg) td.appendChild(el("span", "rek-avg", "(" + Math.round(avg).toLocaleString("id-ID") + ")"));
+  return td;
 }
 
 /* lot bertanda: tanda plus ditulis sendiri karena lotSingkat() hanya menulis
@@ -2561,15 +2586,16 @@ function panelRekomendasi(w) {
     tr.appendChild(el("td", "num", lotSingkat(Math.round(x.v / LOT))));
     if (adaBroker) {
       const hari = brk.perTgl[x.tgl] || {};
+      const avH = brk.avgTgl[x.tgl] || {};
       brBeli.forEach(k => {
         const v = hari[k] || 0;
-        tr.appendChild(el("td", "num rek-b " + arah(v).k + (v < 0 ? " rek-lawan" : ""),
-                          rekLot(v)));
+        tr.appendChild(rekSelLot("num rek-b " + arah(v).k + (v < 0 ? " rek-lawan" : ""),
+                                 v, rekAvgSisi(avH[k], v)));
       });
       brJual.forEach(k => {
         const v = hari[k] || 0;
-        tr.appendChild(el("td", "num rek-j " + arah(v).k + (v > 0 ? " rek-lawan" : ""),
-                          rekLot(v)));
+        tr.appendChild(rekSelLot("num rek-j " + arah(v).k + (v > 0 ? " rek-lawan" : ""),
+                                 v, rekAvgSisi(avH[k], v)));
       });
     }
     tbody.appendChild(tr);
@@ -2584,10 +2610,10 @@ function panelRekomendasi(w) {
   trf.appendChild(el("td", "num " + arah(nfTot).k, rekLot(nfTot / LOT)));
   trf.appendChild(el("td", "num", lotSingkat(Math.round(volTot / LOT))));
   if (adaBroker) {
-    brBeli.forEach(k => trf.appendChild(
-      el("td", "num rek-b " + arah(brk.total[k]).k, rekLot(brk.total[k]))));
-    brJual.forEach(k => trf.appendChild(
-      el("td", "num rek-j " + arah(brk.total[k]).k, rekLot(brk.total[k]))));
+    brBeli.forEach(k => trf.appendChild(rekSelLot("num rek-b " + arah(brk.total[k]).k,
+      brk.total[k], rekAvgSisi(brk.avgTot[k], brk.total[k]))));
+    brJual.forEach(k => trf.appendChild(rekSelLot("num rek-j " + arah(brk.total[k]).k,
+      brk.total[k], rekAvgSisi(brk.avgTot[k], brk.total[k]))));
   }
   tfoot.appendChild(trf); t.appendChild(tfoot);
   bungkus.appendChild(t); p.appendChild(bungkus);
@@ -2597,7 +2623,10 @@ function panelRekomendasi(w) {
     p.appendChild(el("div", "bantu",
       (REK_BROKER * 2) + " kolom berkode broker itu dipilih dari TOTAL " +
       "sepanjang rentang tanggal yang dipilih, lalu " +
-      "isinya net lot broker itu per tanggal. Sel bergaris kotak = hari yang " +
+      "isinya net lot broker itu per tanggal. Angka dalam kurung = harga rata-rata " +
+      "broker itu hari itu, dari sisi yang sesuai arah net-nya: net beli memakai " +
+      "avg beli, net jual memakai avg jual. Di baris TOTAL, kurungnya = harga " +
+      "rata-rata sepanjang rentang. Sel bergaris kotak = hari yang " +
       "arahnya berlawanan dengan arah broker itu sepanjang rentang — pembeli " +
       "terbesar yang ternyata net jual hari itu, atau sebaliknya. Justru hari " +
       "seperti itu yang berguna dilihat, jadi tidak disembunyikan."));
@@ -4511,7 +4540,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-09-29-4";
+const VERSI_APP = "2026-10-01-1";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
