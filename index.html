@@ -355,7 +355,11 @@ td.hv-deret{background:var(--naik-bg)!important}
 .fa-sub{font-size:10px;color:var(--ink-3)}
 svg.fa-pola{display:block}
 .fa-min{width:auto;padding:6px 8px;font-size:13px}
-.bk-broker{margin-bottom:6px}
+.bk-broker{margin-bottom:6px;display:flex;align-items:center;gap:12px}
+input.bk-kode{width:86px;flex:0 0 auto;font-size:18px;font-weight:800;letter-spacing:2px;
+  text-align:center;text-transform:uppercase}
+.bk-nama{font-size:14px;font-weight:600;color:var(--ink-2)}
+.bk-nama.bk-salah{color:var(--turun);font-weight:400}
 .bk-saklar{margin-top:8px}
 .fa-tabel th.bk-urut{text-decoration:underline;text-underline-offset:3px}
 /* SCREENER > REKOMENDASI */
@@ -2982,13 +2986,28 @@ function panelBrokerAkum(w) {
 
   const lb = el("label", "bantu", "Broker");
   p.appendChild(lb);
-  const sb = el("select", "bk-broker");
-  daftarBr.forEach(k => {
-    const o = el("option", null, k + " — " + (namaBroker(k) || "")); o.value = k;
-    if (k === bkBroker) o.selected = true; sb.appendChild(o);
-  });
-  sb.onchange = () => { bkBroker = sb.value; halScreener(); };
-  p.appendChild(sb);
+  /* kotak ketik kode: begitu 2 huruf yang cocok diketik, broker langsung
+     berganti - tanpa daftar panjang semua broker */
+  const bBr = el("div", "bk-broker");
+  const ib = el("input", "cari bk-kode");
+  ib.value = bkBroker; ib.maxLength = 2; ib.placeholder = "Kode";
+  ib.autocapitalize = "characters"; ib.autocomplete = "off"; ib.spellcheck = false;
+  const nmBr = el("span", "bk-nama", namaBroker(bkBroker) || "");
+  ib.onfocus = () => ib.select();
+  ib.oninput = () => {
+    const v = ib.value.replace(/[^a-z]/gi, "").toUpperCase();
+    ib.value = v;
+    if (v.length < 2) { nmBr.textContent = "ketik 2 huruf kode broker"; nmBr.classList.add("bk-salah"); return; }
+    if (daftarBr.indexOf(v) < 0) {
+      nmBr.textContent = "kode " + v + " tidak ada di data broker"; nmBr.classList.add("bk-salah"); return;
+    }
+    if (v !== bkBroker) { bkBroker = v; halScreener(); }
+    else { nmBr.textContent = namaBroker(v) || ""; nmBr.classList.remove("bk-salah"); }
+  };
+  ib.onblur = () => { if (ib.value !== bkBroker) { ib.value = bkBroker;
+    nmBr.textContent = namaBroker(bkBroker) || ""; nmBr.classList.remove("bk-salah"); } };
+  bBr.appendChild(ib); bBr.appendChild(nmBr);
+  p.appendChild(bBr);
 
   const barisTgl = el("div", "alat");
   [["Dari", "d"], ["Sampai", "s"]].forEach(([lab, kunci]) => {
@@ -4540,7 +4559,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-01-1";
+const VERSI_APP = "2026-10-01-2";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
