@@ -1984,6 +1984,7 @@ function rekHarga(emiten, dari, sampai) {
                        pertama rentang ikut terhitung - sama dengan screener. */
                     p: typeof b.p === "number" ? b.p : null,
                     v: b.v || 0,
+                    n: b.n || 0,
                     nf: (b.fb || 0) - (b.fs || 0)};
   });
   return Object.keys(hasil).sort().map(t => hasil[t]);
@@ -2439,6 +2440,7 @@ function panelRekomendasi(w) {
   const adaBroker = brBeli.length > 0 || brJual.length > 0;
 
   const volTot = hr.reduce((a, x) => a + x.v, 0);
+  const valTot = hr.reduce((a, x) => a + x.n, 0);
   const nfTot = hr.reduce((a, x) => a + x.nf, 0);
   /* Penyebutnya penutupan SEBELUM hari pertama rentang (hr[0].p), BUKAN
      penutupan hari pertama itu sendiri. Memakai hr[0].c membuang gerakan hari
@@ -2549,7 +2551,7 @@ function panelRekomendasi(w) {
   /* Level harga TIDAK lagi jadi kolom di sini - sudah pindah ke kotak LEVEL HARGA
      di atas tabel. Sebagai kolom, angkanya terulang di tiap baris padahal cuma
      berlaku untuk tanggal terbaru. */
-  ["Tanggal", "Tutup", "%Hrg", "Net Foreign", "Volume"].forEach(judul => {
+  ["Tanggal", "Tutup", "%Hrg", "Net Foreign", "Volume", "Value"].forEach(judul => {
     const th = el("th", null, judul); th.rowSpan = 2; tr1.appendChild(th);
   });
   if (adaBroker) {
@@ -2588,6 +2590,7 @@ function panelRekomendasi(w) {
                       d === null ? "–" : rekPersen(d, 1)));
     tr.appendChild(el("td", "num " + arah(x.nf).k, rekLot(x.nf / LOT)));
     tr.appendChild(el("td", "num", lotSingkat(Math.round(x.v / LOT))));
+    tr.appendChild(el("td", "num", x.n ? rpSingkat(x.n) : "\u2013"));
     if (adaBroker) {
       const hari = brk.perTgl[x.tgl] || {};
       const avH = brk.avgTgl[x.tgl] || {};
@@ -2613,6 +2616,7 @@ function panelRekomendasi(w) {
                      rekPersen(totPct, 1)));
   trf.appendChild(el("td", "num " + arah(nfTot).k, rekLot(nfTot / LOT)));
   trf.appendChild(el("td", "num", lotSingkat(Math.round(volTot / LOT))));
+  trf.appendChild(el("td", "num", valTot ? rpSingkat(valTot) : "\u2013"));
   if (adaBroker) {
     brBeli.forEach(k => trf.appendChild(rekSelLot("num rek-b " + arah(brk.total[k]).k,
       brk.total[k], rekAvgSisi(brk.avgTot[k], brk.total[k]))));
@@ -4559,7 +4563,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-01-2";
+const VERSI_APP = "2026-10-01-3";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
