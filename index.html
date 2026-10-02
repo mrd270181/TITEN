@@ -365,7 +365,9 @@ svg.fa-pola{display:block}
 .nw-ring span{font-size:10.5px;color:var(--ink-3)}
 .nw-ring .nw-kurs{flex:1.6 1 170px;border-color:var(--merek);cursor:pointer}
 .nw-ring .nw-kurs b{font-size:20px}
-.nw-ring .nw-kurs .nw-ubah{font-size:11px;font-weight:700}
+.nw-ring .nw-kurs .nw-ubah{font-size:11px;font-weight:700;display:block}
+.nw-ring span.naik{color:var(--naik)} .nw-ring span.turun{color:var(--turun)}
+.nw-ring .nw-kurs .nw-sblm{display:block;font-size:10px}
 .nw-grafik{background:var(--surface-2);border:1px solid var(--garis);border-radius:9px;padding:8px 10px;margin:-2px 0 10px}
 .nw-grafik svg{width:100%;height:120px;display:block}
 .nw-chip{border:1px solid var(--garis);border-radius:999px;padding:5px 11px;font-size:11.5px;
@@ -3718,8 +3720,10 @@ const nwHariIni = w => nwFmt(w, {year: "numeric", month: "2-digit", day: "2-digi
 function nwKotakKurs(k) {
   const d = el("div", "nw-kurs");
   const ubah = k.sebelum ? k.harga - k.sebelum : null;
+  /* tanggal ikut ditulis: di luar jam jadwal (malam, akhir pekan) kurs bisa
+     berumur beberapa jam sampai satu-dua hari */
   d.appendChild(el("span", null, "USD/IDR" + (k.waktu ? " · " + nwFmt(k.waktu,
-    {hour: "2-digit", minute: "2-digit"}) + " WIB" : "")));
+    {day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"}) + " WIB" : "")));
   d.appendChild(el("b", null, rp(Math.round(k.harga))));
   if (ubah !== null) {
     /* angka kurs TURUN = rupiah MENGUAT, jadi warnanya dibalik */
@@ -3729,6 +3733,7 @@ function nwKotakKurs(k) {
       (ubah > 0 ? "+" : "") + (ubah / k.sebelum * 100).toFixed(2).replace(".", ",") + "%) " +
       (ubah === 0 ? "tetap" : kuat ? "rupiah menguat" : "rupiah melemah")));
   }
+  if (k.sebelum) d.appendChild(el("span", "nw-sblm", "dibanding penutupan sebelumnya " + rp(Math.round(k.sebelum))));
   d.title = "Ketuk untuk grafik 30 hari";
   d.onclick = () => { nwGrafik = !nwGrafik; halNews(); };
   return d;
@@ -4992,7 +4997,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-03-1";
+const VERSI_APP = "2026-10-03-2";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
