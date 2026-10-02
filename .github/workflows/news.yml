@@ -1,0 +1,36 @@
+name: TITEN news
+
+# Berita & kurs untuk menu NEWS. Jam di cron = UTC (WIB - 7).
+on:
+  schedule:
+    - cron: "*/30 1-10 * * 1-5"   # Senin-Jumat 08:00-17:30 WIB, tiap 30 menit
+    - cron: "0 12,23 * * *"       # tiap hari 19:00 & 06:00 WIB
+  workflow_dispatch:               # tombol "Run workflow" untuk jalan manual
+
+permissions:
+  contents: write
+
+concurrency:
+  group: titen-news
+  cancel-in-progress: false
+
+jobs:
+  news:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ambil berita & kurs
+        run: python3 scripts/news.py
+      - name: Simpan data/news.json
+        run: |
+          git config user.name "titen-bot"
+          git config user.email "titen-bot@users.noreply.github.com"
+          git add data/news.json
+          if git diff --cached --quiet; then echo "tidak ada perubahan"; exit 0; fi
+          git commit -m "news: perbarui berita & kurs"
+          for i in 1 2 3; do
+            git pull --rebase origin main && git push origin HEAD:main && exit 0
+            sleep 5
+          done
+          exit 1
