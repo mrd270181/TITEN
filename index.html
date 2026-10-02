@@ -110,7 +110,8 @@ input[type=date]{-webkit-appearance:none;appearance:none;min-height:38px;
 table{border-collapse:collapse;width:100%;font-size:12px}
 th{
   background:var(--merek);color:#fff;font-weight:600;font-size:10.5px;
-  padding:6px 7px;text-align:right;white-space:nowrap;position:sticky;top:0
+  padding:6px 7px;text-align:right;white-space:nowrap;position:sticky;top:0;
+  z-index:2  /* di atas isi sel yang punya opacity (mis. harga rata-rata) */
 }
 th:first-child,td:first-child{text-align:left}
 td{padding:6px 7px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--garis)}
@@ -2544,7 +2545,7 @@ function panelRekomendasi(w) {
       "berguna sesudah aplikasi mengunduh beberapa bulan harga."));
   }
 
-  const bungkus = el("div", "tbl-bungkus");
+  const bungkus = el("div", "tbl-bungkus tbl-kunci");
   const t = el("table");
   const thead = el("thead");
   const tr1 = el("tr"), tr2 = el("tr");
@@ -2574,6 +2575,17 @@ function panelRekomendasi(w) {
   }
   thead.appendChild(tr1); if (adaBroker) thead.appendChild(tr2);
   t.appendChild(thead);
+  /* kepala dua baris: baris kedua (kode broker) harus menempel TEPAT di bawah
+     baris pertama, bukan di top:0 - kalau tidak, keduanya bertumpuk saat
+     tabel digulir. Tingginya baru diketahui sesudah tabel tergambar. */
+  if (adaBroker) {
+    const aturTop = () => {
+      const h = tr2.offsetTop;
+      if (h > 0) [...tr2.children].forEach(th => { th.style.top = h + "px"; });
+    };
+    requestAnimationFrame(aturTop);
+    if (window.ResizeObserver) new ResizeObserver(aturTop).observe(tr1);
+  }
 
   /* Level support dihitung sekali, bukan per baris: angkanya berlaku SEKARANG,
      bukan per tanggal. Karena itu cuma ditulis di baris tanggal terbaru - kalau
@@ -4563,7 +4575,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-01-3";
+const VERSI_APP = "2026-10-02-1";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
