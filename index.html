@@ -358,6 +358,35 @@ svg.fa-pola{display:block}
 .fa-min{width:auto;padding:6px 8px;font-size:13px}
 .bk-broker{margin-bottom:6px;display:flex;align-items:center;gap:12px}
 .ph-dua{display:flex;gap:12px;flex-wrap:wrap;margin-top:8px}
+/* ---- NEWS ---- */
+.nw-ring{display:flex;gap:8px;margin:0 0 10px;flex-wrap:wrap}
+.nw-ring>div{flex:1 1 110px;background:var(--surface-2);border:1px solid var(--garis);border-radius:9px;padding:8px 10px}
+.nw-ring b{display:block;font-size:18px;line-height:1.2}
+.nw-ring span{font-size:10.5px;color:var(--ink-3)}
+.nw-ring .nw-kurs{flex:1.6 1 170px;border-color:var(--merek);cursor:pointer}
+.nw-ring .nw-kurs b{font-size:20px}
+.nw-ring .nw-kurs .nw-ubah{font-size:11px;font-weight:700}
+.nw-grafik{background:var(--surface-2);border:1px solid var(--garis);border-radius:9px;padding:8px 10px;margin:-2px 0 10px}
+.nw-grafik svg{width:100%;height:120px;display:block}
+.nw-chip{border:1px solid var(--garis);border-radius:999px;padding:5px 11px;font-size:11.5px;
+  color:var(--ink-2);background:var(--surface-2);cursor:pointer;font-family:inherit}
+.nw-chip.aktif{border-color:var(--merek);color:var(--merek);font-weight:700}
+.nw-alat{display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin:0 0 6px}
+input.nw-kode{width:110px;flex:0 0 auto;text-transform:uppercase}
+.nw-tgl{font-size:11px;font-weight:700;color:var(--ink-3);letter-spacing:.5px;margin:14px 0 6px;text-transform:uppercase}
+.nw-item{display:flex;gap:10px;padding:10px;border-radius:10px;background:var(--surface-2);
+  margin-bottom:7px;border-left:4px solid var(--garis)}
+.nw-item.pos{border-left-color:var(--naik)} .nw-item.neg{border-left-color:var(--turun)}
+.nw-jam{font-size:11px;color:var(--ink-3);min-width:40px;padding-top:2px}
+.nw-isi{flex:1;min-width:0}
+.nw-isi a{font-weight:600;font-size:13.5px;color:var(--ink);text-decoration:none}
+.nw-isi a:hover{text-decoration:underline}
+.nw-meta{font-size:11px;color:var(--ink-3);margin-top:4px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.nw-kd{background:var(--naik-bg);color:var(--naik);border-radius:5px;padding:1px 6px;font-weight:700;
+  font-size:10.5px;cursor:pointer;border:0;font-family:inherit}
+.nw-sen{border-radius:5px;padding:1px 6px;font-weight:700;font-size:10.5px}
+.nw-sen.pos{background:var(--naik-bg);color:var(--naik)} .nw-sen.neg{background:var(--turun-bg);color:var(--turun)}
+.nw-sen.net{background:var(--surface-1);color:var(--ink-3);border:1px solid var(--garis)}
 .ph-kol{flex:1 1 440px;min-width:0}
 .ph-alat{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:8px 0 4px}
 input.ph-cari{width:170px;flex:0 0 auto;text-transform:uppercase}
@@ -471,6 +500,7 @@ tfoot td{border-top:2px solid var(--garis);font-weight:800;background:var(--surf
   <section id="hal-volume" hidden></section>
   <section id="hal-broker" hidden></section>
   <section id="hal-cari" hidden></section>
+  <section id="hal-news" hidden></section>
   <section id="hal-data" hidden></section>
   <footer>
     Sumber: Ringkasan Saham &amp; laporan keuangan XBRL Bursa Efek Indonesia.<br>
@@ -495,6 +525,9 @@ tfoot td{border-top:2px solid var(--garis);font-weight:800;background:var(--surf
   <button data-hal="cari">
     <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
     CARI</button>
+  <button data-hal="news">
+    <svg viewBox="0 0 24 24"><path d="M5 4h11v16H6a2 2 0 0 1-2-2V5a1 1 0 0 1 1-1z"/><path d="M16 8h3v10a2 2 0 0 1-2 2"/><path d="M8 8h5M8 12h5M8 16h3"/></svg>
+    NEWS</button>
   <button data-hal="data">
     <svg viewBox="0 0 24 24"><path d="M12 3v11"/><path d="M8 11l4 4 4-4"/><path d="M4 20h16"/></svg>
     PERBARUI</button>
@@ -3660,6 +3693,190 @@ function miniPeta(tglUrut, sampai) {
   }
   return peta;
 }
+/* ================= NEWS =================
+   Berita sentimen pasar & emiten + kurs USD/IDR. Datanya data/news.json yang
+   ditulis GitHub Actions (scripts/news.py) tiap 30 menit di jam bursa - app
+   hanya membaca. Judul + tautan saja; isi berita dibuka di situs aslinya.
+   Label positif/negatif = hitungan kata kunci di judul, bukan penilaian pasti. */
+let NEWS = null, nwAmbil = 0, nwGagal = "", nwSedang = false;
+let nwTab = "p", nwSen = "semua", nwHari = 1, nwKode = "", nwLingkup = "fav", nwGrafik = false;
+
+async function muatNews(paksa) {
+  if (nwSedang) return;
+  if (NEWS && !paksa && Date.now() - nwAmbil < 5 * 60 * 1000) return;
+  nwSedang = true;
+  try {
+    NEWS = await ambilGudang("news.json"); nwAmbil = Date.now(); nwGagal = "";
+  } catch (e) { nwGagal = String(e.message || e); }
+  nwSedang = false;
+}
+
+const nwFmt = (w, opsi) => new Date(w * 1000).toLocaleString("id-ID",
+  Object.assign({timeZone: "Asia/Jakarta"}, opsi));
+const nwHariIni = w => nwFmt(w, {year: "numeric", month: "2-digit", day: "2-digit"});
+
+function nwKotakKurs(k) {
+  const d = el("div", "nw-kurs");
+  const ubah = k.sebelum ? k.harga - k.sebelum : null;
+  d.appendChild(el("span", null, "USD/IDR" + (k.waktu ? " · " + nwFmt(k.waktu,
+    {hour: "2-digit", minute: "2-digit"}) + " WIB" : "")));
+  d.appendChild(el("b", null, rp(Math.round(k.harga))));
+  if (ubah !== null) {
+    /* angka kurs TURUN = rupiah MENGUAT, jadi warnanya dibalik */
+    const kuat = ubah < 0;
+    d.appendChild(el("span", "nw-ubah " + (ubah === 0 ? "datar" : kuat ? "naik" : "turun"),
+      (ubah > 0 ? "▲ " : ubah < 0 ? "▼ " : "= ") + rp(Math.abs(Math.round(ubah))) + " (" +
+      (ubah > 0 ? "+" : "") + (ubah / k.sebelum * 100).toFixed(2).replace(".", ",") + "%) " +
+      (ubah === 0 ? "tetap" : kuat ? "rupiah menguat" : "rupiah melemah")));
+  }
+  d.title = "Ketuk untuk grafik 30 hari";
+  d.onclick = () => { nwGrafik = !nwGrafik; halNews(); };
+  return d;
+}
+
+function nwGrafikKurs(riw) {
+  const box = el("div", "nw-grafik");
+  if (!riw || riw.length < 2) { box.appendChild(el("div", "bantu", "Riwayat kurs belum tersedia.")); return box; }
+  const v = riw.map(x => x[1]), min = Math.min(...v), max = Math.max(...v), rg = (max - min) || 1;
+  const W = 600, H = 120, P = 6;
+  const x = i => P + i * (W - 2 * P) / (v.length - 1), y = n => H - P - (n - min) / rg * (H - 2 * P);
+  const d = v.map((n, i) => (i ? "L" : "M") + x(i).toFixed(1) + " " + y(n).toFixed(1)).join(" ");
+  box.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">' +
+    '<path d="' + d + '" fill="none" stroke="var(--merek)" stroke-width="2.2" vector-effect="non-scaling-stroke"/></svg>';
+  box.appendChild(el("div", "bantu", "USD/IDR " + tglID(riw[0][0]) + " – " + tglID(riw[riw.length - 1][0]) +
+    " · tertinggi " + rp(Math.round(max)) + " · terendah " + rp(Math.round(min)) +
+    ". Garis naik = rupiah melemah."));
+  return box;
+}
+
+function halNews() {
+  const w = $("#hal-news"); if (!w) return;
+  w.innerHTML = "";
+  const tab = el("div", "sub-tab");
+  [["p", "PASAR"], ["e", "EMITEN"], ["s", "SEMUA"]].forEach(([k, j]) => {
+    const b = el("button", nwTab === k ? "aktif" : null, j);
+    b.onclick = () => { nwTab = k; halNews(); };
+    tab.appendChild(b);
+  });
+  w.appendChild(tab);
+  const p = el("div", "panel");
+  w.appendChild(p);
+  if (!NEWS) {
+    p.appendChild(el("div", "kosong", nwSedang ? "Mengambil berita…" :
+      nwGagal ? "Berita belum bisa diambil (" + nwGagal + "). Periksa internet, atau data/news.json " +
+      "belum dibuat oleh GitHub Actions." : "Mengambil berita…"));
+    if (nwGagal) {
+      const c = el("button", "nw-chip", "↻ Coba lagi");
+      c.onclick = () => { nwGagal = ""; halNews(); };
+      p.appendChild(c);
+    } else if (!nwSedang) muatNews().then(() => { if (!$("#hal-news").hidden) halNews(); });
+    return;
+  }
+  if (Date.now() - nwAmbil > 5 * 60 * 1000) muatNews(true).then(() => { if (!$("#hal-news").hidden) halNews(); });
+
+  /* saringan dasar: tab, rentang hari, emiten */
+  const sekarang = Date.now() / 1000;
+  const hariKe = [];
+  for (let i = 0; i < nwHari; i++) hariKe.push(nwHariIni(sekarang - i * 86400));
+  let L = (NEWS.item || []).filter(x => hariKe.indexOf(nwHariIni(x.w)) >= 0);
+  if (nwTab === "p") L = L.filter(x => (x.k || "").indexOf("p") >= 0);
+  if (nwTab === "e") {
+    L = L.filter(x => x.e && x.e.length);
+    if (nwKode) L = L.filter(x => x.e.indexOf(nwKode) >= 0);
+    else if (nwLingkup === "fav") L = L.filter(x => x.e.some(k => FAVORIT.has(k)));
+  }
+  const nPos = L.filter(x => x.n > 0).length, nNeg = L.filter(x => x.n < 0).length;
+
+  const ring = el("div", "nw-ring");
+  if (NEWS.kurs && NEWS.kurs.harga) ring.appendChild(nwKotakKurs(NEWS.kurs));
+  const kotak = (n, warna, ket) => { const d = el("div"); const b = el("b", warna, String(n));
+    d.appendChild(b); d.appendChild(el("span", null, ket)); return d; };
+  const kapan = nwHari === 1 ? "hari ini" : nwHari + " hari";
+  ring.appendChild(kotak(nPos, "naik", "positif " + kapan));
+  ring.appendChild(kotak(nNeg, "turun", "negatif " + kapan));
+  ring.appendChild(kotak(L.length - nPos - nNeg, null, "netral"));
+  p.appendChild(ring);
+  if (nwGrafik && NEWS.kurs) p.appendChild(nwGrafikKurs(NEWS.kurs.riwayat));
+
+  if (nwTab === "e") {
+    const a = el("div", "nw-alat");
+    const ik = el("input", "cari nw-kode");
+    ik.placeholder = "KODE"; ik.value = nwKode; ik.maxLength = 4;
+    ik.autocapitalize = "characters"; ik.autocomplete = "off"; ik.spellcheck = false;
+    ik.oninput = () => {
+      ik.value = ik.value.replace(/[^a-z]/gi, "").toUpperCase();
+      if (ik.value.length === 4 || ik.value.length === 0) { nwKode = ik.value; halNews();
+        const x = $("#hal-news .nw-kode"); if (x) { x.focus(); x.setSelectionRange(9, 9); } }
+    };
+    a.appendChild(ik);
+    [["fav", "Watchlist saya"], ["semua", "Semua emiten"]].forEach(([k, j]) => {
+      const c = el("button", "nw-chip" + (nwLingkup === k && !nwKode ? " aktif" : ""), j);
+      c.onclick = () => { nwLingkup = k; nwKode = ""; halNews(); };
+      a.appendChild(c);
+    });
+    p.appendChild(a);
+  }
+  const a2 = el("div", "nw-alat");
+  [["semua", "Semua"], ["pos", "Positif"], ["neg", "Negatif"]].forEach(([k, j]) => {
+    const c = el("button", "nw-chip" + (nwSen === k ? " aktif" : ""), j);
+    c.onclick = () => { nwSen = k; halNews(); };
+    a2.appendChild(c);
+  });
+  const sh = el("select", "fa-min");
+  [[1, "Hari ini"], [3, "3 hari"], [7, "7 hari"]].forEach(([v, t]) => {
+    const o = el("option", null, t); o.value = v; if (nwHari === v) o.selected = true; sh.appendChild(o); });
+  sh.onchange = () => { nwHari = +sh.value; halNews(); };
+  a2.appendChild(sh);
+  const segar = el("button", "nw-chip", "↻ Muat ulang");
+  segar.onclick = async () => { segar.textContent = "Memuat…"; await muatNews(true); halNews(); };
+  a2.appendChild(segar);
+  p.appendChild(a2);
+  p.appendChild(el("div", "bantu", "Diperbarui " + (NEWS.dibuat ? nwFmt(NEWS.dibuat,
+    {day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"}) + " WIB" : "–") +
+    " · otomatis tiap 30 menit di jam bursa · sumber: Google Berita (judul + tautan)" +
+    (NEWS.kurs ? " · kurs: " + NEWS.kurs.sumber + ", tertunda" : "")));
+
+  if (nwSen === "pos") L = L.filter(x => x.n > 0);
+  if (nwSen === "neg") L = L.filter(x => x.n < 0);
+  if (!L.length) {
+    p.appendChild(el("div", "kosong", nwTab === "e" && !nwKode && nwLingkup === "fav"
+      ? "Tidak ada berita emiten watchlist Anda di rentang ini. Coba 'Semua emiten' atau 7 hari."
+      : "Tidak ada berita di rentang ini."));
+  }
+  let hariTerakhir = "";
+  L.forEach(x => {
+    const h = nwHariIni(x.w);
+    if (h !== hariTerakhir) {
+      hariTerakhir = h;
+      p.appendChild(el("div", "nw-tgl", nwFmt(x.w, {weekday: "long", day: "numeric", month: "long", year: "numeric"})));
+    }
+    const kelas = x.n > 0 ? "pos" : x.n < 0 ? "neg" : "net";
+    const it = el("div", "nw-item " + kelas);
+    it.appendChild(el("div", "nw-jam", nwFmt(x.w, {hour: "2-digit", minute: "2-digit"})));
+    const isi = el("div", "nw-isi");
+    const aT = el("a", null, x.t); aT.href = x.u; aT.target = "_blank"; aT.rel = "noopener noreferrer";
+    isi.appendChild(aT);
+    const m = el("div", "nw-meta");
+    (x.e || []).slice(0, 6).forEach(k => {
+      const c = el("button", "nw-kd", k);
+      c.title = "Buka Rekomendasi " + k;
+      c.onclick = () => { rek.em = k; subScr = "rekomendasi";
+        document.querySelector('nav button[data-hal="screener"]').click(); halScreener(); };
+      m.appendChild(c);
+    });
+    if (x.s) m.appendChild(el("span", null, x.s));
+    m.appendChild(el("span", "nw-sen " + kelas, kelas === "pos" ? "POSITIF" : kelas === "neg" ? "NEGATIF" : "NETRAL"));
+    isi.appendChild(m);
+    it.appendChild(isi);
+    p.appendChild(it);
+  });
+  p.appendChild(el("div", "bantu",
+    "Ketuk judul untuk membuka berita lengkap di situs aslinya. Kode emiten di berita bisa diketuk " +
+    "untuk membuka Rekomendasi. Positif/negatif ditentukan dari kata kunci di judul (naik, menguat, " +
+    "laba, dividen, buyback… vs turun, melemah, rugi, net sell, suspensi…) — panduan cepat, bukan " +
+    "penilaian pasti. Kurs USD/IDR: angka turun = rupiah menguat. Bukan rekomendasi investasi."));
+}
+
 /* ================= CEK VOLUME > %HARGA =================
    30 emiten dengan perubahan harga terbesar (kiri) dan terkecil (kanan) dalam
    rentang tanggal. %Harga dihitung sama dengan TOT. %HARGA di Rekomendasi:
@@ -4744,9 +4961,10 @@ function halVolume() {
 /* ================= navigasi & tema ================= */
 document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
   document.querySelectorAll("nav button").forEach(x => x.classList.toggle("aktif", x === b));
-  ["watchlist", "screener", "volume", "broker", "cari", "data"].forEach(h =>
+  ["watchlist", "screener", "volume", "broker", "cari", "news", "data"].forEach(h =>
     $("#hal-" + h).hidden = (h !== b.dataset.hal));
   window.scrollTo(0, 0);
+  if (b.dataset.hal === "news") halNews();
 });
 $("#tombolTema").onclick = () => {
   const t = document.documentElement.dataset.tema;
@@ -4774,7 +4992,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-02-3";
+const VERSI_APP = "2026-10-03-1";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
