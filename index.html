@@ -3612,6 +3612,8 @@ let miniBatas = 1e12, miniUrut = "ff50", miniArah = 1, miniCari = "", miniFca = 
 let miniDari = "", miniSampai = "";
 /* %HARGA: rentang, pengingat hari terakhir, saringan nilai, emiten dicari */
 let phDari = "", phSampai = "", phAkhir = "", phMin = 0, phCari = "";
+/* urutan tiap tabel %HARGA: kolom & arah (-1 = tertinggi dulu) */
+const phUrut = {n: {k: "pct", a: -1}, t: {k: "pct", a: 1}, c: {k: "pct", a: -1}};
 const PH_JUMLAH = 30;
 /* Papan Pemantauan Khusus (Full Call Auction) - emiten yang MASIH di papan itu
    (tanggal keluar kosong) menurut berkas IDX Efek_Pada_Papan_Pemantauan_Khusus
@@ -3695,22 +3697,22 @@ function panelPersenHarga(w) {
   if (tgl.indexOf(phSampai) < 0) phSampai = akhir;
   if (phDari > phSampai) { const t = phDari; phDari = phSampai; phSampai = t; }
 
-  const rt = el("div", "rentang ph-atur");
+  /* Dari & Sampai bersusun ke bawah, sama seperti FOREIGN AKUM */
+  const rt = el("div", "alat");
   [["Dari", "d"], ["Sampai", "s"]].forEach(([lab, kunci]) => {
-    const d = el("div");
-    d.appendChild(el("label", "bantu", lab + ":"));
+    const d = el("label", "bantu", lab + ": ");
     d.appendChild(kotakTanggal(kunci === "d" ? phDari : phSampai, tgl, t => {
       if (kunci === "d") phDari = t; else phSampai = t;
       halVolume();
     }));
     rt.appendChild(d);
   });
-  const bT = el("button", null, "Terbaru");
-  bT.onclick = () => { phDari = akhir; phSampai = akhir; halVolume(); };
-  rt.appendChild(bT);
   p.appendChild(rt);
 
   const alat = el("div", "alat ph-alat");
+  const bT = el("button", "kecil", "Terbaru");
+  bT.onclick = () => { phDari = akhir; phSampai = akhir; halVolume(); };
+  alat.appendChild(bT);
   const lMin = el("label", "bantu", "Value min.: ");
   const sMin = el("select", "fa-min");
   [[0, "Semua"], [1e9, "Rp1 M/hari"], [5e9, "Rp5 M/hari"], [1e10, "Rp10 M/hari"], [5e10, "Rp50 M/hari"]]
@@ -3719,7 +3721,7 @@ function panelPersenHarga(w) {
   sMin.onchange = () => { phMin = +sMin.value; halVolume(); };
   lMin.appendChild(sMin); alat.appendChild(lMin);
   const ic = el("input", "cari ph-cari");
-  ic.placeholder = "Cari emiten (kode)…"; ic.value = phCari; ic.maxLength = 4;
+  ic.placeholder = "Cari kode"; ic.value = phCari; ic.maxLength = 4;
   ic.autocapitalize = "characters"; ic.autocomplete = "off"; ic.spellcheck = false;
   alat.appendChild(ic);
   p.appendChild(alat);
@@ -3730,6 +3732,8 @@ function panelPersenHarga(w) {
     .filter(a => !phMin || a.n / nHari >= phMin);
   const naik = semua.slice().sort((a, b) => b.pct - a.pct);
   const turun = semua.slice().sort((a, b) => a.pct - b.pct);
+  naik.forEach((a, i) => { a.rkN = i + 1; });
+  turun.forEach((a, i) => { a.rkT = i + 1; });
   p.appendChild(el("div", "bantu",
     tglID(phDari) + (phDari === phSampai ? "" : " – " + tglID(phSampai)) + " · " +
     nHari + " hari bursa · " + semua.length.toLocaleString("id-ID") + " emiten · " +
@@ -3750,13 +3754,13 @@ function panelPersenHarga(w) {
       v + " tidak ada di rentang ini (tidak bertransaksi" + (phMin ? " atau di bawah Value min." : "") + ")")); return; }
     const rk = naik.indexOf(a) + 1;
     kotakCari.appendChild(phTabel([a], "Hasil cari: " + v + " · peringkat " + rk + " dari " +
-      semua.length + " (urut naik terbesar)", a.pct >= 0 ? "naik" : "turun", rk - 1, true));
+      semua.length + " (urut naik terbesar)", a.pct >= 0 ? "naik" : "turun", "c", true));
   };
   ic.oninput = () => { ic.value = ic.value.replace(/[^a-z]/gi, "").toUpperCase(); phCari = ic.value; tampilCari(); };
 
   const dua = el("div", "ph-dua");
-  dua.appendChild(phTabel(naik.slice(0, PH_JUMLAH), PH_JUMLAH + " %HARGA TERTINGGI", "naik", 0));
-  dua.appendChild(phTabel(turun.slice(0, PH_JUMLAH), PH_JUMLAH + " %HARGA TERENDAH", "turun", 0));
+  dua.appendChild(phTabel(naik.slice(0, PH_JUMLAH), PH_JUMLAH + " %HARGA TERTINGGI", "naik", "n"));
+  dua.appendChild(phTabel(turun.slice(0, PH_JUMLAH), PH_JUMLAH + " %HARGA TERENDAH", "turun", "t"));
   p.appendChild(dua);
   tampilCari();
   p.appendChild(el("div", "bantu",
@@ -3765,23 +3769,48 @@ function panelPersenHarga(w) {
     "Avg = total value ÷ total volume sepanjang rentang. Lot, Value dan Net Foreign " +
     "dijumlah sepanjang rentang; Net Foreign dalam lot (+ = asing net beli). " +
     "Emiten yang tidak bertransaksi sama sekali di rentang ini tidak ikut. " +
+    "Ketuk judul kolom untuk mengurutkan isi tabel itu (ketuk lagi untuk membalik); " +
+    "nomor # tetap peringkat %Harga. " +
     "Ketuk satu baris untuk membuka Rekomendasi emiten itu dengan rentang yang sama."));
   w.appendChild(p);
 }
 
-function phTabel(baris, judul, arahKelas, mulai, tanpaKunci) {
+function phTabel(baris, judul, arahKelas, kunciUrut, tanpaKunci) {
   const bung = el("div", "ph-kol");
   bung.appendChild(el("div", "kf-judul " + arahKelas, judul));
   const bungkus = el("div", tanpaKunci ? "tbl-bungkus" : "tbl-bungkus tbl-kunci");
   const t = el("table");
   const thead = el("thead"), trh = el("tr");
-  ["#", "Emiten", "%Harga", "Avg", "Lot", "Value", "Net Foreign"]
-    .forEach(j => trh.appendChild(el("th", j === "Emiten" || j === "#" ? null : "num", j)));
+  const u = phUrut[kunciUrut];
+  const rkKey = kunciUrut === "t" ? "rkT" : "rkN";
+  const nilai = {rk: x => x[rkKey], em: x => x.em, pct: x => x.pct, avg: x => x.avg,
+                 lot: x => x.v, val: x => x.n, nf: x => x.nf};
+  [["rk", "#"], ["em", "Emiten"], ["pct", "%Harga"], ["avg", "Avg"], ["lot", "Lot"],
+   ["val", "Value"], ["nf", "Net Foreign"]].forEach(([k, j]) => {
+    const th = el("th", k === "em" || k === "rk" ? null : "num",
+      j + (u.k === k ? (u.a < 0 ? " \u25bc" : " \u25b2") : ""));
+    if (!tanpaKunci) {
+      th.style.cursor = "pointer";
+      th.title = "Urutkan menurut " + j;
+      th.onclick = () => {
+        if (u.k === k) u.a = -u.a;
+        else { u.k = k; u.a = (k === "em" || k === "rk") ? 1 : -1; }
+        bung.replaceWith(phTabel(baris, judul, arahKelas, kunciUrut, tanpaKunci));
+      };
+    }
+    trh.appendChild(th);
+  });
   thead.appendChild(trh); t.appendChild(thead);
   const tbody = el("tbody");
-  baris.forEach((x, i) => {
+  const f = nilai[u.k];
+  const urut = tanpaKunci ? baris : baris.slice().sort((a, b) => {
+    const x = f(a), y = f(b);
+    return (typeof x === "string" ? x.localeCompare(y) : x - y) * u.a;
+  });
+  urut.forEach(x => {
     const tr = el("tr", "klik");
     tr.setAttribute("data-em", x.em);
+    if (phCari && phCari === x.em) tr.classList.add("ph-sorot");
     tr.title = "Buka Rekomendasi " + x.em;
     tr.onclick = () => {
       rek.em = x.em; rek.dari = phDari; rek.sampai = phSampai;
@@ -3789,7 +3818,7 @@ function phTabel(baris, judul, arahKelas, mulai, tanpaKunci) {
       document.querySelector('nav button[data-hal="screener"]').click();
       halScreener();
     };
-    tr.appendChild(el("td", "no", String(mulai + i + 1)));
+    tr.appendChild(el("td", "no", String(kunciUrut === "c" ? x.rkN : x[rkKey])));
     const c0 = el("td");
     c0.appendChild(el("span", "kode", x.em));
     c0.appendChild(el("span", "nm", (DATA.nama && DATA.nama[x.em]) || ""));
@@ -4745,7 +4774,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-02-2";
+const VERSI_APP = "2026-10-02-3";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
