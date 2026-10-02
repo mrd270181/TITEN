@@ -357,6 +357,16 @@ td.hv-deret{background:var(--naik-bg)!important}
 svg.fa-pola{display:block}
 .fa-min{width:auto;padding:6px 8px;font-size:13px}
 .bk-broker{margin-bottom:6px;display:flex;align-items:center;gap:12px}
+.ph-dua{display:flex;gap:12px;flex-wrap:wrap;margin-top:8px}
+.ph-kol{flex:1 1 440px;min-width:0}
+.ph-alat{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:8px 0 4px}
+input.ph-cari{width:170px;flex:0 0 auto;text-transform:uppercase}
+.ph-atur>div{flex:1 1 140px}
+.ph-atur>button{flex:0 0 auto;align-self:flex-end;width:auto;padding:6px 14px}
+td .ph-sub{max-width:none;text-align:right}
+tr.ph-sorot td{outline:2px solid var(--merek);outline-offset:-2px}
+.ph-kol td:nth-child(2),.ph-kol th:nth-child(2){text-align:left}
+.ph-kol td.no,.ph-kol th:first-child{text-align:center;color:var(--ink-3);padding:6px 3px;width:26px}
 input.bk-kode{width:86px;flex:0 0 auto;font-size:18px;font-weight:800;letter-spacing:2px;
   text-align:center;text-transform:uppercase}
 .bk-nama{font-size:14px;font-weight:600;color:var(--ink-2)}
@@ -3600,6 +3610,9 @@ const MINI_BATAS = [[0, "Semua"], [100e9, "\u2264 100 M"], [500e9, "\u2264 500 M
 let miniBatas = 1e12, miniUrut = "ff50", miniArah = 1, miniCari = "", miniFca = "semua";
 /* rentang pembanding EMITEN MINI; "" = otomatis (Sampai = hari terakhir, Dari = hari sebelumnya) */
 let miniDari = "", miniSampai = "";
+/* %HARGA: rentang, pengingat hari terakhir, saringan nilai, emiten dicari */
+let phDari = "", phSampai = "", phAkhir = "", phMin = 0, phCari = "";
+const PH_JUMLAH = 30;
 /* Papan Pemantauan Khusus (Full Call Auction) - emiten yang MASIH di papan itu
    (tanggal keluar kosong) menurut berkas IDX Efek_Pada_Papan_Pemantauan_Khusus
    per 28 Sep 2026. k = nomor kriteria, m = tanggal masuk. */
@@ -3645,6 +3658,162 @@ function miniPeta(tglUrut, sampai) {
   }
   return peta;
 }
+/* ================= CEK VOLUME > %HARGA =================
+   30 emiten dengan perubahan harga terbesar (kiri) dan terkecil (kanan) dalam
+   rentang tanggal. %Harga dihitung sama dengan TOT. %HARGA di Rekomendasi:
+   dari penutupan SEBELUM hari pertama rentang ke penutupan hari terakhir,
+   jadi gerakan hari pertama ikut terhitung. Harga sudah disesuaikan split.
+   Avg = nilai transaksi / volume sepanjang rentang (harga rata-rata tertimbang). */
+function hitungPersenHarga(dari, sampai) {
+  const per = {};
+  daftarHari.slice().sort((a, b) => a.tgl < b.tgl ? -1 : 1).forEach(r => {
+    if (!r.tgl || r.tgl < dari || r.tgl > sampai || !r.baris) return;
+    Object.keys(r.baris).forEach(k => {
+      const b = r.baris[k];
+      if (!b) return;
+      const a = per[k] || (per[k] = {em: k, awal: null, c: null, v: 0, n: 0, nf: 0, hari: 0});
+      if (a.awal === null) a.awal = b.p > 0 ? b.p : (b.c > 0 ? b.c : null);
+      if (b.c > 0) a.c = b.c;
+      a.v += b.v || 0; a.n += b.n || 0;
+      a.nf += (b.fb || 0) - (b.fs || 0);
+      if (b.v > 0) a.hari++;
+    });
+  });
+  return Object.keys(per).map(k => per[k]).filter(a => a.v > 0 && a.awal > 0 && a.c > 0)
+    .map(a => Object.assign(a, {pct: (a.c / a.awal - 1) * 100, avg: a.n / a.v}));
+}
+
+function panelPersenHarga(w) {
+  const p = el("div", "panel");
+  p.appendChild(el("h2", null, "%Harga — naik & turun terbesar"));
+  const tgl = [...new Set(daftarHari.map(r => r.tgl))].filter(Boolean).sort();
+  if (!tgl.length) { p.appendChild(el("div", "bantu", "Belum ada data harian.")); w.appendChild(p); return; }
+  const akhir = tgl[tgl.length - 1];
+  /* begitu ada hari bursa baru, rentang melompat ke hari terbaru */
+  if (akhir !== phAkhir) { phAkhir = akhir; phDari = akhir; phSampai = akhir; }
+  if (tgl.indexOf(phDari) < 0) phDari = akhir;
+  if (tgl.indexOf(phSampai) < 0) phSampai = akhir;
+  if (phDari > phSampai) { const t = phDari; phDari = phSampai; phSampai = t; }
+
+  const rt = el("div", "rentang ph-atur");
+  [["Dari", "d"], ["Sampai", "s"]].forEach(([lab, kunci]) => {
+    const d = el("div");
+    d.appendChild(el("label", "bantu", lab + ":"));
+    d.appendChild(kotakTanggal(kunci === "d" ? phDari : phSampai, tgl, t => {
+      if (kunci === "d") phDari = t; else phSampai = t;
+      halVolume();
+    }));
+    rt.appendChild(d);
+  });
+  const bT = el("button", null, "Terbaru");
+  bT.onclick = () => { phDari = akhir; phSampai = akhir; halVolume(); };
+  rt.appendChild(bT);
+  p.appendChild(rt);
+
+  const alat = el("div", "alat ph-alat");
+  const lMin = el("label", "bantu", "Value min.: ");
+  const sMin = el("select", "fa-min");
+  [[0, "Semua"], [1e9, "Rp1 M/hari"], [5e9, "Rp5 M/hari"], [1e10, "Rp10 M/hari"], [5e10, "Rp50 M/hari"]]
+    .forEach(([v, t]) => { const o = el("option", null, t); o.value = v;
+      if (phMin === v) o.selected = true; sMin.appendChild(o); });
+  sMin.onchange = () => { phMin = +sMin.value; halVolume(); };
+  lMin.appendChild(sMin); alat.appendChild(lMin);
+  const ic = el("input", "cari ph-cari");
+  ic.placeholder = "Cari emiten (kode)…"; ic.value = phCari; ic.maxLength = 4;
+  ic.autocapitalize = "characters"; ic.autocomplete = "off"; ic.spellcheck = false;
+  alat.appendChild(ic);
+  p.appendChild(alat);
+
+  const iD = tgl.indexOf(phDari), iS = tgl.indexOf(phSampai);
+  const nHari = iS - iD + 1;
+  const semua = hitungPersenHarga(phDari, phSampai)
+    .filter(a => !phMin || a.n / nHari >= phMin);
+  const naik = semua.slice().sort((a, b) => b.pct - a.pct);
+  const turun = semua.slice().sort((a, b) => a.pct - b.pct);
+  p.appendChild(el("div", "bantu",
+    tglID(phDari) + (phDari === phSampai ? "" : " – " + tglID(phSampai)) + " · " +
+    nHari + " hari bursa · " + semua.length.toLocaleString("id-ID") + " emiten · " +
+    naik.filter(a => a.pct > 0).length + " naik, " + turun.filter(a => a.pct < 0).length + " turun"));
+
+  /* hasil pencarian satu emiten: posisinya di seluruh daftar */
+  const kotakCari = el("div");
+  p.appendChild(kotakCari);
+  const tampilCari = () => {
+    kotakCari.innerHTML = "";
+    const v = phCari;
+    p.querySelectorAll("tr.ph-sorot").forEach(tr => tr.classList.remove("ph-sorot"));
+    if (!v) return;
+    p.querySelectorAll("tr[data-em='" + v + "']").forEach(tr => tr.classList.add("ph-sorot"));
+    if (v.length < 4) return;
+    const a = semua.find(x => x.em === v);
+    if (!a) { kotakCari.appendChild(el("div", "bantu bk-salah",
+      v + " tidak ada di rentang ini (tidak bertransaksi" + (phMin ? " atau di bawah Value min." : "") + ")")); return; }
+    const rk = naik.indexOf(a) + 1;
+    kotakCari.appendChild(phTabel([a], "Hasil cari: " + v + " · peringkat " + rk + " dari " +
+      semua.length + " (urut naik terbesar)", a.pct >= 0 ? "naik" : "turun", rk - 1, true));
+  };
+  ic.oninput = () => { ic.value = ic.value.replace(/[^a-z]/gi, "").toUpperCase(); phCari = ic.value; tampilCari(); };
+
+  const dua = el("div", "ph-dua");
+  dua.appendChild(phTabel(naik.slice(0, PH_JUMLAH), PH_JUMLAH + " %HARGA TERTINGGI", "naik", 0));
+  dua.appendChild(phTabel(turun.slice(0, PH_JUMLAH), PH_JUMLAH + " %HARGA TERENDAH", "turun", 0));
+  p.appendChild(dua);
+  tampilCari();
+  p.appendChild(el("div", "bantu",
+    "%Harga = penutupan hari terakhir rentang dibanding penutupan SEBELUM hari pertama " +
+    "rentang (sama dengan TOT. %HARGA di Rekomendasi), sudah disesuaikan stock split. " +
+    "Avg = total value ÷ total volume sepanjang rentang. Lot, Value dan Net Foreign " +
+    "dijumlah sepanjang rentang; Net Foreign dalam lot (+ = asing net beli). " +
+    "Emiten yang tidak bertransaksi sama sekali di rentang ini tidak ikut. " +
+    "Ketuk satu baris untuk membuka Rekomendasi emiten itu dengan rentang yang sama."));
+  w.appendChild(p);
+}
+
+function phTabel(baris, judul, arahKelas, mulai, tanpaKunci) {
+  const bung = el("div", "ph-kol");
+  bung.appendChild(el("div", "kf-judul " + arahKelas, judul));
+  const bungkus = el("div", tanpaKunci ? "tbl-bungkus" : "tbl-bungkus tbl-kunci");
+  const t = el("table");
+  const thead = el("thead"), trh = el("tr");
+  ["#", "Emiten", "%Harga", "Avg", "Lot", "Value", "Net Foreign"]
+    .forEach(j => trh.appendChild(el("th", j === "Emiten" || j === "#" ? null : "num", j)));
+  thead.appendChild(trh); t.appendChild(thead);
+  const tbody = el("tbody");
+  baris.forEach((x, i) => {
+    const tr = el("tr", "klik");
+    tr.setAttribute("data-em", x.em);
+    tr.title = "Buka Rekomendasi " + x.em;
+    tr.onclick = () => {
+      rek.em = x.em; rek.dari = phDari; rek.sampai = phSampai;
+      subScr = "rekomendasi";
+      document.querySelector('nav button[data-hal="screener"]').click();
+      halScreener();
+    };
+    tr.appendChild(el("td", "no", String(mulai + i + 1)));
+    const c0 = el("td");
+    c0.appendChild(el("span", "kode", x.em));
+    c0.appendChild(el("span", "nm", (DATA.nama && DATA.nama[x.em]) || ""));
+    tr.appendChild(c0);
+    const a = arah(x.pct);
+    const cP = el("td", "num " + a.k, a.t + rekPersen(x.pct, 1));
+    cP.appendChild(el("span", "nm ph-sub", rp(x.awal) + " → " + rp(x.c)));
+    tr.appendChild(cP);
+    tr.appendChild(el("td", "num", rp(Math.round(x.avg))));
+    tr.appendChild(el("td", "num", lotSingkat(Math.round(x.v / LOT))));
+    tr.appendChild(el("td", "num", rpSingkat(x.n)));
+    const nfLot = x.nf / LOT;
+    tr.appendChild(el("td", "num " + arah(nfLot).k, nfLot ? rekLot(nfLot) : "0"));
+    tbody.appendChild(tr);
+  });
+  if (!baris.length) {
+    const tr = el("tr"); const td = el("td", null, "Tidak ada emiten.");
+    td.colSpan = 7; tr.appendChild(td); tbody.appendChild(tr);
+  }
+  t.appendChild(tbody);
+  bungkus.appendChild(t); bung.appendChild(bungkus);
+  return bung;
+}
+
 function panelEmitenMini(w) {
   pakaiFcaGudang();
   const p = el("div", "panel");
@@ -4327,7 +4496,7 @@ function halVolume() {
 
   const tab = el("div", "sub-tab");
   [["volume", "VOLUME"], ["kalfor", "KALENDER FOREIGN"],
-   ["harian", "VOLUME HARIAN"], ["mini", "EMITEN MINI"]].forEach(([k, judul]) => {
+   ["harian", "VOLUME HARIAN"], ["persen", "%HARGA"], ["mini", "EMITEN MINI"]].forEach(([k, judul]) => {
     const b = el("button", subVol === k ? "aktif" : null, judul);
     b.onclick = () => { subVol = k; halVolume(); };
     tab.appendChild(b);
@@ -4335,6 +4504,7 @@ function halVolume() {
   w.appendChild(tab);
   if (subVol === "harian") { panelVolumeHarian(w); return; }
   if (subVol === "mini") { panelEmitenMini(w); return; }
+  if (subVol === "persen") { panelPersenHarga(w); return; }
   if (subVol === "kalfor") { panelKalenderForeign(w); return; }
 
   const urutTgl = urutTglVol();
@@ -4575,7 +4745,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-02-1";
+const VERSI_APP = "2026-10-02-2";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
