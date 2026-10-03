@@ -363,6 +363,10 @@ svg.fa-pola{display:block}
 .nw-ring>div{flex:1 1 110px;background:var(--surface-2);border:1px solid var(--garis);border-radius:9px;padding:8px 10px}
 .nw-ring b{display:block;font-size:18px;line-height:1.2}
 .nw-ring span{font-size:10.5px;color:var(--ink-3)}
+.nw-ring .nw-hitung{cursor:pointer}
+.nw-ring .nw-hitung:hover{border-color:var(--ink-3)}
+.nw-ring .nw-hitung.aktif{border-color:var(--merek);box-shadow:inset 0 0 0 1px var(--merek)}
+.sub-tab.nw-beku{position:sticky;z-index:15;background:var(--surface-0);padding:8px 0;margin:-8px 0 2px}
 .nw-ring .nw-kurs{flex:1.6 1 170px;border-color:var(--merek);cursor:pointer}
 .nw-ring .nw-kurs b{font-size:20px}
 .nw-ring .nw-kurs .nw-ubah{font-size:11px;font-weight:700;display:block}
@@ -3874,7 +3878,10 @@ function nwGrafikKurs(k) {
 function halNews() {
   const w = $("#hal-news"); if (!w) return;
   w.innerHTML = "";
-  const tab = el("div", "sub-tab");
+  const tab = el("div", "sub-tab nw-beku");
+  /* tab PASAR/EMITEN/SEMUA menempel tepat di bawah kepala aplikasi saat digulir */
+  const kepala = document.querySelector("header");
+  tab.style.top = (kepala ? kepala.offsetHeight : 0) + "px";
   [["p", "PASAR"], ["e", "EMITEN"], ["s", "SEMUA"]].forEach(([k, j]) => {
     const b = el("button", nwTab === k ? "aktif" : null, j);
     b.onclick = () => { nwTab = k; halNews(); };
@@ -3911,12 +3918,17 @@ function halNews() {
 
   const ring = el("div", "nw-ring");
   if (NEWS.kurs && NEWS.kurs.harga) ring.appendChild(nwKotakKurs(NEWS.kurs));
-  const kotak = (n, warna, ket) => { const d = el("div"); const b = el("b", warna, String(n));
-    d.appendChild(b); d.appendChild(el("span", null, ket)); return d; };
+  /* kotak jumlah bisa diketuk = saringan sentimen; ketuk lagi untuk kembali ke Semua */
+  const kotak = (n, warna, ket, sen) => { const d = el("div", "nw-hitung" + (nwSen === sen ? " aktif" : ""));
+    const b = el("b", warna, String(n));
+    d.appendChild(b); d.appendChild(el("span", null, ket));
+    d.title = nwSen === sen ? "Tampilkan semua berita" : "Tampilkan hanya berita " + ket.split(" ")[0];
+    d.onclick = () => { nwSen = nwSen === sen ? "semua" : sen; halNews(); };
+    return d; };
   const kapan = nwHari === 1 ? "hari ini" : nwHari + " hari";
-  ring.appendChild(kotak(nPos, "naik", "positif " + kapan));
-  ring.appendChild(kotak(nNeg, "turun", "negatif " + kapan));
-  ring.appendChild(kotak(L.length - nPos - nNeg, null, "netral"));
+  ring.appendChild(kotak(nPos, "naik", "positif " + kapan, "pos"));
+  ring.appendChild(kotak(nNeg, "turun", "negatif " + kapan, "neg"));
+  ring.appendChild(kotak(L.length - nPos - nNeg, null, "netral " + kapan, "net"));
   p.appendChild(ring);
   if (nwGrafik && NEWS.kurs) p.appendChild(nwGrafikKurs(NEWS.kurs));
 
@@ -3939,7 +3951,7 @@ function halNews() {
     p.appendChild(a);
   }
   const a2 = el("div", "nw-alat");
-  [["semua", "Semua"], ["pos", "Positif"], ["neg", "Negatif"]].forEach(([k, j]) => {
+  [["semua", "Semua"], ["pos", "Positif"], ["neg", "Negatif"], ["net", "Netral"]].forEach(([k, j]) => {
     const c = el("button", "nw-chip" + (nwSen === k ? " aktif" : ""), j);
     c.onclick = () => { nwSen = k; halNews(); };
     a2.appendChild(c);
@@ -3960,6 +3972,7 @@ function halNews() {
 
   if (nwSen === "pos") L = L.filter(x => x.n > 0);
   if (nwSen === "neg") L = L.filter(x => x.n < 0);
+  if (nwSen === "net") L = L.filter(x => !x.n);
   if (!L.length) {
     p.appendChild(el("div", "kosong", nwTab === "e" && !nwKode && nwLingkup === "fav"
       ? "Tidak ada berita emiten watchlist Anda di rentang ini. Coba 'Semua emiten' atau 7 hari."
@@ -5114,7 +5127,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-03-4";
+const VERSI_APP = "2026-10-03-5";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
