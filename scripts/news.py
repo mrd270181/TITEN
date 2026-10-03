@@ -30,12 +30,14 @@ Q_PASAR = ['IHSG', '"Bursa Efek Indonesia"', 'saham "net sell" asing', 'saham "n
 POSITIF = ['naik', 'menguat', 'melonjak', 'melesat', 'meroket', 'terbang', 'rebound', 'reli', 'rally',
            'laba', 'untung', 'cuan', 'dividen', 'buyback', 'akuisisi', 'ekspansi', 'rekor', 'tertinggi',
            'positif', 'net buy', 'borong', 'diborong', 'kontrak baru', 'tumbuh', 'optimis', 'hijau',
-           'ara ', 'auto reject atas', 'upgrade', 'surplus', 'lampaui']
+           'ara ', 'auto reject atas', 'upgrade', 'surplus', 'lampaui', 'penguatan', 'lonjakan',
+           'menghijau', 'apresiasi', 'menanjak', 'bangkit', 'pulih']
 NEGATIF = ['turun', 'melemah', 'anjlok', 'ambruk', 'ambles', 'amblas', 'merosot', 'terkoreksi', 'koreksi',
            'rugi', 'merugi', 'gagal bayar', 'pkpu', 'pailit', 'suspensi', 'disuspensi', 'suspend',
            'delisting', 'net sell', 'dilepas', 'lepas', 'negatif', 'tertekan', 'merah', 'longsor',
            'terjun', 'waspada', 'gugatan', 'sanksi', 'arb', 'auto reject bawah', 'downgrade', 'defisit',
-           'terendah', 'jatuh', 'kabur', 'outflow', 'boncos']
+           'terendah', 'jatuh', 'kabur', 'outflow', 'boncos', 'pelemahan', 'penurunan',
+           'memerah', 'depresiasi', 'tumbang', 'rontok', 'ambyar']
 # kode emiten yang juga kata umum - hanya dihitung kalau didahului kata "saham"
 KODE_UMUM = {'DATA', 'BANK', 'GOOD', 'CASH', 'LIFE', 'HOME', 'FOOD', 'GOLD', 'TECH', 'KING',
              'BEST', 'MAIN', 'FAST', 'SAFE', 'TRUE', 'CITY', 'LAND', 'ASIA', 'INDO', 'JAVA', 'BALI',
@@ -124,27 +126,49 @@ def kunci(judul):
     return re.sub(r'[^a-z0-9]', '', judul.lower())[:90]
 
 
+def _yahoo(rentang, interval):
+    d = json.loads(ambil('https://query1.finance.yahoo.com/v8/finance/chart/IDR=X?range=%s&interval=%s'
+                         % (rentang, interval)))
+    r = d['chart']['result'][0]
+    cl = r['indicators']['quote'][0]['close']
+    titik = [[t, round(c, 1)] for t, c in zip(r.get('timestamp') or [], cl) if c]
+    return r['meta'], titik
+
+
 def kurs():
+    """kurs terbaru + seri grafik: 1H (15 menit), 5H (1 jam), harian 1 tahun."""
     try:
-        d = json.loads(ambil('https://query1.finance.yahoo.com/v8/finance/chart/IDR=X?range=1mo&interval=1d'))
-        r = d['chart']['result'][0]
-        meta = r['meta']
-        tgl = [datetime.datetime.utcfromtimestamp(t).strftime('%Y-%m-%d') for t in r['timestamp']]
-        cl = r['indicators']['quote'][0]['close']
-        riw = [[t, round(c, 1)] for t, c in zip(tgl, cl) if c]
+        meta, th = _yahoo('1y', '1d')
+        riw = [[datetime.datetime.utcfromtimestamp(t).strftime('%Y-%m-%d'), c] for t, c in th]
         harga = meta.get('regularMarketPrice') or (riw[-1][1] if riw else None)
+        seri = {}
         sebelum = None
-        if len(riw) >= 2:
-            sebelum = riw[-2][1] if riw[-1][0] == datetime.datetime.utcfromtimestamp(
-                meta.get('regularMarketTime', 0)).strftime('%Y-%m-%d') else riw[-1][1]
-        return {'harga': round(harga, 1), 'sebelum': sebelum, 'waktu': meta.get('regularMarketTime'),
-                'riwayat': riw, 'sumber': 'Yahoo Finance'}
+        try:
+            m1, t1 = _yahoo('1d', '15m')
+            seri['1H'] = t1
+            sebelum = m1.get('chartPreviousClose') or m1.get('previousClose')
+            harga = m1.get('regularMarketPrice') or harga
+            meta = m1
+        except Exception as e:
+            print('  kurs 1 hari gagal:', e)
+        try:
+            _, t5 = _yahoo('5d', '60m')
+            seri['5H'] = t5
+        except Exception as e:
+            print('  kurs 5 hari gagal:', e)
+        if sebelum is None and len(riw) >= 2:
+            hari_ini = datetime.datetime.utcfromtimestamp(meta.get('regularMarketTime', 0)).strftime('%Y-%m-%d')
+            sebelum = riw[-2][1] if riw[-1][0] == hari_ini else riw[-1][1]
+        return {'harga': round(harga, 1), 'sebelum': round(sebelum, 1) if sebelum else None,
+                'waktu': meta.get('regularMarketTime'), 'riwayat': riw, 'seri': seri,
+                'sumber': 'Yahoo Finance'}
     except Exception as e:
         print('  kurs Yahoo gagal:', e)
     try:
         d = json.loads(ambil('https://open.er-api.com/v6/latest/USD'))
         return {'harga': round(d['rates']['IDR'], 1), 'sebelum': None,
-                'waktu': d.get('time_last_update_unix'), 'riwayat': [], 'sumber': 'open.er-api.com'}
+                'waktu': d.get('time_last_update_unix'), 'riwayat': [], 'seri': {},
+                'sumber': 'open.er-api.com'}
     except Exception as e:
         print('  kurs cadangan gagal:', e)
     return None
