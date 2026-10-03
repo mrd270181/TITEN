@@ -376,6 +376,14 @@ svg.fa-pola{display:block}
 .nw-g-rg button{border:1px solid var(--garis);background:var(--surface-1);color:var(--ink-2);border-radius:7px;
   padding:5px 10px;font-weight:700;font-size:11.5px;cursor:pointer;font-family:inherit}
 .nw-g-rg button.aktif{background:var(--merek);color:#fff;border-color:var(--merek)}
+.nw-g-area{position:relative;touch-action:pan-y;cursor:crosshair}
+.nw-g-vl{position:absolute;top:10px;bottom:26px;width:0;border-left:1px dashed var(--ink-2);pointer-events:none}
+.nw-g-dot{position:absolute;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;background:var(--ink);
+  border:2px solid var(--merek);pointer-events:none}
+.nw-g-tip{position:absolute;top:0;background:var(--surface-1);border:1px solid var(--garis);border-radius:8px;
+  padding:6px 9px;font-size:11px;line-height:1.35;pointer-events:none;white-space:nowrap;box-shadow:0 4px 14px rgba(0,0,0,.35);z-index:3}
+.nw-g-tip b{display:block;font-size:15px}.nw-g-tip span{display:block;color:var(--ink-3)}
+.nw-g-tip span.naik{color:var(--naik)} .nw-g-tip span.turun{color:var(--turun)}
 .nw-g-leg{display:flex;gap:14px;font-size:11px;color:var(--ink-3);margin-top:4px;flex-wrap:wrap}
 .nw-g-leg i{display:inline-block;width:18px;border-top:2px solid var(--merek);vertical-align:middle;margin-right:5px}
 .nw-g-leg i.p{border-top:2px dashed var(--ink-3)}
@@ -3757,7 +3765,8 @@ function nwSeriKurs(k, r) {
   if (r === "1H" || r === "5H") {
     const s = seri[r] || [];
     if (s.length < 2) return null;
-    return {titik: s.map(([t, c]) => [r === "1H" ? jam(t) : hr(t) + " " + jam(t), c]),
+    return {titik: s.map(([t, c]) => [r === "1H" ? jam(t) : hr(t) + " " + jam(t), c,
+              nwFmt(t, {weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"}) + " WIB"]),
             pemb: r === "1H" && k.sebelum ? k.sebelum : s[0][1],
             ketPemb: r === "1H" ? "penutupan sebelumnya" : "awal rentang",
             judul: r === "1H" ? "Hari ini · titik tiap 15 menit" : "5 hari · titik tiap 1 jam"};
@@ -3766,7 +3775,8 @@ function nwSeriKurs(k, r) {
   if (riw.length < 2) return null;
   const awal = Math.max(0, riw.length - n);
   const s = riw.slice(awal);
-  return {titik: s.map(([d, c]) => [tglID(d) + (r === "1T" ? " " + d.slice(2, 4) : ""), c]),
+  return {titik: s.map(([d, c]) => [tglID(d) + (r === "1T" ? " " + d.slice(2, 4) : ""), c,
+            new Date(d + "T12:00:00Z").toLocaleDateString("id-ID", {weekday: "short", day: "numeric", month: "short", year: "numeric"}) + " · penutupan"]),
           pemb: awal > 0 ? riw[awal - 1][1] : s[0][1], ketPemb: "awal rentang",
           judul: {"1B": "1 bulan", "3B": "3 bulan", "1T": "1 tahun"}[r] + " · 1 titik per hari"};
 }
@@ -3821,10 +3831,34 @@ function nwGrafikKurs(k) {
   svg.setAttribute("viewBox", "0 0 " + W + " " + H);
   svg.setAttribute("preserveAspectRatio", "none");
   svg.innerHTML = g;
-  box.appendChild(svg);
+  /* kursor: geser mouse / jari di atas grafik untuk melihat angka & jam tiap titik */
+  const area = el("div", "nw-g-area");
+  area.appendChild(svg);
+  const vl = el("div", "nw-g-vl"), dot = el("div", "nw-g-dot"), tip = el("div", "nw-g-tip");
+  [vl, dot, tip].forEach(x => { x.style.display = "none"; area.appendChild(x); });
+  const tunjuk = ev => {
+    const rc = area.getBoundingClientRect();
+    if (!rc.width) return;
+    const px = (ev.clientX - rc.left) / rc.width * W;
+    const i = Math.max(0, Math.min(v.length - 1, Math.round((px - L) / (W - L - R) * (v.length - 1))));
+    const xp = X(i) / W * 100, yp2 = Y(v[i]) / H * 100;
+    vl.style.left = xp + "%"; dot.style.left = xp + "%"; dot.style.top = yp2 + "%";
+    const dP = v[i] - d.pemb, dS = i ? v[i] - v[i - 1] : 0;
+    const tanda = n => (n > 0 ? "▲ " : n < 0 ? "▼ " : "= ") + rp(Math.abs(Math.round(n)));
+    tip.innerHTML = "<b>" + rp(Math.round(v[i])) + "</b><span>" + d.titik[i][2] + "</span>" +
+      "<span class='" + (dP > 0 ? "turun" : dP < 0 ? "naik" : "") + "'>" + tanda(dP) + " (" + (dP > 0 ? "+" : "") +
+      (dP / d.pemb * 100).toFixed(2).replace(".", ",") + "%) vs " + d.ketPemb + "</span>" +
+      (i ? "<span class='" + (dS > 0 ? "turun" : dS < 0 ? "naik" : "") + "'>" + tanda(dS) + " vs titik sebelumnya</span>" : "");
+    tip.style.left = xp + "%";
+    tip.style.transform = "translateX(" + (xp > 70 ? "-100%" : xp < 30 ? "0" : "-50%") + ")";
+    [vl, dot, tip].forEach(x => { x.style.display = ""; });
+  };
+  area.onpointermove = tunjuk; area.onpointerdown = tunjuk;
+  area.onpointerleave = () => [vl, dot, tip].forEach(x => { x.style.display = "none"; });
+  box.appendChild(area);
   const leg = el("div", "nw-g-leg");
   leg.innerHTML = '<span><i></i>kurs</span><span><i class="p"></i>' + d.ketPemb + ' ' + rp(Math.round(d.pemb)) +
-    '</span><span>Garis naik = rupiah melemah · turun = rupiah menguat</span>';
+    '</span><span>Garis naik = rupiah melemah · turun = rupiah menguat · geser kursor/jari di grafik untuk angka & jam</span>';
   box.appendChild(leg);
   const ub = akhir - d.pemb;
   const ket = el("div", "bantu");
@@ -5080,7 +5114,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-03-3";
+const VERSI_APP = "2026-10-03-4";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
