@@ -439,6 +439,23 @@ tr.ph-sorot td{outline:2px solid var(--merek);outline-offset:-2px}
 .ph-ring{margin-top:8px}
 .ph-sub-tab button{font-size:11px;padding:8px 6px}
 .ph-sub-tab button.aktif{background:var(--surface-2);color:var(--merek);border-color:var(--merek)}
+.ud-ring>div{flex:1 1 130px}
+.ud-grp{font-size:11px;font-weight:800;letter-spacing:.6px;color:var(--ink-3,#8f8e86);margin:14px 0 6px;text-transform:uppercase}
+table.ud-tbl{width:100%;border-collapse:collapse}
+table.ud-tbl th,table.ud-tbl td{text-align:left}
+table.ud-tbl td{white-space:normal}
+table.ud-tbl td{padding:8px;border-bottom:1px solid var(--garis);vertical-align:top}
+tr.ud-r{cursor:pointer}
+.ud-nm b,.ud-tg b{display:block;font-size:13px}
+.ud-nm span,.ud-tg span{display:block;font-size:10.5px;color:var(--ink-3,#8f8e86)}
+td.ud-cak{font-size:11.5px;color:var(--ink-2)} td.ud-sb{font-size:11px;color:var(--ink-2)}
+.ud-st{display:inline-block;border-radius:6px;padding:2px 8px;font-size:10.5px;font-weight:800;white-space:nowrap}
+.ud-ok{background:rgba(47,194,74,.14);color:var(--naik)} .ud-lama{background:rgba(224,82,82,.15);color:var(--turun)}
+.ud-cek{background:rgba(217,164,65,.15);color:#d9a441} .ud-mati,.ud-hp{background:rgba(140,140,140,.15);color:var(--ink-2)}
+.ud-jd{display:block;font-size:10px;color:var(--ink-3,#8f8e86);margin-top:3px}
+tr.ud-cara td{font-size:11.5px;color:var(--ink-2);background:var(--surface-2,#262626);line-height:1.5}
+@media(max-width:620px){table.ud-tbl .ud-cak,table.ud-tbl .ud-sb{display:none}
+ table.ud-tbl td{padding:7px 4px} .ud-nm b,.ud-tg b{font-size:12px} .ud-st{font-size:9.5px;padding:2px 5px}}
 .ph-bukti{margin-top:12px;background:var(--surface-2);border:1px solid var(--garis);border-radius:9px;padding:8px 10px}
 .ph-bukti-r{display:flex;gap:8px;align-items:baseline;padding:4px 0;border-bottom:1px solid var(--garis);font-size:12px}
 .ph-bukti-r:last-child{border-bottom:0}
@@ -5406,7 +5423,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-04-5";
+const VERSI_APP = "2026-10-04-6";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -6490,10 +6507,329 @@ async function muatCadangan(file) {
 }
 
 /* ---------- halaman DATA ---------- */
+/* ===== PERBARUI > UPDATE DATA =====
+   Satu halaman berisi tanggal terbaru TIAP data di TITEN, baik dari server
+   (hasil harian.bat) maupun yang diimpor manual di HP. "Data per" = tanggal isi
+   datanya; "diunggah" = Last-Modified berkas di GitHub Pages. */
+let dataSub = "update";
+let udInfo = null, udSedang = false;
+
+function udHariIniWIB() {
+  return new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10);
+}
+/* hari kerja (Sen-Jum) SESUDAH tanggal t sampai KEMARIN; libur bursa tidak dikenal */
+function udHariKerjaLewat(t) {
+  const kini = udHariIniWIB();
+  const d = new Date(t + "T00:00:00Z");
+  let n = 0;
+  d.setUTCDate(d.getUTCDate() + 1);
+  while (d.toISOString().slice(0, 10) < kini) {
+    const w = d.getUTCDay(); if (w > 0 && w < 6) n++;
+    d.setUTCDate(d.getUTCDate() + 1);
+  }
+  return n;
+}
+function udUmurHari(t) {
+  return Math.floor((Date.parse(udHariIniWIB()) - Date.parse(String(t).slice(0, 10))) / 864e5);
+}
+/* akhir bulan ke-k sebelum bulan ini (k=2 -> Oktober jadi 31 Agustus) */
+function udAkhirBulanLalu(k) {
+  const d = new Date(udHariIniWIB() + "T00:00:00Z");
+  d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() - k + 1); d.setUTCDate(0);
+  return d.toISOString().slice(0, 10);
+}
+/* kuartal LK yang semestinya sudah terbit: akhir kuartal yang umurnya >= 61 hari */
+function udKuartalWajib() {
+  const kini = udHariIniWIB(), th = +kini.slice(0, 4);
+  const calon = [];
+  [th - 1, th].forEach(y => ["03-31", "06-30", "09-30", "12-31"].forEach(m => calon.push(y + "-" + m)));
+  return calon.filter(q => udUmurHari(q) >= 61).pop();
+}
+const udTgl = t => t ? tglID(String(t).slice(0, 10)) + " " + String(t).slice(0, 4) : "–";
+const udHari = t => ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"][new Date(t + "T00:00:00Z").getUTCDay()];
+const udJam = ms => ms ? new Date(ms + 7 * 3600e3).toISOString().slice(11, 16).replace(":", ".") : "";
+const udDiunggah = ms => ms ? "diunggah " + udTgl(new Date(ms + 7 * 3600e3).toISOString().slice(0, 10))
+  .replace(/ \d{4}$/, "") + " " + udJam(ms) : "";
+
+async function udLastMod(nama) {
+  try {
+    const r = await fetch(GUDANG + nama, {method: "HEAD", cache: "no-cache"});
+    const h = r.ok && r.headers.get("last-modified");
+    return h ? Date.parse(h) : null;
+  } catch (e) { return null; }
+}
+
+async function udKumpul() {
+  if (udSedang) return;
+  udSedang = true;
+  const info = {waktu: Date.now()};
+  try {
+    const man = manifestGudang || await ambilGudang("manifest.json").catch(() => null);
+    info.man = man;
+    const pre = bulanPRE();
+    info.preNama = pre.length ? "pre-" + pre[pre.length - 1] + ".json" : null;
+    const tugas = [];
+    if (!MILIK) tugas.push(ambilGudang("milik.json").then(x => { MILIK = x; }).catch(() => {}));
+    if (!PROFIL) tugas.push(ambilGudang("profil.json").then(x => { PROFIL = x; }).catch(() => {}));
+    if (info.preNama) tugas.push(ambilGudang(info.preNama).then(x => { info.pre = x; }).catch(() => {}));
+    tugas.push(muatNews(false).catch(() => {}));
+    const lm = {};
+    ["manifest.json", "milik.json", "profil.json", "fca.json", "awal-lk.json", "lk.json", "news.json"]
+      .concat(info.preNama ? [info.preNama] : [])
+      .forEach(n => tugas.push(udLastMod(n).then(v => { lm[n] = v; })));
+    await Promise.all(tugas);
+    info.lm = lm;
+  } catch (e) { info.galat = String(e.message || e); }
+  udInfo = info;
+  udSedang = false;
+  if (dataSub === "update" && !$("#hal-data").hidden) halData();
+}
+
+function udBaris() {
+  const I = udInfo || {}, man = I.man || {}, lm = I.lm || {};
+  const rows = [];
+  const tambah = (grup, o) => { o.grup = grup; rows.push(o); };
+  const CARA_UNGGAH = "Sesudah itu unggah berkas yang bertanda \u201cditulis\u201d + manifest.json ke folder data/ " +
+    "di GitHub, lalu di HP tekan Periksa pembaruan.";
+
+  /* --- harian --- */
+  const tHrg = (man.tanggal_harga || []).slice(-1)[0];
+  const rekHrg = tHrg && daftarHari.find(r => r.tgl === tHrg);
+  const nHrg = rekHrg && rekHrg.baris ? Object.keys(rekHrg.baris).length : null;
+  const lewatH = tHrg ? udHariKerjaLewat(tHrg) : 99;
+  tambah("Harian", {nama: "Harga harian", sub: "Ringkasan Saham IDX", tgl: tHrg,
+    per: tHrg ? udHari(tHrg) + ", " + udTgl(tHrg) : "–", unggah: udDiunggah(lm["manifest.json"]),
+    cakupan: (nHrg ? nf(nHrg) + " emiten" : "") + ((man.tanggal_harga || []).length
+      ? " · sejak " + udTgl(man.tanggal_harga[0]) : ""),
+    sumber: "IDX \u2192 harian.bat", jadwal: "tiap hari bursa",
+    status: lewatH <= 1 ? "ok" : "lama", ket: lewatH > 1 ? "tertinggal " + lewatH + " hari kerja" : "",
+    cara: "Otomatis lewat <b>harian.bat</b> (langkah 2\u20133). Kalau IDX menolak, unduh Ringkasan Saham " +
+      "lewat Chrome dari idx.co.id \u2192 Data Pasar \u2192 Ringkasan Perdagangan \u2192 Ringkasan Saham, simpan ke " +
+      "<b>D:\\TITEN\\masuk</b>, lalu jalankan harian.bat lagi. " + CARA_UNGGAH});
+
+  const tBrk = (man.tanggal_broker || []).slice(-1)[0];
+  const lewatB = tBrk ? udHariKerjaLewat(tBrk) : 99;
+  tambah("Harian", {nama: "Broker summary", sub: "GROSS A1 + B1", tgl: tBrk,
+    per: tBrk ? udHari(tBrk) + ", " + udTgl(tBrk) : "–", unggah: udDiunggah(lm["manifest.json"]),
+    cakupan: kamusGudang && kamusGudang.emiten ? nf(kamusGudang.emiten.length) + " emiten" : "",
+    sumber: "Input manual IPOT", jadwal: "tiap hari bursa",
+    status: lewatB <= 1 ? "ok" : "lama", ket: lewatB > 1 ? "tertinggal " + lewatB + " hari kerja" : "",
+    cara: "Tempel tabel GROSS dari IPOT ke <b>DATA BROKER VERTIKAL GROSS A1/B1.xlsx</b> di folder masuk, " +
+      "lalu jalankan <b>harian.bat</b> (langkah 1). " + CARA_UNGGAH});
+
+  const P = I.pre;
+  const tPre = P && P.tanggal ? P.tanggal.slice(-1)[0] : null;
+  const lewatP = tPre ? udHariKerjaLewat(tPre) : 99;
+  tambah("Harian", {nama: "Kepemilikan \u22655%", sub: "pemegang rekening efek", tgl: tPre,
+    per: tPre ? udHari(tPre) + ", " + udTgl(tPre) : "–", unggah: udDiunggah(lm[I.preNama]),
+    cakupan: P && P.data ? nf(Object.keys(P.data).length) + " emiten" : "",
+    sumber: "IDX/KSEI \u2192 harian.bat", jadwal: "hampir tiap hari bursa",
+    status: lewatP <= 3 ? "ok" : "lama", ket: lewatP > 3 ? "tertinggal " + lewatP + " hari kerja" : "",
+    cara: "Otomatis lewat <b>harian.bat</b> (langkah 4\u20135). Kalau IDX menolak: Chrome \u2192 idx.co.id \u2192 " +
+      "Perusahaan Tercatat \u2192 Data Kepemilikan Saham, unduh berkas <b>lima-persen</b> yang belum ada, " +
+      "simpan ke masuk tanpa ganti nama. " + CARA_UNGGAH});
+
+  const N = NEWS;
+  const tNews = N && N.dibuat ? N.dibuat * 1000 : null;
+  const umurNews = tNews ? (Date.now() - tNews) / 36e5 : 999;
+  tambah("Harian", {nama: "Berita & kurs", sub: "menu NEWS", tgl: tNews,
+    per: tNews ? udTgl(new Date(tNews + 7 * 3600e3).toISOString().slice(0, 10)) + " " + udJam(tNews) : "–",
+    unggah: "otomatis tiap 30 menit",
+    cakupan: N ? nf((N.item || []).length) + " berita" + (N.kurs ? " · USD/IDR" : "") +
+      ((N.pasar || []).length ? " · " + N.pasar.length + " komoditas/indeks" : "") : "",
+    sumber: "Google News, Yahoo (GitHub)", jadwal: "otomatis",
+    status: umurNews <= 24 ? "ok" : "lama", ket: umurNews > 24 ? "lebih dari sehari tidak diperbarui" : "",
+    cara: "Diperbarui sendiri oleh GitHub Actions (TITEN news) tiap 30 menit di jam bursa. Kalau berhenti: " +
+      "buka repo TITEN di GitHub \u2192 tab Actions \u2192 TITEN news \u2192 Run workflow."});
+
+  /* --- bulanan --- */
+  const wajibBulan = udAkhirBulanLalu(2);
+  const M = MILIK;
+  const tM = M && M.tanggal;
+  const nBulanM = M && M.riwayat ? (Array.isArray(M.riwayat) ? M.riwayat.length : Object.keys(M.riwayat).length) : 0;
+  tambah("Bulanan", {nama: "Kepemilikan \u22651%", sub: "pemegang saham", tgl: tM,
+    per: udTgl(tM), unggah: udDiunggah(lm["milik.json"]),
+    cakupan: M && M.data ? nf(Object.keys(M.data).length) + " emiten" : "",
+    sumber: "IDX/KSEI \u2192 harian.bat", jadwal: "bulanan",
+    status: tM ? (tM >= wajibBulan ? "ok" : "lama") : "cek",
+    cara: "Chrome \u2192 idx.co.id \u2192 Perusahaan Tercatat \u2192 Data Kepemilikan Saham, unduh berkas " +
+      "<b>satu-persen</b> terbaru, simpan ke masuk tanpa ganti nama, lalu jalankan <b>harian.bat</b> (langkah 6). " + CARA_UNGGAH});
+
+  const tFF = DATA && DATA.ff_per;
+  tambah("Bulanan", {nama: "Free float", sub: "pengumuman IDX", tgl: tFF,
+    per: tFF ? udTgl(tFF) : "–", unggah: udDiunggah(lm["awal-lk.json"]),
+    cakupan: "", sumber: "IDX \u2192 harian.bat", jadwal: "bulanan",
+    status: tFF ? (tFF >= wajibBulan ? "ok" : "lama") : "cek", ket: tFF ? "" : "periode belum tercatat",
+    cara: "Chrome \u2192 idx.co.id \u2192 Perusahaan Tercatat \u2192 Free Float Perusahaan Tercatat, unduh pengumuman " +
+      "terbaru, simpan ke masuk tanpa ganti nama, lalu jalankan <b>harian.bat</b> (langkah 10). Sebaiknya bersamaan " +
+      "dengan Financial Data and Ratio. " + CARA_UNGGAH});
+
+  const tFD = DATA && DATA.funda_per;
+  tambah("Bulanan", {nama: "Financial Data & Ratio", sub: "PER, PBV, ROE, dst.", tgl: tFD,
+    per: tFD ? udTgl(tFD) : "–", unggah: udDiunggah(lm["awal-lk.json"]),
+    cakupan: "", sumber: "IDX \u2192 harian.bat", jadwal: "bulanan",
+    status: tFD ? (tFD >= wajibBulan ? "ok" : "lama") : "cek",
+    ket: tFD ? "" : "periode belum tercatat \u2014 tercatat sesudah unggahan berikutnya",
+    cara: "Chrome \u2192 idx.co.id \u2192 Data Pasar \u2192 Laporan Statistik \u2192 Digital Statistic \u2192 Monthly \u2192 " +
+      "Financial Data and Ratio, unduh edisi terbaru, simpan ke masuk tanpa ganti nama, lalu jalankan " +
+      "<b>harian.bat</b> (langkah 10). " + CARA_UNGGAH});
+
+  let lkRow = {nama: "Laporan keuangan (LK)", sub: "XBRL per emiten", sumber: "IDX \u2192 unduh_lk + tambah_lk",
+    jadwal: "kuartalan", unggah: udDiunggah(lm["lk.json"]),
+    cara: "Di D:\\TITEN: <b>python sisa_lk.py &lt;tahun&gt; &lt;tw1|tw2|tw3|audit&gt;</b>, lalu " +
+      "<b>python unduh_lk.py --daftar kode.txt &lt;tahun&gt; &lt;periode&gt;</b>, lalu <b>python tambah_lk.py</b> " +
+      "dan <b>harian.bat</b>. Batas lapor IDX: TW1 akhir Apr, TW2 akhir Jul/Agu, TW3 akhir Okt, tahunan akhir Mar. " + CARA_UNGGAH};
+  if (LK && LK.data) {
+    const hit = {};
+    let n = 0;
+    Object.values(LK.data).forEach(v => {
+      if (!v || !v.length) return;
+      n++;
+      const a = v.reduce((m, x) => x.akhir > m ? x.akhir : m, "");
+      hit[a] = (hit[a] || 0) + 1;
+    });
+    const terbaru = Object.keys(hit).sort().pop();
+    const wajib = udKuartalWajib();
+    const nWajib = Object.keys(hit).filter(k => k >= wajib).reduce((s, k) => s + hit[k], 0);
+    Object.assign(lkRow, {tgl: terbaru, per: udTgl(wajib),
+      cakupan: nf(nWajib) + " dari " + nf(n) + " emiten sudah sampai periode ini",
+      status: nWajib >= n * 0.7 ? "ok" : "lama", ket: "periode wajib terbaru: " + udTgl(wajib)});
+  } else {
+    Object.assign(lkRow, {per: "–", cakupan: "", status: "mati", ket: "ketuk untuk menghitung",
+      muatLK: true});
+  }
+  tambah("Bulanan", lkRow);
+
+  const F = fcaGudang;
+  tambah("Bulanan", {nama: "FCA", sub: "Papan Pemantauan Khusus", tgl: F && F.per,
+    per: udTgl(F && F.per), unggah: udDiunggah(lm["fca.json"]),
+    cakupan: F && F.aktif ? nf(Object.keys(F.aktif).length) + " emiten aktif" : "",
+    sumber: "IDX \u2192 harian.bat", jadwal: "bulanan",
+    status: F && F.per ? (udUmurHari(F.per) <= 45 ? "ok" : "lama") : "cek",
+    cara: "Chrome \u2192 idx.co.id \u2192 Perusahaan Tercatat \u2192 Efek Pada Papan Pemantauan Khusus, unduh " +
+      "berkas Excel-nya, simpan ke masuk tanpa ganti nama, lalu jalankan <b>harian.bat</b> (langkah 10). " + CARA_UNGGAH});
+
+  const lmP = lm["profil.json"];
+  const tP = lmP ? new Date(lmP + 7 * 3600e3).toISOString().slice(0, 10) : null;
+  tambah("Bulanan", {nama: "Profil & sektor", sub: "klasifikasi IDX-IC", tgl: tP,
+    per: udTgl(tP), unggah: udDiunggah(lmP),
+    cakupan: PROFIL && PROFIL.data ? nf(Object.keys(PROFIL.data).length) + " emiten" : "",
+    sumber: "IDX \u2192 harian.bat", jadwal: "bulanan",
+    status: tP ? (udUmurHari(tP) <= 45 ? "ok" : "lama") : "cek",
+    cara: "Buka bookmark <b>Profil IDX</b> di Chrome (idx.co.id/primary/ListedCompany/GetCompanyProfiles" +
+      "?start=0&amp;length=1000), Ctrl+S, simpan sebagai <b>D:\\TITEN\\masuk\\profil.json</b>, lalu jalankan " +
+      "<b>harian.bat</b> (langkah 7). " + CARA_UNGGAH});
+
+  /* --- impor manual di HP --- */
+  const manual = [["Kepemilikan \u22651%", daftarMilik], ["Financial Data & Ratio", daftarFunda],
+                  ["Free float", daftarFF], ["Laporan keuangan", daftarLK]];
+  manual.forEach(([nm, d]) => {
+    if (!d || !d.length) return;
+    const t = d.map(x => x.tgl).filter(Boolean).sort().pop();
+    tambah("Impor manual di HP ini", {nama: nm, sub: "diimpor lewat IMPOR MANUAL", tgl: t,
+      per: udTgl(t), unggah: d.length + " berkas", cakupan: "", sumber: "tombol impor di HP",
+      jadwal: "manual", status: "hp",
+      cara: "Data ini hanya ada di HP ini. Hapus lewat tab IMPOR MANUAL kalau sudah tidak dipakai \u2014 " +
+        "data server yang lebih baru tetap didahulukan."});
+  });
+  return rows;
+}
+
+function panelUpdateData(w) {
+  if (!udInfo && !udSedang) udKumpul();
+  const p = el("div", "panel");
+  p.appendChild(el("h2", null, "Update data \u2014 tanggal terbaru tiap data"));
+  if (!udInfo) {
+    p.appendChild(el("div", "kosong", "Membaca tanggal dari server\u2026"));
+    w.appendChild(p);
+    return;
+  }
+  const rows = udBaris();
+  const hit = s => rows.filter(r => r.status === s).length;
+  const rg = el("div", "nw-ring ud-ring");
+  const kotak = (isi, ket, warna) => { const d = el("div"); const b = el("b", null, isi);
+    if (warna) b.style.color = warna; d.appendChild(b); d.appendChild(el("span", null, ket)); rg.appendChild(d); };
+  kotak(String(hit("ok")), "data terbaru", "var(--naik)");
+  kotak(String(hit("cek")), "belum tercatat", "#d9a441");
+  kotak(String(hit("lama")), "perlu diperbarui", "var(--turun)");
+  kotak(udTgl(new Date(udInfo.waktu + 7 * 3600e3).toISOString().slice(0, 10)).replace(/ \d{4}$/, "") +
+    " " + udJam(udInfo.waktu), "diperiksa · versi app " + VERSI_APP);
+  p.appendChild(rg);
+
+  const alat = el("div", "alat");
+  const bP = el("button", "kecil", "Periksa ulang");
+  bP.onclick = async () => { bP.disabled = true; bP.textContent = "Memeriksa\u2026";
+    manifestGudang = null; udInfo = null; await sinkron(true).catch(() => {}); await udKumpul(); };
+  alat.appendChild(bP);
+  alat.appendChild(el("span", "bantu", statusSinkron));
+  p.appendChild(alat);
+
+  const LABEL = {ok: "TERBARU", lama: "PERLU UPDATE", cek: "BELUM TERCATAT", mati: "BELUM DIHITUNG", hp: "DI HP INI"};
+  const bungkus = el("div", "tbl-bungkus");
+  [...new Set(rows.map(r => r.grup))].forEach(g => {
+    bungkus.appendChild(el("div", "ud-grp", g));
+    const t = el("table", "ud-tbl");
+    t.innerHTML = "<thead><tr><th>Data</th><th>Data per</th><th class='ud-cak'>Cakupan</th>" +
+      "<th class='ud-sb'>Sumber</th><th>Status</th></tr></thead>";
+    const tb = el("tbody");
+    rows.filter(r => r.grup === g).forEach(r => {
+      const tr = el("tr", "ud-r");
+      const c1 = el("td", "ud-nm"); c1.appendChild(el("b", null, r.nama)); c1.appendChild(el("span", null, r.sub));
+      const c2 = el("td", "ud-tg"); c2.appendChild(el("b", null, r.per || "–"));
+      if (r.unggah) c2.appendChild(el("span", null, r.unggah));
+      const c3 = el("td", "ud-cak", r.cakupan || "–");
+      const c4 = el("td", "ud-sb", r.sumber);
+      const c5 = el("td");
+      c5.appendChild(el("span", "ud-st ud-" + r.status, LABEL[r.status]));
+      c5.appendChild(el("span", "ud-jd", r.ket || r.jadwal));
+      [c1, c2, c3, c4, c5].forEach(c => tr.appendChild(c));
+      const trC = el("tr", "ud-cara"); trC.hidden = true;
+      const tdC = el("td"); tdC.colSpan = 5; tdC.innerHTML = "<b>Cara memperbarui:</b> " + r.cara;
+      trC.appendChild(tdC);
+      tr.onclick = async () => {
+        if (r.muatLK) { c5.lastChild.textContent = "mengunduh lk.json\u2026"; await muatLK(); halData(); return; }
+        trC.hidden = !trC.hidden;
+      };
+      tb.appendChild(tr); tb.appendChild(trC);
+    });
+    t.appendChild(tb); bungkus.appendChild(t);
+  });
+  p.appendChild(bungkus);
+
+  const ket = el("div", "bantu");
+  ket.innerHTML = "<b>Data per</b> = tanggal isi datanya (bukan tanggal diunggah). <b>Diunggah</b> = kapan berkasnya " +
+    "masuk server GitHub. Ketuk satu baris untuk melihat cara memperbaruinya.<br>" +
+    "<span class='ud-st ud-ok'>TERBARU</span> harian: tidak tertinggal lebih dari 1 hari kerja; bulanan: periode " +
+    "dua bulan terakhir sudah masuk. <span class='ud-st ud-lama'>PERLU UPDATE</span> tertinggal dari itu. " +
+    "<span class='ud-st ud-cek'>BELUM TERCATAT</span> server belum menyimpan periodenya. " +
+    "Hari libur bursa tidak dikenali, jadi sesudah libur panjang data harian bisa tampak tertinggal.";
+  p.appendChild(ket);
+  w.appendChild(p);
+}
+
 function halData() {
   const w = $("#hal-data"); if (!w) return;
   w.innerHTML = "";
+  const st = el("div", "sub-tab");
+  [["update", "UPDATE DATA"], ["impor", "IMPOR MANUAL"], ["cadangan", "CADANGAN"]].forEach(([k, j]) => {
+    const b = el("button", dataSub === k ? "aktif" : null, j);
+    b.onclick = () => { dataSub = k; halData(); };
+    st.appendChild(b);
+  });
+  w.appendChild(st);
+  if (dataSub === "update") { panelUpdateData(w); return; }
+  const isi = el("div");
+  w.appendChild(isi);
+  halDataImpor(isi);
+  /* panel Cadangan dipisah ke tab sendiri */
+  const panel = [...isi.children].filter(x => x.classList.contains("panel"));
+  const cad = panel.find(x => (x.querySelector("h2") || {}).textContent === "Cadangan");
+  if (dataSub === "cadangan") {
+    panel.forEach(x => { if (x !== cad) x.remove(); });
+  } else if (cad) cad.remove();
+}
 
+function halDataImpor(w) {
   const ps = el("div", "panel");
   ps.appendChild(el("h2", null, "Sinkron dari server"));
   const bs = el("div", "bantu");
