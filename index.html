@@ -4264,7 +4264,8 @@ function panelPersenHarga(w, mode) {
   ic.placeholder = "Cari kode"; ic.value = phCari; ic.maxLength = 4;
   ic.autocapitalize = "characters"; ic.autocomplete = "off"; ic.spellcheck = false;
   alat.appendChild(ic);
-  p.appendChild(alat);
+  /* klasifikasi pemilik: anggotanya sedikit, Terbaru/Value min./Cari kode tidak perlu */
+  if (mode !== "pemilik") p.appendChild(alat);
 
   /* pilihan kelompok (sektor / grup pemilik) */
   let anggota = null, infoGrup = null;
@@ -4307,7 +4308,7 @@ function panelPersenHarga(w, mode) {
   const iD = tgl.indexOf(phDari), iS = tgl.indexOf(phSampai);
   const nHari = iS - iD + 1;
   const semua = hitungPersenHarga(phDari, phSampai)
-    .filter(a => !phMin || a.n / nHari >= phMin)
+    .filter(a => mode === "pemilik" || !phMin || a.n / nHari >= phMin)
     .filter(a => !anggota || anggota.has(a.em));
   const naik = semua.slice().sort((a, b) => b.pct - a.pct);
   const turun = semua.slice().sort((a, b) => a.pct - b.pct);
@@ -4323,7 +4324,7 @@ function panelPersenHarga(w, mode) {
   p.appendChild(kotakCari);
   const tampilCari = () => {
     kotakCari.innerHTML = "";
-    const v = phCari;
+    const v = mode === "pemilik" ? "" : phCari;
     p.querySelectorAll("tr.ph-sorot").forEach(tr => tr.classList.remove("ph-sorot"));
     if (!v) return;
     p.querySelectorAll("tr[data-em='" + v + "']").forEach(tr => tr.classList.add("ph-sorot"));
@@ -5403,7 +5404,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-04-2";
+const VERSI_APP = "2026-10-04-3";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
