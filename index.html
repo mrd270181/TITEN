@@ -444,6 +444,7 @@ tr.ph-sorot td{outline:2px solid var(--merek);outline-offset:-2px}
 .ph-bukti-r:last-child{border-bottom:0}
 .ph-bukti-r .kode{min-width:46px}
 .ph-bukti-t{flex:1;color:var(--ink-2);font-size:11.5px}
+.ph-anak{color:#d9a441;font-weight:700;font-size:13px;margin-left:6px;white-space:nowrap}
 .ph-tag{font-size:10px;font-weight:700;color:#d9a441;border:1px solid #d9a441;border-radius:5px;padding:0 5px}
 .ph-kol td:nth-child(2),.ph-kol th:nth-child(2){text-align:left}
 .ph-kol td.no,.ph-kol th:first-child{text-align:center;color:var(--ink-3);padding:6px 3px;width:26px}
@@ -4378,11 +4379,12 @@ function panelPersenHarga(w, mode) {
       (infoGrup[a].bukti.reduce((s, x) => s + x[1], 0))).forEach(k => {
       const r = el("div", "ph-bukti-r");
       r.appendChild(el("b", "kode", k));
-      r.appendChild(el("span", "ph-bukti-t", infoGrup[k].manual
+      const tk = el("span", "ph-bukti-t", infoGrup[k].manual
         ? "ditambah manual — pemegangnya tidak tercatat atas nama grup di data ≥1%"
-        : infoGrup[k].bukti.map(x => x[0] + " " + String(x[1]).replace(".", ",") + "%").join(" · ")));
+        : infoGrup[k].bukti.map(x => x[0] + " " + String(x[1]).replace(".", ",") + "%").join(" · "));
+      if (infoGrup[k].anak) tk.appendChild(el("span", "ph-anak", "(anak usaha)"));
+      r.appendChild(tk);
       if (infoGrup[k].manual) r.appendChild(el("span", "ph-tag", "manual"));
-      if (infoGrup[k].anak) r.appendChild(el("span", "ph-tag", "anak usaha"));
       bk.appendChild(r);
     });
     p.appendChild(bk);
@@ -5404,7 +5406,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-04-3";
+const VERSI_APP = "2026-10-04-4";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
