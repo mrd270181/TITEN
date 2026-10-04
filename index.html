@@ -436,6 +436,15 @@ input.ph-cari{width:170px;flex:0 0 auto;text-transform:uppercase}
 .ph-atur>button{flex:0 0 auto;align-self:flex-end;width:auto;padding:6px 14px}
 td .ph-sub{max-width:none;text-align:right}
 tr.ph-sorot td{outline:2px solid var(--merek);outline-offset:-2px}
+.ph-ring{margin-top:8px}
+.ph-sub-tab button{font-size:11px;padding:8px 6px}
+.ph-sub-tab button.aktif{background:var(--surface-2);color:var(--merek);border-color:var(--merek)}
+.ph-bukti{margin-top:12px;background:var(--surface-2);border:1px solid var(--garis);border-radius:9px;padding:8px 10px}
+.ph-bukti-r{display:flex;gap:8px;align-items:baseline;padding:4px 0;border-bottom:1px solid var(--garis);font-size:12px}
+.ph-bukti-r:last-child{border-bottom:0}
+.ph-bukti-r .kode{min-width:46px}
+.ph-bukti-t{flex:1;color:var(--ink-2);font-size:11.5px}
+.ph-tag{font-size:10px;font-weight:700;color:#d9a441;border:1px solid #d9a441;border-radius:5px;padding:0 5px}
 .ph-kol td:nth-child(2),.ph-kol th:nth-child(2){text-align:left}
 .ph-kol td.no,.ph-kol th:first-child{text-align:center;color:var(--ink-3);padding:6px 3px;width:26px}
 input.bk-kode{width:86px;flex:0 0 auto;font-size:18px;font-weight:800;letter-spacing:2px;
@@ -4128,9 +4137,77 @@ function hitungPersenHarga(dari, sampai) {
     .map(a => Object.assign(a, {pct: (a.c / a.awal - 1) * 100, avg: a.n / a.v}));
 }
 
-function panelPersenHarga(w) {
+/* ---------- KLASIFIKASI SEKTOR & PEMILIK ----------
+   Sektor: IDX-IC dari profil.json (sektor > subsektor > industri).
+   Pemilik: SEMI-OTOMATIS. Anggota grup = emiten yang punya pemegang saham >=1%
+   (milik.json) yang namanya cocok dengan pola grup, DITAMBAH daftar manual
+   (kepemilikan lewat jalur lain / di bawah 1%) DIKURANGI daftar buang.
+   Pola sengaja memakai nama perusahaan induk / nama lengkap, bukan marga
+   saja: "Salim" atau "Widjaja" polos menangkap banyak orang yang tidak terkait. */
+const GRUP_PEMILIK = [
+  {n: "Bakrie", p: /bakrie|long haul|bumi resources tbk/i, tambah: ["BUMI", "BRMS", "DEWA", "ELTY"], buang: []},
+  {n: "Prajogo Pangestu (Barito)", p: /prajogo|barito pacific|barito mas|green era energy/i, tambah: [], buang: []},
+  {n: "Salim", p: /anthoni salim|salim ivomas|salim chemicals|indofood sukses|cab holding|first pacific/i, tambah: [], buang: []},
+  {n: "Sinar Mas (Widjaja)", p: /sinar ?mas|purinusa|golden agri|franky oesman widjaja|muktar widjaja|indra widjaja|eka tjipta/i, tambah: [], buang: []},
+  {n: "Djarum (Hartono)", p: /dwimuria|budi hartono|bambang hartono|djarum/i, tambah: [], buang: []},
+  {n: "Astra (Jardine)", p: /astra international|jardine/i, tambah: [], buang: []},
+  {n: "Adaro (Garibaldi Thohir)", p: /adaro strategic|garibaldi thohir|alamtri resources|adaro energy/i, tambah: [], buang: []},
+  {n: "Saratoga (Edwin Soeryadjaya)", p: /saratoga investama|edwin soeryadjaya/i, tambah: [], buang: []},
+  {n: "MNC (Hary Tanoesoedibjo)", p: /\bmnc\b|media nusantara citra|global mediacom|tanoesoedibjo/i, tambah: [], buang: []},
+  {n: "Emtek (Sariaatmadja)", p: /elang mahkota|sariaatmadja/i, tambah: [], buang: []},
+  {n: "CT Corp (Chairul Tanjung)", p: /ct corpora|trans corpora|chairul tanjung|mega corpora/i, tambah: [], buang: []},
+  {n: "Lippo (Riady)", p: /\blippo\b|riady/i, tambah: [], buang: []},
+  {n: "Agung Sedayu (Aguan)", p: /agung sedayu|sugianto kusuma|multi artha pratama/i, tambah: [], buang: []},
+  {n: "Triputra (TP Rachmat)", p: /triputra|permadi rachmat/i, tambah: [], buang: []},
+  {n: "Low Tuck Kwong", p: /low tuck kwong/i, tambah: [], buang: []},
+  {n: "Happy Hapsoro", p: /hapsoro/i, tambah: [], buang: []},
+  {n: "Indika", p: /indika inti|indika energy/i, tambah: [], buang: []},
+  {n: "Kalla", p: /\bkalla\b/i, tambah: [], buang: []},
+  {n: "BUMN / Danantara", p: /perusahaan perseroan \(perser|danantara|negara republik indonesia/i, tambah: [], buang: []},
+  {n: "Sitaan Kejaksaan Agung", p: /jaksa agung/i, tambah: [], buang: []},
+];
+let klSektor = "Energi", klSub = "", klGrup = "Bakrie", klSedang = false;
+let phMode = "";   /* sub-menu di dalam %HARGA: "" = 30 naik & turun, "sektor", "pemilik" */
+
+async function muatKlas() {
+  if (klSedang || (PROFIL && MILIK)) return;
+  klSedang = true;
+  try { if (!MILIK) { const r = await fetch(GUDANG + "milik.json", {cache: "no-cache"}); if (r.ok) MILIK = await r.json(); } } catch (e) {}
+  try { if (!PROFIL) { const r = await fetch(GUDANG + "profil.json", {cache: "no-cache"}); if (r.ok) PROFIL = await r.json(); } } catch (e) {}
+  klSedang = false;
+}
+
+/* anggota satu grup pemilik: {kode: {bukti: [[nama, %]], manual: bool}} */
+function anggotaGrup(g) {
+  const hasil = {};
+  const data = (MILIK && MILIK.data) || {};
+  Object.keys(data).forEach(k => {
+    const b = data[k].filter(r => g.p.test(r[0])).map(r => [r[0], r[4]]);
+    if (b.length) hasil[k] = {bukti: b, manual: false};
+  });
+  g.tambah.forEach(k => { if (!hasil[k]) hasil[k] = {bukti: [], manual: true}; });
+  g.buang.forEach(k => { delete hasil[k]; });
+  return hasil;
+}
+
+function panelPersenHarga(w, mode) {
+  /* sub-menu di dalam %HARGA */
+  const st = el("div", "sub-tab ph-sub-tab");
+  [["", "30 %HARGA NAIK & TURUN"], ["sektor", "KLASIFIKASI SEKTOR"], ["pemilik", "KLASIFIKASI PEMILIK"]].forEach(([k, j]) => {
+    const b = el("button", (mode || "") === k ? "aktif" : null, j);
+    b.onclick = () => { phMode = k; halVolume(); };
+    st.appendChild(b);
+  });
+  w.appendChild(st);
   const p = el("div", "panel");
-  p.appendChild(el("h2", null, "%Harga — naik & turun terbesar"));
+  p.appendChild(el("h2", null, mode === "sektor" ? "Klasifikasi sektor — %harga per sektor"
+    : mode === "pemilik" ? "Klasifikasi pemilik — %harga per grup" : "%Harga — naik & turun terbesar"));
+  if (mode && (!PROFIL || !MILIK)) {
+    p.appendChild(el("div", "kosong", "Mengambil data sektor & kepemilikan…"));
+    w.appendChild(p);
+    muatKlas().then(() => { if (subVol === "persen" && phMode === mode) halVolume(); });
+    return;
+  }
   const tgl = [...new Set(daftarHari.map(r => r.tgl))].filter(Boolean).sort();
   if (!tgl.length) { p.appendChild(el("div", "bantu", "Belum ada data harian.")); w.appendChild(p); return; }
   const akhir = tgl[tgl.length - 1];
@@ -4169,10 +4246,49 @@ function panelPersenHarga(w) {
   alat.appendChild(ic);
   p.appendChild(alat);
 
+  /* pilihan kelompok (sektor / grup pemilik) */
+  let anggota = null, infoGrup = null;
+  if (mode === "sektor") {
+    const prof = (PROFIL && PROFIL.data) || {};
+    const sektorList = [...new Set(Object.values(prof).map(x => x.sektor).filter(Boolean))].sort();
+    if (sektorList.indexOf(klSektor) < 0) klSektor = sektorList[0] || "";
+    const subList = [...new Set(Object.values(prof).filter(x => x.sektor === klSektor).map(x => x.subsektor).filter(Boolean))].sort();
+    if (klSub && subList.indexOf(klSub) < 0) klSub = "";
+    const ak = el("div", "alat ph-alat");
+    const l1 = el("label", "bantu", "Sektor: "), s1 = el("select", "fa-min");
+    sektorList.forEach(x => { const o = el("option", null, x + " (" +
+      Object.values(prof).filter(v => v.sektor === x).length + ")"); o.value = x;
+      if (x === klSektor) o.selected = true; s1.appendChild(o); });
+    s1.onchange = () => { klSektor = s1.value; klSub = ""; halVolume(); };
+    l1.appendChild(s1); ak.appendChild(l1);
+    const l2 = el("label", "bantu", "Subsektor: "), s2 = el("select", "fa-min");
+    [["", "Semua subsektor"]].concat(subList.map(x => [x, x + " (" +
+      Object.values(prof).filter(v => v.sektor === klSektor && v.subsektor === x).length + ")"])).forEach(([v, t]) => {
+      const o = el("option", null, t); o.value = v; if (v === klSub) o.selected = true; s2.appendChild(o); });
+    s2.onchange = () => { klSub = s2.value; halVolume(); };
+    l2.appendChild(s2); ak.appendChild(l2);
+    p.appendChild(ak);
+    anggota = new Set(Object.keys(prof).filter(k => prof[k].sektor === klSektor && (!klSub || prof[k].subsektor === klSub)));
+  }
+  if (mode === "pemilik") {
+    const g = GRUP_PEMILIK.find(x => x.n === klGrup) || GRUP_PEMILIK[0];
+    klGrup = g.n;
+    const ak = el("div", "alat ph-alat");
+    const l1 = el("label", "bantu", "Grup pemilik: "), s1 = el("select", "fa-min");
+    GRUP_PEMILIK.forEach(x => { const o = el("option", null, x.n + " (" + Object.keys(anggotaGrup(x)).length + ")");
+      o.value = x.n; if (x.n === klGrup) o.selected = true; s1.appendChild(o); });
+    s1.onchange = () => { klGrup = s1.value; halVolume(); };
+    l1.appendChild(s1); ak.appendChild(l1);
+    p.appendChild(ak);
+    infoGrup = anggotaGrup(g);
+    anggota = new Set(Object.keys(infoGrup));
+  }
+
   const iD = tgl.indexOf(phDari), iS = tgl.indexOf(phSampai);
   const nHari = iS - iD + 1;
   const semua = hitungPersenHarga(phDari, phSampai)
-    .filter(a => !phMin || a.n / nHari >= phMin);
+    .filter(a => !phMin || a.n / nHari >= phMin)
+    .filter(a => !anggota || anggota.has(a.em));
   const naik = semua.slice().sort((a, b) => b.pct - a.pct);
   const turun = semua.slice().sort((a, b) => a.pct - b.pct);
   naik.forEach((a, i) => { a.rkN = i + 1; });
@@ -4201,10 +4317,54 @@ function panelPersenHarga(w) {
   };
   ic.oninput = () => { ic.value = ic.value.replace(/[^a-z]/gi, "").toUpperCase(); phCari = ic.value; tampilCari(); };
 
-  const dua = el("div", "ph-dua");
-  dua.appendChild(phTabel(naik.slice(0, PH_JUMLAH), PH_JUMLAH + " %HARGA TERTINGGI", "naik", "n"));
-  dua.appendChild(phTabel(turun.slice(0, PH_JUMLAH), PH_JUMLAH + " %HARGA TERENDAH", "turun", "t"));
-  p.appendChild(dua);
+  if (anggota) {
+    /* ringkasan kelompok */
+    const rata = semua.length ? semua.reduce((a, x) => a + x.pct, 0) / semua.length : null;
+    const tv = semua.reduce((a, x) => a + x.n, 0), tnf = semua.reduce((a, x) => a + x.nf, 0) / LOT;
+    const rg = el("div", "nw-ring ph-ring");
+    const kotak = (isi, ket, kelas) => { const d = el("div"); d.appendChild(el("b", kelas, isi));
+      d.appendChild(el("span", null, ket)); rg.appendChild(d); };
+    /* median dipakai sebagai angka utama: satu-dua saham yang melonjak ratusan
+       persen bisa membuat rata-rata positif padahal kebanyakan turun */
+    const urutP = semua.map(x => x.pct).sort((a, b) => a - b);
+    const med = urutP.length ? (urutP.length % 2 ? urutP[(urutP.length - 1) / 2]
+      : (urutP[urutP.length / 2 - 1] + urutP[urutP.length / 2]) / 2) : null;
+    kotak(med === null ? "–" : rekPersen(med, 2), "median %harga · rata-rata " + (rata === null ? "–" : rekPersen(rata, 2)),
+      med === null ? null : arah(med).k);
+    kotak(naik.filter(a => a.pct > 0).length + " / " + turun.filter(a => a.pct < 0).length, "naik / turun");
+    kotak(rpSingkat(tv), "total value");
+    kotak(tnf ? rekLot(tnf) : "0", "net foreign (lot)", arah(tnf).k);
+    kotak(String(anggota.size), "anggota" + (semua.length < anggota.size ? " · " + semua.length + " bertransaksi" : ""));
+    p.appendChild(rg);
+  }
+  if (anggota && semua.length <= PH_JUMLAH) {
+    /* kelompok kecil: cukup satu tabel berisi semua anggota */
+    const satu = el("div", "ph-dua");
+    satu.appendChild(phTabel(naik, "SEMUA ANGGOTA · urut %harga", "naik", "n"));
+    p.appendChild(satu);
+  } else {
+    const dua = el("div", "ph-dua");
+    dua.appendChild(phTabel(naik.slice(0, PH_JUMLAH), PH_JUMLAH + " %HARGA TERTINGGI", "naik", "n"));
+    dua.appendChild(phTabel(turun.slice(0, PH_JUMLAH), PH_JUMLAH + " %HARGA TERENDAH", "turun", "t"));
+    p.appendChild(dua);
+  }
+  if (infoGrup) {
+    /* bukti keanggotaan: siapa pemegang sahamnya */
+    const bk = el("div", "ph-bukti");
+    bk.appendChild(el("div", "kf-judul", "DASAR KEANGGOTAAN (data pemegang saham ≥1% per " +
+      (MILIK.tanggal ? tglID(MILIK.tanggal) + " " + MILIK.tanggal.slice(0, 4) : "-") + ")"));
+    Object.keys(infoGrup).sort((a, b) => (infoGrup[b].bukti.reduce((s, x) => s + x[1], 0)) -
+      (infoGrup[a].bukti.reduce((s, x) => s + x[1], 0))).forEach(k => {
+      const r = el("div", "ph-bukti-r");
+      r.appendChild(el("b", "kode", k));
+      r.appendChild(el("span", "ph-bukti-t", infoGrup[k].manual
+        ? "ditambah manual — pemegangnya tidak tercatat atas nama grup di data ≥1%"
+        : infoGrup[k].bukti.map(x => x[0] + " " + String(x[1]).replace(".", ",") + "%").join(" · ")));
+      if (infoGrup[k].manual) r.appendChild(el("span", "ph-tag", "manual"));
+      bk.appendChild(r);
+    });
+    p.appendChild(bk);
+  }
   tampilCari();
   p.appendChild(el("div", "bantu",
     "%Harga = penutupan hari terakhir rentang dibanding penutupan SEBELUM hari pertama " +
@@ -4214,7 +4374,11 @@ function panelPersenHarga(w) {
     "Emiten yang tidak bertransaksi sama sekali di rentang ini tidak ikut. " +
     "Ketuk judul kolom untuk mengurutkan isi tabel itu (ketuk lagi untuk membalik); " +
     "nomor # tetap peringkat %Harga. " +
-    "Ketuk satu baris untuk membuka Rekomendasi emiten itu dengan rentang yang sama."));
+    "Ketuk satu baris untuk membuka Rekomendasi emiten itu dengan rentang yang sama." +
+    (mode === "sektor" ? " Sektor & subsektor = klasifikasi resmi IDX-IC dari profil emiten IDX." : "") +
+    (mode === "pemilik" ? " Grup pemilik SEMI-OTOMATIS: anggota dicari dari nama pemegang saham ≥1% " +
+      "(nama perusahaan induk / pemilik), ditambah daftar manual. Kepemilikan lewat perusahaan lain atau di " +
+      "bawah 1% bisa terlewat — kabari kalau ada yang perlu ditambah atau dibuang." : "")));
   w.appendChild(p);
 }
 
@@ -4976,7 +5140,7 @@ function halVolume() {
   w.appendChild(tab);
   if (subVol === "harian") { panelVolumeHarian(w); return; }
   if (subVol === "mini") { panelEmitenMini(w); return; }
-  if (subVol === "persen") { panelPersenHarga(w); return; }
+  if (subVol === "persen") { panelPersenHarga(w, phMode); return; }
   if (subVol === "kalfor") { panelKalenderForeign(w); return; }
 
   const urutTgl = urutTglVol();
@@ -5218,7 +5382,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-03-6";
+const VERSI_APP = "2026-10-04-1";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
