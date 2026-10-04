@@ -4163,8 +4163,8 @@ function hitungPersenHarga(dari, sampai) {
    Pola sengaja memakai nama perusahaan induk / nama lengkap, bukan marga
    saja: "Salim" atau "Widjaja" polos menangkap banyak orang yang tidak terkait. */
 const GRUP_PEMILIK = [
-  {n: "Bakrie", p: /bakrie|long haul|bumi resources tbk/i, tambah: ["BUMI", "BRMS", "DEWA", "ELTY"], buang: []},
-  {n: "Prajogo Pangestu (Barito)", p: /prajogo|barito pacific|barito mas|green era energy|kreasi jasa persada/i, tambah: [], buang: []},
+  {n: "Bakrie", p: /bakrie|long haul|bumi resources tbk/i, pa: /surya global nusantara/i, paKet: "milik Bakrieland/ELTY", tambah: ["BUMI", "BRMS", "DEWA", "ELTY"], buang: []},
+  {n: "Prajogo Pangestu (Barito)", p: /prajogo|barito pacific|barito mas|green era energy/i, pa: /kreasi jasa persada/i, paKet: "milik Petrindo/CUAN", tambah: [], buang: []},
   {n: "Salim", p: /anthoni salim|salim ivomas|salim chemicals|indofood sukses|cab holding|first pacific/i, tambah: [], buang: []},
   {n: "Sinar Mas (Widjaja)", p: /sinar ?mas|purinusa|golden agri|franky oesman widjaja|muktar widjaja|indra widjaja|eka tjipta/i, tambah: [], buang: []},
   {n: "Djarum (Hartono)", p: /dwimuria|budi hartono|bambang hartono|djarum/i, tambah: [], buang: []},
@@ -4209,7 +4209,11 @@ function anggotaGrup(g) {
   const prof = (PROFIL && PROFIL.data) || {};
   Object.keys(data).forEach(k => {
     const b = data[k].filter(r => g.p.test(r[0])).map(r => [r[0], r[4]]);
-    if (b.length) hasil[k] = {bukti: b, manual: false};
+    if (b.length) { hasil[k] = {bukti: b, manual: false}; return; }
+    /* pola afiliasi: perusahaan milik grup yang namanya tidak memuat nama grup */
+    const ba = g.pa ? data[k].filter(r => g.pa.test(r[0]))
+      .map(r => [r[0] + (g.paKet ? " (" + g.paKet + ")" : ""), r[4]]) : [];
+    if (ba.length) hasil[k] = {bukti: ba, manual: false, anak: true};
   });
   g.tambah.forEach(k => { if (!hasil[k]) hasil[k] = {bukti: [], manual: true}; });
   g.buang.forEach(k => { delete hasil[k]; });
@@ -5175,7 +5179,7 @@ function halVolume() {
   [["volume", "VOLUME"], ["kalfor", "KALENDER FOREIGN"],
    ["harian", "VOLUME HARIAN"], ["persen", "%HARGA"], ["mini", "EMITEN MINI"]].forEach(([k, judul]) => {
     const b = el("button", subVol === k ? "aktif" : null, judul);
-    b.onclick = () => { subVol = k; halVolume(); };
+    b.onclick = () => { if (k === "persen" && subVol !== "persen") phAkhir = ""; subVol = k; halVolume(); };
     tab.appendChild(b);
   });
   w.appendChild(tab);
@@ -5423,7 +5427,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-04-6";
+const VERSI_APP = "2026-10-04-8";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -11702,7 +11706,11 @@ async function sinkron(diam) {
       .filter(t => bolehBrk.has(bulanDari(t)) &&
                    (!adaBrk.has(t) || tglNett.has(t) ||
                     blnBrkBeda.has(bulanDari(t)))).map(bulanDari))];
-    const adaHrg = new Set(daftarHari.map(r => r.tgl).concat(ASLI.tglVol || []));
+    /* HANYA tanggal yang benar-benar ada di daftarHari. Dulu tanggal titik awal
+       (awal-lk.json, ASLI.tglVol) ikut dihitung "ada" - begitu awal-lk.json
+       dibuat ulang dengan 20 hari terbaru, tanggal-tanggal itu tidak pernah
+       diunduh dan %HARGA / kalender di HP berhenti di tanggal lama (22 Sep). */
+    const adaHrg = new Set(daftarHari.map(r => r.tgl));
     /* Data harian yang tersimpan sebelum grafik candle ada tidak menyimpan
        harga pembukaan. Bulan-bulan itu diunduh ulang sekali supaya candle
        bisa digambar; sesudah tersimpan lengkap, tidak diulang lagi. */
