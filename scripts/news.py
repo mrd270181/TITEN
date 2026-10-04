@@ -24,7 +24,25 @@ UA = 'Mozilla/5.0 (compatible; TITEN-news/1.0)'
 # kata kunci pencarian sentimen PASAR (Google Berita, 2 hari terakhir)
 Q_PASAR = ['IHSG', '"Bursa Efek Indonesia"', 'saham "net sell" asing', 'saham "net buy" asing',
            'rupiah dolar hari ini', '"BI Rate"', '"The Fed" suku bunga', 'MSCI Indonesia saham',
-           'IHSG sesi', 'pasar saham Indonesia hari ini']
+           'IHSG sesi', 'pasar saham Indonesia hari ini',
+           # komoditas yang tidak punya harga harian gratis -> dipantau lewat berita
+           'harga batu bara', 'HBA batu bara', 'harga nikel', 'harga timah', 'harga CPO sawit',
+           'harga minyak dunia', 'harga emas dunia']
+
+# komoditas & pasar global dari Yahoo Finance: (simbol, nama, satuan, kelompok)
+PASAR_GLOBAL = [
+    ('BZ=F', 'Brent', 'USD/barel', 'Minyak & gas'),
+    ('CL=F', 'WTI', 'USD/barel', 'Minyak & gas'),
+    ('NG=F', 'Gas alam', 'USD/MMBtu', 'Minyak & gas'),
+    ('GC=F', 'Emas', 'USD/oz', 'Logam mulia'),
+    ('SI=F', 'Perak', 'USD/oz', 'Logam mulia'),
+    ('PL=F', 'Platina', 'USD/oz', 'Logam mulia'),
+    ('HG=F', 'Tembaga', 'USD/lb', 'Logam industri'),
+    ('ALI=F', 'Aluminium', 'USD/ton', 'Logam industri'),
+    ('^JKSE', 'IHSG', 'poin', 'Pasar global'),
+    ('^GSPC', 'S&P 500', 'poin', 'Pasar global'),
+    ('DX-Y.NYB', 'Indeks Dolar (DXY)', 'poin', 'Pasar global'),
+]
 
 # kata penanda sentimen di JUDUL (huruf kecil). Kasar tapi cepat.
 POSITIF = ['naik', 'menguat', 'melonjak', 'melesat', 'meroket', 'terbang', 'rebound', 'reli', 'rally',
@@ -126,42 +144,46 @@ def kunci(judul):
     return re.sub(r'[^a-z0-9]', '', judul.lower())[:90]
 
 
-def _yahoo(rentang, interval):
-    d = json.loads(ambil('https://query1.finance.yahoo.com/v8/finance/chart/IDR=X?range=%s&interval=%s'
-                         % (rentang, interval)))
+def _yahoo(simbol, rentang, interval):
+    d = json.loads(ambil('https://query1.finance.yahoo.com/v8/finance/chart/%s?range=%s&interval=%s'
+                         % (urllib.parse.quote(simbol), rentang, interval)))
     r = d['chart']['result'][0]
-    cl = r['indicators']['quote'][0]['close']
-    titik = [[t, round(c, 1)] for t, c in zip(r.get('timestamp') or [], cl) if c]
+    cl = (r.get('indicators', {}).get('quote') or [{}])[0].get('close') or []
+    titik = [[t, round(c, 4)] for t, c in zip(r.get('timestamp') or [], cl) if c]
     return r['meta'], titik
 
 
-def kurs():
-    """kurs terbaru + seri grafik: 1H (15 menit), 5H (1 jam), harian 1 tahun."""
+def seri_yahoo(simbol):
+    """harga terbaru + seri grafik: 1H (15 menit), 5H (1 jam), harian 1 tahun."""
+    meta, th = _yahoo(simbol, '1y', '1d')
+    riw = [[datetime.datetime.utcfromtimestamp(t).strftime('%Y-%m-%d'), c] for t, c in th]
+    harga = meta.get('regularMarketPrice') or (riw[-1][1] if riw else None)
+    seri, sebelum = {}, None
     try:
-        meta, th = _yahoo('1y', '1d')
-        riw = [[datetime.datetime.utcfromtimestamp(t).strftime('%Y-%m-%d'), c] for t, c in th]
-        harga = meta.get('regularMarketPrice') or (riw[-1][1] if riw else None)
-        seri = {}
-        sebelum = None
-        try:
-            m1, t1 = _yahoo('1d', '15m')
-            seri['1H'] = t1
-            sebelum = m1.get('chartPreviousClose') or m1.get('previousClose')
-            harga = m1.get('regularMarketPrice') or harga
-            meta = m1
-        except Exception as e:
-            print('  kurs 1 hari gagal:', e)
-        try:
-            _, t5 = _yahoo('5d', '60m')
-            seri['5H'] = t5
-        except Exception as e:
-            print('  kurs 5 hari gagal:', e)
-        if sebelum is None and len(riw) >= 2:
-            hari_ini = datetime.datetime.utcfromtimestamp(meta.get('regularMarketTime', 0)).strftime('%Y-%m-%d')
-            sebelum = riw[-2][1] if riw[-1][0] == hari_ini else riw[-1][1]
-        return {'harga': round(harga, 1), 'sebelum': round(sebelum, 1) if sebelum else None,
-                'waktu': meta.get('regularMarketTime'), 'riwayat': riw, 'seri': seri,
-                'sumber': 'Yahoo Finance'}
+        m1, t1 = _yahoo(simbol, '1d', '15m')
+        seri['1H'] = t1
+        sebelum = m1.get('chartPreviousClose') or m1.get('previousClose')
+        harga = m1.get('regularMarketPrice') or harga
+        meta = m1
+    except Exception as e:
+        print('  %s 1 hari gagal: %s' % (simbol, e))
+    try:
+        seri['5H'] = _yahoo(simbol, '5d', '60m')[1]
+    except Exception as e:
+        print('  %s 5 hari gagal: %s' % (simbol, e))
+    if sebelum is None and len(riw) >= 2:
+        hari_ini = datetime.datetime.utcfromtimestamp(meta.get('regularMarketTime', 0)).strftime('%Y-%m-%d')
+        sebelum = riw[-2][1] if riw[-1][0] == hari_ini else riw[-1][1]
+    if not harga:
+        raise ValueError('tanpa harga')
+    return {'harga': round(harga, 4), 'sebelum': round(sebelum, 4) if sebelum else None,
+            'waktu': meta.get('regularMarketTime'), 'riwayat': riw, 'seri': seri,
+            'sumber': 'Yahoo Finance'}
+
+
+def kurs():
+    try:
+        return seri_yahoo('IDR=X')
     except Exception as e:
         print('  kurs Yahoo gagal:', e)
     try:
@@ -172,6 +194,24 @@ def kurs():
     except Exception as e:
         print('  kurs cadangan gagal:', e)
     return None
+
+
+def pasar_global(lama):
+    """komoditas & indeks; kalau satu simbol gagal, angka lamanya dipakai lagi."""
+    lama = {x.get('k'): x for x in (lama or [])}
+    hasil = []
+    for simbol, nama, satuan, kel in PASAR_GLOBAL:
+        try:
+            x = seri_yahoo(simbol)
+        except Exception as e:
+            print('  %s gagal: %s' % (simbol, e))
+            x = lama.get(simbol)
+            if not x:
+                continue
+        x.update({'k': simbol, 'n': nama, 'u': satuan, 'g': kel})
+        hasil.append(x)
+        time.sleep(0.4)
+    return hasil
 
 
 def main():
@@ -221,11 +261,12 @@ def main():
 
     daftar = sorted(item.values(), key=lambda x: -x['w'])[:MAKS_ITEM]
     k = kurs() or lama.get('kurs')
-    hasil = {'dibuat': int(time.time()), 'kurs': k, 'item': daftar}
+    pg = pasar_global(lama.get('pasar'))
+    hasil = {'dibuat': int(time.time()), 'kurs': k, 'pasar': pg, 'item': daftar}
     with open(KELUAR, 'w', encoding='utf-8') as f:
         json.dump(hasil, f, ensure_ascii=False, separators=(',', ':'))
-    print('berita: %d (baru %d), permintaan gagal: %d, kurs: %s'
-          % (len(daftar), baru, gagal, k and k.get('harga')))
+    print('berita: %d (baru %d), permintaan gagal: %d, kurs: %s, komoditas/indeks: %d'
+          % (len(daftar), baru, gagal, k and k.get('harga'), len(pg)))
 
 
 if __name__ == '__main__':
