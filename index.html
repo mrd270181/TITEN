@@ -3699,7 +3699,7 @@ let miniDari = "", miniSampai = "";
 let phDari = "", phSampai = "", phAkhir = "", phMin = 0, phCari = "";
 /* urutan tiap tabel %HARGA: kolom & arah (-1 = tertinggi dulu) */
 const phUrut = {n: {k: "pct", a: -1}, t: {k: "pct", a: 1}, c: {k: "pct", a: -1}};
-const PH_JUMLAH = 30;
+const PH_JUMLAH = 50;
 /* Papan Pemantauan Khusus (Full Call Auction) - emiten yang MASIH di papan itu
    (tanggal keluar kosong) menurut berkas IDX Efek_Pada_Papan_Pemantauan_Khusus
    per 28 Sep 2026. k = nomor kriteria, m = tanggal masuk. */
@@ -4114,7 +4114,7 @@ function halNews() {
 }
 
 /* ================= CEK VOLUME > %HARGA =================
-   30 emiten dengan perubahan harga terbesar (kiri) dan terkecil (kanan) dalam
+   50 emiten dengan perubahan harga terbesar (kiri) dan terkecil (kanan) dalam
    rentang tanggal. %Harga dihitung sama dengan TOT. %HARGA di Rekomendasi:
    dari penutupan SEBELUM hari pertama rentang ke penutupan hari terakhir,
    jadi gerakan hari pertama ikut terhitung. Harga sudah disesuaikan split.
@@ -4214,7 +4214,7 @@ function anggotaGrup(g) {
 function panelPersenHarga(w, mode) {
   /* sub-menu di dalam %HARGA */
   const st = el("div", "sub-tab ph-sub-tab");
-  [["", "30 %HARGA NAIK & TURUN"], ["sektor", "KLASIFIKASI SEKTOR"], ["pemilik", "KLASIFIKASI PEMILIK"]].forEach(([k, j]) => {
+  [["", "50 %HARGA NAIK & TURUN"], ["sektor", "KLASIFIKASI SEKTOR"], ["pemilik", "KLASIFIKASI PEMILIK"]].forEach(([k, j]) => {
     const b = el("button", (mode || "") === k ? "aktif" : null, j);
     b.onclick = () => { phMode = k; halVolume(); };
     st.appendChild(b);
@@ -5406,7 +5406,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-04-4";
+const VERSI_APP = "2026-10-04-5";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
