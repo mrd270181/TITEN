@@ -60,6 +60,33 @@ NEGATIF = ['turun', 'melemah', 'anjlok', 'ambruk', 'ambles', 'amblas', 'merosot'
 KODE_UMUM = {'DATA', 'BANK', 'GOOD', 'CASH', 'LIFE', 'HOME', 'FOOD', 'GOLD', 'TECH', 'KING',
              'BEST', 'MAIN', 'FAST', 'SAFE', 'TRUE', 'CITY', 'LAND', 'ASIA', 'INDO', 'JAVA', 'BALI',
              'NUSA', 'JAYA', 'DEAL', 'CARE', 'HOPE', 'PURE', 'RICH', 'NICE', 'ZONE', 'IDEA', 'FIRE'}
+# berita PASAR harus menyebut salah satu kata ini di judul. Google Berita mencocokkan
+# kata kunci secara longgar, sehingga pencarian "IHSG sesi" atau "harga emas dunia"
+# ikut membawa berita gulat, timnas, artis, cuaca, dst.
+PASAR_WAJIB = re.compile(
+    r'saham|ihsg|bursa|\bbei\b|\bidx\b|emiten|\btbk\b|investor|asing|rupiah|dolar|\bkurs\b|valas|'
+    r'suku bunga|the fed|\bfed\b|bi rate|bank indonesia|inflasi|deflasi|\bpdb\b|neraca|ekspor|impor|'
+    r'obligasi|\bsbn\b|\bsbr|\bsun\b|sukuk|imbal hasil|yield|treasury|wall street|nasdaq|dow jones|s&p|'
+    r'msci|ftse|indeks|komoditas|batu ?bara|\bhba\b|nikel|timah|\bcpo\b|sawit|minyak|brent|\bwti\b|'
+    r'emas|perak|tembaga|aluminium|gas alam|laba|rugi|dividen|\bipo\b|buyback|right issue|rights issue|'
+    r'ekonomi|resesi|stimulus|apbn|pajak|\bojk\b|reksa ?dana|kripto|bitcoin|harga|pasar modal|'
+    r'net (?:buy|sell)|capital market|stock|market|\bbi\b|\bbank|likuiditas|moneter|nickel|commodit|'
+    r'peso|euro|\byen\b|usd|jpy|forex|payroll|nonfarm|tenaga kerja|kompas100|lq45|belanja negara|carry trade', re.I)
+# berita olahraga / hiburan / cuaca dibuang walau lolos saringan di atas
+BUANG_TOPIK = re.compile(
+    r'\b(?:timnas|fifa|piala|liga|sepak ?bola|bola|pertandingan|laga|asian games|olimpiade|'
+    r'juarai|gulat|jiu-jitsu|badminton|bulu tangkis|motogp|formula 1|f1|'
+    r'artis|selebriti|seleb|aktris|aktor|penyanyi|konser|drakor|sinetron|make ?up|lipstik|'
+    r'potret|cantik|ganteng|gosip|pacar|pernikahan|cerai|anime|merchandise|'
+    r'cuaca|bmkg|hujan lebat|gempa|erupsi|resep|zodiak|horoskop|hantu)\b', re.I)
+
+
+def relevan(judul, pasar):
+    if BUANG_TOPIK.search(judul):
+        return False
+    return (not pasar) or bool(PASAR_WAJIB.search(judul))
+
+
 BUANG_NAMA = re.compile(r'\b(pt|tbk|persero|\(persero\)|indonesia|international|internasional)\b\.?', re.I)
 
 
@@ -218,12 +245,14 @@ def main():
     lama = baca_json('news.json', {}) or {}
     emiten = daftar_emiten()
     batas = int(time.time()) - SIMPAN_HARI * 86400
-    item = {kunci(x['t']): x for x in (lama.get('item') or []) if x.get('w', 0) >= batas}
+    # berita lama ikut disaring ulang, supaya yang terlanjur masuk ikut hilang
+    item = {kunci(x['t']): x for x in (lama.get('item') or [])
+            if x.get('w', 0) >= batas and relevan(x['t'], 'e' not in x.get('k', ''))}
     baru = 0
 
     def masukkan(x, pasar):
         nonlocal baru
-        if x['w'] < batas or not x['t']:
+        if x['w'] < batas or not x['t'] or not relevan(x['t'], pasar):
             return False
         e = cari_emiten(x['t'], emiten)
         if not pasar and not e:
