@@ -364,6 +364,25 @@ svg.fa-pola{display:block}
 .nw-ring b{display:block;font-size:18px;line-height:1.2}
 .nw-ring span{font-size:10.5px;color:var(--ink-3)}
 .nw-ring .nw-hitung{cursor:pointer}
+.nw-ring .nw-kurs.aktif{box-shadow:inset 0 0 0 1px var(--merek)}
+.nw-kom{margin:4px 0 12px}
+.nw-kom-h{font-size:12px;font-weight:700;letter-spacing:.06em;color:var(--ink-2);display:flex;justify-content:space-between;
+  align-items:baseline;flex-wrap:wrap;gap:6px;margin:4px 0 2px}
+.nw-kom-h small{font-weight:400;letter-spacing:0;color:var(--ink-3);font-size:10.5px}
+.nw-kom-kel{font-size:10.5px;font-weight:700;color:var(--ink-3);letter-spacing:.06em;margin:8px 0 4px;text-transform:uppercase}
+.nw-kom-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:6px}
+.nw-kom-grid:empty{display:none}
+.nw-kom-it{display:flex;align-items:center;gap:8px;background:var(--surface-2);border:1px solid var(--garis);
+  border-radius:9px;padding:7px 10px;cursor:pointer}
+.nw-kom-it:hover{border-color:var(--ink-3)}
+.nw-kom-it.aktif{border-color:var(--merek);box-shadow:inset 0 0 0 1px var(--merek)}
+.nw-kom-nm{flex:1;min-width:0}.nw-kom-nm b{display:block;font-size:13px}
+.nw-kom-nm span{font-size:10px;color:var(--ink-3);white-space:nowrap}
+.nw-kom-sp{width:64px;height:24px;flex:0 0 auto}
+.nw-kom-hg{text-align:right}.nw-kom-hg b{display:block;font-size:13.5px}
+.nw-kom-hg span{font-size:11px;font-weight:700}
+.nw-kom-hg span.naik{color:var(--naik)} .nw-kom-hg span.turun{color:var(--turun)}
+.nw-kom-besar{margin:6px 0}
 .nw-ring .nw-hitung:hover{border-color:var(--ink-3)}
 .nw-ring .nw-hitung.aktif{border-color:var(--merek);box-shadow:inset 0 0 0 1px var(--merek)}
 .sub-tab.nw-beku{position:sticky;z-index:15;background:var(--surface-0);padding:8px 0;margin:-8px 0 2px}
@@ -3722,7 +3741,13 @@ function miniPeta(tglUrut, sampai) {
    hanya membaca. Judul + tautan saja; isi berita dibuka di situs aslinya.
    Label positif/negatif = hitungan kata kunci di judul, bukan penilaian pasti. */
 let NEWS = null, nwAmbil = 0, nwGagal = "", nwSedang = false;
-let nwTab = "p", nwSen = "semua", nwHari = 1, nwKode = "", nwLingkup = "fav", nwGrafik = false;
+let nwTab = "p", nwSen = "semua", nwHari = 1, nwKode = "", nwLingkup = "fav", nwPilih = "", nwKom = false;
+/* berita komoditas: dikenali dari kata di judul */
+const NW_KOM = /batu ?bara|nikel|timah|\bcpo\b|sawit|minyak|emas|tembaga|aluminium|komoditas|\bhba\b|brent|\bwti\b|gas alam|perak|platina/i;
+/* angka harga komoditas/indeks: ribuan tanpa desimal berlebih, harga kecil pakai desimal */
+const nwAngka = x => x == null || isNaN(x) ? "–" : Math.abs(x) >= 1000
+  ? x.toLocaleString("id-ID", {maximumFractionDigits: 2})
+  : x.toLocaleString("id-ID", {minimumFractionDigits: Math.abs(x) >= 10 ? 2 : 3, maximumFractionDigits: Math.abs(x) >= 10 ? 2 : 3});
 
 async function muatNews(paksa) {
   if (nwSedang) return;
@@ -3756,7 +3781,8 @@ function nwKotakKurs(k) {
   }
   if (k.sebelum) d.appendChild(el("span", "nw-sblm", "dibanding penutupan sebelumnya " + rp(Math.round(k.sebelum))));
   d.title = "Ketuk untuk grafik 30 hari";
-  d.onclick = () => { nwGrafik = !nwGrafik; halNews(); };
+  if (nwPilih === "IDR") d.classList.add("aktif");
+  d.onclick = () => { nwPilih = nwPilih === "IDR" ? "" : "IDR"; halNews(); };
   return d;
 }
 
@@ -3785,10 +3811,14 @@ function nwSeriKurs(k, r) {
           judul: {"1B": "1 bulan", "3B": "3 bulan", "1T": "1 tahun"}[r] + " · 1 titik per hari"};
 }
 
-function nwGrafikKurs(k) {
+/* op: nama, balik (true = naik itu buruk, mis. kurs: naik = rupiah melemah),
+   fm (format angka), ket (kata arah) */
+function nwGrafikKurs(k, op) {
+  op = op || {nama: "USD/IDR", balik: true, fm: x => rp(Math.round(x)), naikT: "rupiah melemah", turunT: "rupiah menguat"};
+  const fm = op.fm, kel = n => (n > 0) !== !!op.balik ? "naik" : "turun";
   const box = el("div", "nw-grafik");
   const atas = el("div", "nw-g-atas");
-  const jd = el("div", "nw-g-judul", "USD/IDR");
+  const jd = el("div", "nw-g-judul", op.nama);
   atas.appendChild(jd);
   const rg = el("div", "nw-g-rg");
   [["1H", "1 Hari"], ["5H", "5 Hari"], ["1B", "1 Bulan"], ["3B", "3 Bulan"], ["1T", "1 Tahun"]].forEach(([r, t]) => {
@@ -3808,15 +3838,17 @@ function nwGrafikKurs(k) {
   jd.appendChild(el("small", null, d.judul));
   const v = d.titik.map(x => x[1]), semua = v.concat([d.pemb]);
   const mn = Math.min(...semua), mx = Math.max(...semua), rgn = (mx - mn) || 1;
-  const W = 900, H = 230, L = 6, R = 64, T = 10, B = 26;
+  /* lebar gambar = lebar layar kira-kira, supaya tulisan sumbu tidak gepeng di HP */
+  const lebar = (document.querySelector("#hal-news") || {}).clientWidth || 900;
+  const W = Math.max(300, Math.min(1100, lebar - 44)), H = 230, L = 6, R = 64, T = 10, B = 26;
   const X = i => L + i * (W - L - R) / (v.length - 1), Y = n => T + (mx - n) / rgn * (H - T - B);
   const akhir = v[v.length - 1], lemah = akhir > d.pemb;
-  const warna = akhir === d.pemb ? "var(--ink-3)" : lemah ? "var(--turun)" : "var(--naik)";
+  const warna = akhir === d.pemb ? "var(--ink-3)" : "var(--" + kel(akhir - d.pemb) + ")";
   let g = "";
   for (let i = 0; i <= 4; i++) {
     const n = mn + rgn * i / 4, y = Y(n).toFixed(1);
     g += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y + '" y2="' + y + '" stroke="var(--garis)"/>' +
-      '<text x="' + (W - R + 6) + '" y="' + (+y + 4) + '" fill="var(--ink-3)" font-size="11">' + rp(Math.round(n)) + '</text>';
+      '<text x="' + (W - R + 6) + '" y="' + (+y + 4) + '" fill="var(--ink-3)" font-size="11">' + fm(n) + '</text>';
   }
   const yp = Y(d.pemb).toFixed(1);
   g += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + yp + '" y2="' + yp + '" stroke="var(--ink-3)" stroke-dasharray="5 4"/>';
@@ -3848,11 +3880,11 @@ function nwGrafikKurs(k) {
     const xp = X(i) / W * 100, yp2 = Y(v[i]) / H * 100;
     vl.style.left = xp + "%"; dot.style.left = xp + "%"; dot.style.top = yp2 + "%";
     const dP = v[i] - d.pemb, dS = i ? v[i] - v[i - 1] : 0;
-    const tanda = n => (n > 0 ? "▲ " : n < 0 ? "▼ " : "= ") + rp(Math.abs(Math.round(n)));
-    tip.innerHTML = "<b>" + rp(Math.round(v[i])) + "</b><span>" + d.titik[i][2] + "</span>" +
-      "<span class='" + (dP > 0 ? "turun" : dP < 0 ? "naik" : "") + "'>" + tanda(dP) + " (" + (dP > 0 ? "+" : "") +
+    const tanda = n => (n > 0 ? "▲ " : n < 0 ? "▼ " : "= ") + fm(Math.abs(n));
+    tip.innerHTML = "<b>" + fm(v[i]) + "</b><span>" + d.titik[i][2] + "</span>" +
+      "<span class='" + (dP ? kel(dP) : "") + "'>" + tanda(dP) + " (" + (dP > 0 ? "+" : "") +
       (dP / d.pemb * 100).toFixed(2).replace(".", ",") + "%) vs " + d.ketPemb + "</span>" +
-      (i ? "<span class='" + (dS > 0 ? "turun" : dS < 0 ? "naik" : "") + "'>" + tanda(dS) + " vs titik sebelumnya</span>" : "");
+      (i ? "<span class='" + (dS ? kel(dS) : "") + "'>" + tanda(dS) + " vs titik sebelumnya</span>" : "");
     tip.style.left = xp + "%";
     tip.style.transform = "translateX(" + (xp > 70 ? "-100%" : xp < 30 ? "0" : "-50%") + ")";
     [vl, dot, tip].forEach(x => { x.style.display = ""; });
@@ -3861,17 +3893,70 @@ function nwGrafikKurs(k) {
   area.onpointerleave = () => [vl, dot, tip].forEach(x => { x.style.display = "none"; });
   box.appendChild(area);
   const leg = el("div", "nw-g-leg");
-  leg.innerHTML = '<span><i></i>kurs</span><span><i class="p"></i>' + d.ketPemb + ' ' + rp(Math.round(d.pemb)) +
-    '</span><span>Garis naik = rupiah melemah · turun = rupiah menguat · geser kursor/jari di grafik untuk angka & jam</span>';
+  leg.innerHTML = '<span><i></i>' + op.nama + '</span><span><i class="p"></i>' + d.ketPemb + ' ' + fm(d.pemb) +
+    '</span><span>' + (op.balik ? "Garis naik = rupiah melemah · turun = rupiah menguat · " : "") +
+    'geser kursor/jari di grafik untuk angka & jam</span>';
   box.appendChild(leg);
   const ub = akhir - d.pemb;
   const ket = el("div", "bantu");
-  ket.innerHTML = "Rentang ini: tertinggi <b>" + rp(Math.round(Math.max(...v))) + "</b> · terendah <b>" +
-    rp(Math.round(Math.min(...v))) + "</b> · perubahan <b class='" + (ub > 0 ? "turun" : ub < 0 ? "naik" : "") + "'>" +
-    (ub > 0 ? "▲ " : ub < 0 ? "▼ " : "= ") + rp(Math.abs(Math.round(ub))) + " (" + (ub > 0 ? "+" : "") +
-    (ub / d.pemb * 100).toFixed(2).replace(".", ",") + "%) rupiah " + (ub > 0 ? "melemah" : ub < 0 ? "menguat" : "tetap") +
+  ket.innerHTML = "Rentang ini: tertinggi <b>" + fm(Math.max(...v)) + "</b> · terendah <b>" +
+    fm(Math.min(...v)) + "</b> · perubahan <b class='" + (ub ? kel(ub) : "") + "'>" +
+    (ub > 0 ? "▲ " : ub < 0 ? "▼ " : "= ") + fm(Math.abs(ub)) + " (" + (ub > 0 ? "+" : "") +
+    (ub / d.pemb * 100).toFixed(2).replace(".", ",") + "%)" + (op.naikT ? " " + (ub > 0 ? op.naikT : ub < 0 ? op.turunT : "tetap") : "") +
     "</b>. Sumber " + (k.sumber || "Yahoo Finance") + ", tertunda ±30 menit.";
   box.appendChild(ket);
+  return box;
+}
+
+/* strip KOMODITAS & GLOBAL: kotak per simbol, ketuk = grafik besar di bawahnya */
+function nwKomoditas(daftar) {
+  const box = el("div", "nw-kom");
+  const t0 = daftar.reduce((a, x) => Math.max(a, x.waktu || 0), 0);
+  const h = el("div", "nw-kom-h", "KOMODITAS & GLOBAL");
+  h.appendChild(el("small", null, "Yahoo Finance · tertunda ±30–50 mnt" +
+    (t0 ? " · data s/d " + nwFmt(t0, {day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"}) + " WIB" : "")));
+  box.appendChild(h);
+  let kel = "", grid = null;
+  daftar.forEach(x => {
+    if (x.g !== kel) {
+      kel = x.g;
+      box.appendChild(el("div", "nw-kom-kel", kel));
+      grid = el("div", "nw-kom-grid"); box.appendChild(grid);
+    }
+    const ub = x.sebelum ? (x.harga / x.sebelum - 1) * 100 : null;
+    const it = el("div", "nw-kom-it" + (nwPilih === x.k ? " aktif" : ""));
+    it.title = x.n + " — ketuk untuk grafik";
+    const nm = el("div", "nw-kom-nm");
+    nm.appendChild(el("b", null, x.n));
+    nm.appendChild(el("span", null, x.u + (x.waktu ? " · " + nwFmt(x.waktu, {day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"}) : "")));
+    it.appendChild(nm);
+    const s1 = (x.seri && x.seri["1H"] && x.seri["1H"].length > 1 ? x.seri["1H"]
+      : x.seri && x.seri["5H"] && x.seri["5H"].length > 1 ? x.seri["5H"] : (x.riwayat || []).slice(-22)).map(a => a[1]);
+    if (s1.length > 1) {
+      const mn = Math.min(...s1), mx = Math.max(...s1), rg = (mx - mn) || 1;
+      const jl = s1.map((v, i) => (i ? "L" : "M") + (1 + i * 62 / (s1.length - 1)).toFixed(1) + " " + (22 - (v - mn) / rg * 20).toFixed(1)).join(" ");
+      const sp = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      sp.setAttribute("viewBox", "0 0 64 24"); sp.setAttribute("class", "nw-kom-sp");
+      sp.innerHTML = '<path d="' + jl + '" fill="none" stroke="var(--' + (ub === null || ub >= 0 ? "naik" : "turun") + ')" stroke-width="1.6"/>';
+      it.appendChild(sp);
+    }
+    const hg = el("div", "nw-kom-hg");
+    hg.appendChild(el("b", null, nwAngka(x.harga)));
+    if (ub !== null) hg.appendChild(el("span", ub > 0 ? "naik" : ub < 0 ? "turun" : "datar",
+      (ub > 0 ? "▲ +" : ub < 0 ? "▼ " : "= ") + ub.toFixed(2).replace(".", ",") + "%"));
+    it.appendChild(hg);
+    it.onclick = () => { nwPilih = nwPilih === x.k ? "" : x.k; halNews(); };
+    grid.appendChild(it);
+    if (nwPilih === x.k) {
+      const g = nwGrafikKurs(x, {nama: x.n + " (" + x.u + ")", balik: false, fm: nwAngka});
+      g.classList.add("nw-kom-besar");
+      box.appendChild(g);
+      grid = el("div", "nw-kom-grid"); box.appendChild(grid);
+    }
+  });
+  box.appendChild(el("div", "bantu", "% = dibanding penutupan sebelumnya. Minyak, gas, logam = harga kontrak berjangka " +
+    "(diperdagangkan hampir 24 jam pada hari kerja). Batu bara, nikel, timah & CPO tidak punya harga harian gratis — " +
+    "pantau lewat tombol Komoditas di daftar berita."));
   return box;
 }
 
@@ -3930,7 +4015,8 @@ function halNews() {
   ring.appendChild(kotak(nNeg, "turun", "negatif " + kapan, "neg"));
   ring.appendChild(kotak(L.length - nPos - nNeg, null, "netral " + kapan, "net"));
   p.appendChild(ring);
-  if (nwGrafik && NEWS.kurs) p.appendChild(nwGrafikKurs(NEWS.kurs));
+  if (nwPilih === "IDR" && NEWS.kurs) p.appendChild(nwGrafikKurs(NEWS.kurs));
+  if (NEWS.pasar && NEWS.pasar.length) p.appendChild(nwKomoditas(NEWS.pasar));
 
   if (nwTab === "e") {
     const a = el("div", "nw-alat");
@@ -3956,6 +4042,10 @@ function halNews() {
     c.onclick = () => { nwSen = k; halNews(); };
     a2.appendChild(c);
   });
+  const ck = el("button", "nw-chip" + (nwKom ? " aktif" : ""), "Komoditas");
+  ck.title = "Hanya berita batu bara, nikel, timah, CPO, minyak, emas, logam";
+  ck.onclick = () => { nwKom = !nwKom; halNews(); };
+  a2.appendChild(ck);
   const sh = el("select", "fa-min");
   [[1, "Hari ini"], [3, "3 hari"], [7, "7 hari"]].forEach(([v, t]) => {
     const o = el("option", null, t); o.value = v; if (nwHari === v) o.selected = true; sh.appendChild(o); });
@@ -3973,6 +4063,7 @@ function halNews() {
   if (nwSen === "pos") L = L.filter(x => x.n > 0);
   if (nwSen === "neg") L = L.filter(x => x.n < 0);
   if (nwSen === "net") L = L.filter(x => !x.n);
+  if (nwKom) L = L.filter(x => NW_KOM.test(x.t));
   if (!L.length) {
     p.appendChild(el("div", "kosong", nwTab === "e" && !nwKode && nwLingkup === "fav"
       ? "Tidak ada berita emiten watchlist Anda di rentang ini. Coba 'Semua emiten' atau 7 hari."
@@ -5127,7 +5218,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-03-5";
+const VERSI_APP = "2026-10-03-6";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
