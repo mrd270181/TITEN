@@ -332,6 +332,8 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
 .hv-bdg{display:inline-block;margin-top:3px;font-size:10px;font-weight:800;
   color:var(--naik);background:var(--naik-bg);border-radius:5px;padding:1px 5px}
 td.hv-deret{background:var(--naik-bg)!important}
+td.hv-deret-t{background:var(--turun-bg)!important}
+.hv-bdg.t{color:var(--turun);background:var(--turun-bg)}
 .hv-bintang{color:#d8a13a;font-weight:800;margin-left:3px}
 .hv-ciri{display:flex;gap:3px;margin-top:3px;flex-wrap:wrap}
 .hv-cp{font-size:9.5px;font-weight:700;border-radius:5px;padding:1px 5px;
@@ -1066,7 +1068,7 @@ let hvDari = "", hvSampai = "", hvAkhir = "";
 let hvPilih = [];
 /* Bawaan HARGA & VOL: emiten yang penutupannya naik minimal hvMin hari bursa
    berturut-turut sampai tanggal Sampai. "semua" = tampilan lama. */
-let hvMode = "naik", hvMin = 2, hvMinRp = 1, hvUrut = "ciri";
+let hvMode = "naik", hvMin = 2, hvMinRp = 1, hvUrut = "ciri", hvUrutT = "deret";
 /* Ciri yang lebih sering berlanjut (uji 27 ribu kejadian 2025-2026, sepertiga
    terbaik): harga buka dekat penutupan kemarin (gap <= 0,5%) dan net asing
    positif terhadap volume (NF >= +1,7%). Setelah data harga-buka-0 dibuang,
@@ -1087,7 +1089,8 @@ const hvSkor = n => (hvGapOk(n) && hvNfOk(n) ? 2 : 0) + (hvGapOk(n) ? 1 : 0);
 const hvPersen = v => (v > 0 ? "+" : v < 0 ? "\u2212" : "") +
   Math.abs(v).toFixed(1).replace(".", ",") + "%";
 
-function hvDeretNaik(sampai) {
+/* turun = true: kebalikannya, penutupan TURUN beruntun (TURUN BERUNTUN) */
+function hvDeretNaik(sampai, turun) {
   const perTgl = {};
   daftarHari.forEach(r => {
     if (r.tgl && r.tgl <= sampai && !perTgl[r.tgl]) perTgl[r.tgl] = r.baris || {};
@@ -1099,7 +1102,7 @@ function hvDeretNaik(sampai) {
     let st = 0, awal = null, nilai = 0;
     for (const t of tgl) {
       const x = perTgl[t][k];
-      if (!x || !x.v || !x.p || !x.c || x.c <= x.p) break;
+      if (!x || !x.v || !x.p || !x.c || (turun ? x.c >= x.p : x.c <= x.p)) break;
       st++; awal = x.p; nilai += x.n || 0;
     }
     const a = perTgl[sampai][k];
@@ -1751,16 +1754,17 @@ function panelHargaVol(w) {
 
   const kotakNaik = el("div", "hv-naik");
   const sw = el("div", "saklar");
-  [["naik", "NAIK BERUNTUN"], ["semua", "SEMUA EMITEN"]].forEach(([k, j]) => {
+  [["naik", "NAIK BERUNTUN"], ["turun", "TURUN BERUNTUN"], ["semua", "SEMUA EMITEN"]].forEach(([k, j]) => {
     const b = el("button", hvMode === k ? "aktif" : null, j);
     b.type = "button";
     b.onclick = () => { hvMode = k; halScreener(); };
     sw.appendChild(b);
   });
   kotakNaik.appendChild(sw);
-  if (hvMode === "naik") {
+  const modeT = hvMode === "turun";
+  if (hvMode === "naik" || modeT) {
     const bar = el("div", "hv-naik-atur");
-    const lh = el("label", "bantu", "Naik minimal ");
+    const lh = el("label", "bantu", modeT ? "Turun minimal " : "Naik minimal ");
     const sh = el("select");
     HV_MIN_HARI.forEach(x => { const o = el("option", null, x + " hari"); o.value = x;
       if (hvMin === x) o.selected = true; sh.appendChild(o); });
@@ -1775,14 +1779,19 @@ function panelHargaVol(w) {
     lr.appendChild(sr); bar.appendChild(lr);
     const lu = el("label", "bantu", "Urut ");
     const su = el("select");
-    [["ciri", "Ciri lanjut dulu"], ["deret", "Deret terpanjang"]].forEach(([v, j]) => {
+    (modeT ? [["deret", "Deret terpanjang"], ["dalam", "Turun terdalam"]]
+           : [["ciri", "Ciri lanjut dulu"], ["deret", "Deret terpanjang"]]).forEach(([v, j]) => {
       const o = el("option", null, j); o.value = v;
-      if (hvUrut === v) o.selected = true; su.appendChild(o); });
-    su.onchange = () => { hvUrut = su.value; halScreener(); };
+      if ((modeT ? hvUrutT : hvUrut) === v) o.selected = true; su.appendChild(o); });
+    su.onchange = () => { if (modeT) hvUrutT = su.value; else hvUrut = su.value; halScreener(); };
     lu.appendChild(su); bar.appendChild(lu);
     kotakNaik.appendChild(bar);
-    kotakNaik.appendChild(el("div", "bantu",
-      "Gap = harga buka dibanding penutupan kemarin, NF = net asing \u00f7 volume, " +
+    kotakNaik.appendChild(el("div", "bantu", modeT
+      ? "Kebalikan NAIK BERUNTUN: penutupan lebih rendah dari penutupan kemarin, " +
+        "berturut-turut sampai tanggal Sampai. Gap = harga buka dibanding penutupan " +
+        "kemarin, NF = net asing \u00f7 volume, keduanya di hari terakhir \u2014 " +
+        "ditampilkan apa adanya tanpa warna, karena ciri lanjut-turun belum pernah diuji."
+      : "Gap = harga buka dibanding penutupan kemarin, NF = net asing \u00f7 volume, " +
       "keduanya di hari terakhir. Hijau: gap \u2264 0,5% / NF \u2265 +1,7%. " +
       "\u2605 = keduanya hijau. Selisih peluang berlanjutnya kecil (1\u20134 poin), " +
       "jadi pakai untuk menyaring, bukan jaminan."));
@@ -1810,7 +1819,7 @@ function panelHargaVol(w) {
   const nm = {};
   (DATA.scr || []).forEach(b => { nm[b[0]] = b[1] || ""; });
 
-  const deret = hvDeretNaik(hvSampai);
+  const deret = hvDeretNaik(hvSampai, modeT);
   const emBroker = new Set(BRK.em || []);
   const semua = kfDaftarEmiten().map(k => ({
     kode: k, nama: nm[k] || "", naik: deret[k] || null,
@@ -1873,8 +1882,9 @@ function panelHargaVol(w) {
   function gambarChip() {
     barisChip.innerHTML = "";
     if (!hvPilih.length) {
-      const t0 = el("span", "bantu", hvMode === "naik"
-        ? "Menampilkan emiten yang naik beruntun. Ketik kode di atas lalu Enter " +
+      const t0 = el("span", "bantu", hvMode !== "semua"
+        ? "Menampilkan emiten yang " + (modeT ? "turun" : "naik") +
+          " beruntun. Ketik kode di atas lalu Enter " +
           "untuk melihat emiten tertentu."
         : "Belum ada emiten dipilih \u2014 seluruh " + rp(daftarLama.length) +
           " emiten ditampilkan. Ketik kode di atas lalu Enter untuk mempersempit.");
@@ -1930,20 +1940,23 @@ function panelHargaVol(w) {
      SEMUA EMITEN: tampilan lama, emiten yang punya data broker. */
   const daftarNaik = semua.filter(r => r.naik && r.naik.st >= hvMin &&
       r.naik.nilaiRata >= hvMinRp * 1e9)
-    .sort((a, b) => (hvUrut === "ciri" ? (hvSkor(b.naik) - hvSkor(a.naik)) : 0) ||
-                    (b.naik.st - a.naik.st) || (b.naik.tot - a.naik.tot));
+    .sort(modeT
+      ? (a, b) => (hvUrutT === "dalam" ? (a.naik.tot - b.naik.tot) : 0) ||
+                  (b.naik.st - a.naik.st) || (a.naik.tot - b.naik.tot)
+      : (a, b) => (hvUrut === "ciri" ? (hvSkor(b.naik) - hvSkor(a.naik)) : 0) ||
+                  (b.naik.st - a.naik.st) || (b.naik.tot - a.naik.tot));
   const daftarLama = semua.filter(r => emBroker.has(r.kode));
 
   function isiBaris() {
     tbody.innerHTML = "";
-    const dasar = hvMode === "naik" ? daftarNaik : daftarLama;
+    const dasar = hvMode !== "semua" ? daftarNaik : daftarLama;
     const pilihEm = hvPilih.length
       ? hvPilih.map(k => semua.find(r => r.kode === k)).filter(Boolean)
       : dasar;
     hitung.textContent = hvPilih.length
       ? rp(pilihEm.length) + " emiten dipilih"
-      : hvMode === "naik"
-        ? rp(pilihEm.length) + " emiten naik \u2265" + hvMin + " hari beruntun s/d " +
+      : hvMode !== "semua"
+        ? rp(pilihEm.length) + " emiten " + (modeT ? "turun" : "naik") + " \u2265" + hvMin + " hari beruntun s/d " +
           tglID(hvSampai) + (hvMinRp ? " \u00b7 transaksi \u2265 Rp" + hvMinRp +
           " miliar/hari" : "")
         : rp(pilihEm.length) + " emiten";
@@ -1962,17 +1975,18 @@ function panelHargaVol(w) {
       c0.appendChild(el("span", "nm", r.nama));
       if (r.naik && r.naik.st >= hvMin) {
         const n = r.naik;
-        if (hvGapOk(n) && hvNfOk(n)) {
+        if (!modeT && hvGapOk(n) && hvNfOk(n)) {
           const b = el("span", "hv-bintang", "\u2605");
           b.title = "Gap kecil dan NF positif";
           c0.insertBefore(b, c0.children[1]);
         }
-        c0.appendChild(el("span", "hv-bdg", "\u25b2 " + n.st + " hari \u00b7 +" +
-          n.tot.toFixed(1).replace(".", ",") + "%"));
+        c0.appendChild(el("span", "hv-bdg" + (modeT ? " t" : ""), (modeT ? "\u25bc " : "\u25b2 ") +
+          n.st + " hari \u00b7 " + (modeT ? "\u2212" : "+") +
+          Math.abs(n.tot).toFixed(1).replace(".", ",") + "%"));
         const ciri = el("div", "hv-ciri");
-        ciri.appendChild(el("span", "hv-cp" + (n.gap === null ? "" : hvGapOk(n) ? " ok" : " no"),
+        ciri.appendChild(el("span", "hv-cp" + (n.gap === null || modeT ? "" : hvGapOk(n) ? " ok" : " no"),
           "Gap " + (n.gap === null ? "\u2013" : hvPersen(n.gap))));
-        ciri.appendChild(el("span", "hv-cp" + (n.nf === null ? "" : hvNfOk(n) ? " ok"
+        ciri.appendChild(el("span", "hv-cp" + (n.nf === null || modeT ? "" : hvNfOk(n) ? " ok"
           : n.nf < HV_NF_JELEK ? " no" : ""), "NF " + (n.nf === null ? "\u2013" : hvPersen(n.nf))));
         c0.appendChild(ciri);
       }
@@ -1986,7 +2000,7 @@ function panelHargaVol(w) {
         const ch = el("td", "num");
         ch.style.borderLeft = "2px solid var(--garis)";
         const dalamDeret = r.naik && r.naik.st >= hvMin && r.naik.hari.indexOf(t2) >= 0;
-        if (dalamDeret) ch.classList.add("hv-deret");
+        if (dalamDeret) ch.classList.add(modeT ? "hv-deret-t" : "hv-deret");
         if (!x) ch.textContent = "\u2013";
         else {
           const u = x.ubah;
@@ -2010,7 +2024,7 @@ function panelHargaVol(w) {
           }
         }
         tr.appendChild(ch);
-        const cv = el("td", "num" + (dalamDeret ? " hv-deret" : ""), x ? rp(x.v) : "\u2013");
+        const cv = el("td", "num" + (dalamDeret ? (modeT ? " hv-deret-t" : " hv-deret") : ""), x ? rp(x.v) : "\u2013");
         tr.appendChild(cv);
       });
       tbody.appendChild(tr);
@@ -5430,7 +5444,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-04-9";
+const VERSI_APP = "2026-10-05-1";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
