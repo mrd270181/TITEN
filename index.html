@@ -1224,7 +1224,7 @@ function panelPotensi(w) {
     });
     p.appendChild(hn);
   }
-  const bung = el("div", "tbl-bungkus");
+  const bung = el("div", "tbl-bungkus tbl-kunci");   /* judul kolom beku saat digulir */
   const t = el("table", "pt-tbl"), th = el("tr");
   const kol = ["Tk", "Emiten", "%NF", "Lot 2 mg ÷ 3 bln", "Harga " + tglID(ptTgl), "Batas beli (+" + PT_GAP_MAX + "%)"]
     .concat(lalu ? ["Gap buka H+1", "Buka H+1", "Tutup " + tPendek(H.tglNanti[0]), "Tutup " + tPendek(H.tglNanti[1]), "Tutup " + tPendek(H.tglNanti[2]), "Hasil buka→H+3"] : [])
@@ -5905,7 +5905,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-06-5";
+const VERSI_APP = "2026-10-06-6";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
