@@ -1122,6 +1122,7 @@ const PT_STAT = {
 };
 const PT_GAP_MAX = 2;   /* % - di atas ini jangan dibeli */
 let ptTgl = "", ptAkhir = "";
+let ptUrut = {k: "", a: -1};   /* urutan tabel POTENSI 3 HARI; k kosong = bawaan */
 /* fraksi harga BEI */
 function fraksiHarga(h) { return h < 200 ? 1 : h < 500 ? 2 : h < 2000 ? 5 : h < 5000 ? 10 : 25; }
 function batasBeli(c) { const x = c * (1 + PT_GAP_MAX / 100), f = fraksiHarga(x); return Math.floor(x / f) * f; }
@@ -1226,12 +1227,35 @@ function panelPotensi(w) {
   }
   const bung = el("div", "tbl-bungkus tbl-kunci");   /* judul kolom beku saat digulir */
   const t = el("table", "pt-tbl"), th = el("tr");
-  const kol = ["Tk", "Emiten", "%NF", "Lot 2 mg ÷ 3 bln", "Harga " + tglID(ptTgl), "Batas beli (+" + PT_GAP_MAX + "%)"]
-    .concat(lalu ? ["Gap buka H+1", "Buka H+1", "Tutup " + tPendek(H.tglNanti[0]), "Tutup " + tPendek(H.tglNanti[1]), "Tutup " + tPendek(H.tglNanti[2]), "Hasil buka→H+3"] : [])
-    .concat(["%NF 2 mg", "%Harga 2 mg", "Value/hari"]);
-  kol.forEach((j, n) => th.appendChild(el("th", n > 1 ? "num" : null, j)));
+  /* kolom: [judul, kunci urut]; ketuk judul = urutkan, ketuk lagi = balik.
+     Bawaan (ptUrut.k kosong): tingkat A dulu lalu B, masing-masing %NF terbesar. */
+  const kol = [["Tk", "tk"], ["Emiten", "em"], ["%NF", "nf1"], ["Lot 2 mg \u00f7 3 bln", "lonjak"], ["Harga " + tglID(ptTgl), "c"], ["Batas beli (+" + PT_GAP_MAX + "%)", "batas"]]
+    .concat(lalu ? [["Gap buka H+1", "gap"], ["Buka H+1", "o1"], ["Tutup " + tPendek(H.tglNanti[0]), "c1"], ["Tutup " + tPendek(H.tglNanti[1]), "c2"], ["Tutup " + tPendek(H.tglNanti[2]), "c3"],
+      ["Hasil buka\u2192" + (H.sesudah >= 3 ? "H+3" : "H+" + H.sesudah), "hT"]] : [])
+    .concat([["%NF 2 mg", "nf10"], ["%Harga 2 mg", "r10"], ["Value/hari", "val20"]]);
+  if (ptUrut.k && !kol.some(c => c[1] === ptUrut.k)) ptUrut.k = "";   /* kolom hasil hilang di tanggal terbaru */
+  kol.forEach(([j, k], n) => {
+    const tanda = ptUrut.k === k ? (ptUrut.a < 0 ? " \u25bc" : " \u25b2") : "";
+    const h = el("th", n > 1 ? "num" : null, j + tanda);
+    h.style.cursor = "pointer"; h.title = "Urutkan menurut " + j;
+    h.onclick = () => {
+      if (ptUrut.k === k) ptUrut.a = -ptUrut.a;
+      else { ptUrut.k = k; ptUrut.a = (k === "em" || k === "tk") ? 1 : -1; }
+      halScreener();
+    };
+    th.appendChild(h);
+  });
   t.appendChild(th);
-  const hg = (v, dasar) => { const td = el("td", "num", v ? rp(v) : "–"); if (v && dasar) td.className = "num" + kls(v - dasar); return td; };
+  if (ptUrut.k) {
+    const k = ptUrut.k;
+    K.sort((x, y) => {
+      const a = x[k], b = y[k];
+      if (a === null || a === undefined) return 1;
+      if (b === null || b === undefined) return -1;
+      return (typeof a === "string" ? a.localeCompare(b) : a - b) * ptUrut.a;
+    });
+  }
+  const hg = (v, dasar) => { const td = el("td", "num", v ? rp(v) : "\u2013"); if (v && dasar) td.className = "num" + kls(v - dasar); return td; };
   K.forEach(x => {
     const tr = el("tr", "klik");
     const c0 = el("td"); c0.appendChild(el("span", "pt-tier t" + x.tk, x.tk)); tr.appendChild(c0);
@@ -1261,7 +1285,7 @@ function panelPotensi(w) {
   p.appendChild(el("div", "bantu",
     "Semesta: emiten dengan transaksi rata-rata 20 hari ≥ Rp5 M dan harga ≥ Rp50. %NF = net foreign ÷ volume pada tanggal sinyal. " +
     "A = %NF di 20% teratas DAN lot 10 hari ÷ rata-rata 3 bulan di 30% teratas; B = sama, lonjakan lot 30–50% teratas. " +
-    "Urutan di tiap tingkat: %NF terbesar. Batas beli = tutup sinyal + " + PT_GAP_MAX + "%, dibulatkan ke fraksi harga BEI: " +
+    "Urutan bawaan: tingkat A lalu B, masing-masing %NF terbesar; ketuk judul kolom untuk mengurutkan, ketuk lagi untuk membalik. Batas beli = tutup sinyal + " + PT_GAP_MAX + "%, dibulatkan ke fraksi harga BEI: " +
     "pagi hari bandingkan harga pembukaan di aplikasi sekuritas dengan angka ini. Gap buka H+1 merah = dibuka di atas batas (hasilnya dicoret). " +
     "Harga H+1..H+3 berwarna hijau/merah terhadap harga buka H+1. Angka di kartu dari uji luar sampel 1 Jul 2025 – 30 Sep 2026: " +
     "peluang per saham di bawah 50%, keunggulannya pada rata-rata; tingkat B impas sesudah biaya ±0,3%. " +
@@ -5905,7 +5929,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-06-6";
+const VERSI_APP = "2026-10-06-7";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
