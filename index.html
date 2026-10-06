@@ -484,6 +484,14 @@ td .ph-porsi{display:block;width:max-content}
 .ph-rinci-tag{margin-left:5px;font-size:9px;font-weight:700;color:#fff;background:#2f7d4f;border-radius:4px;padding:0 4px;vertical-align:1px}
 .ph-kosong{color:var(--ink-3)}
 .ph-rinci-ket{font-size:10.5px;color:var(--ink-3);margin-top:5px}
+.ph-saklar{margin:6px 0 10px}
+.ph-saklar button{flex:1}
+.ph-chip{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 4px}
+.ph-chip .kecil{flex:0 0 auto}
+.ph-em-kepala{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;margin:8px 0 2px}
+.ph-em-kepala .kode{font-size:17px}
+.ph-em-kepala .ph-lain{flex-basis:100%}
+.ph-em-grup{min-width:86px;font-size:12px}
 .ph-tag{font-size:10px;font-weight:700;color:#d9a441;border:1px solid #d9a441;border-radius:5px;padding:0 5px}
 .ph-kol td:nth-child(2),.ph-kol th:nth-child(2){text-align:left}
 .ph-kol td.no,.ph-kol th:first-child{text-align:center;color:var(--ink-3);padding:6px 3px;width:26px}
@@ -4219,7 +4227,7 @@ const GRUP_PEMILIK = [
     pa: /dharma inti anugerah/i, paKet: "milik TP Rachmat 99,99%", tambah: ["ASSA"], buang: []},
   {n: "Low Tuck Kwong", p: /low tuck kwong/i, tambah: [], buang: []},
   {n: "Happy Hapsoro", p: /hapsoro/i,
-    pa: /sentosa bersama mitra/i, paKet: "perusahaan Happy Hapsoro", tambah: [], buang: []},
+    pa: /sentosa bersama mitra|tirta orisa yasa/i, paKet: "perusahaan Happy Hapsoro", tambah: [], buang: []},
   {n: "Indika", p: /indika inti|indika energy/i, tambah: [], buang: []},
   {n: "Kalla", p: /\bkalla\b/i, tambah: [], buang: []},
   {n: "BUMN / Danantara", p: /perusahaan perseroan \(perser|danantara|negara republik indonesia/i,
@@ -4269,7 +4277,88 @@ function labelSemua(info) {
   Object.keys(info).forEach(k => { L[k] = labelGrup(k, info[k], peng); });
   return L;
 }
-let phPorsi = null;   /* {kode: labelGrup} saat sub-menu KLASIFIKASI PEMILIK aktif */
+let phPorsi = null;
+let klPer = "grup", klEm = "";   /* KLASIFIKASI PEMILIK: lihat per grup / per emiten */
+let semuaGrupCache = null;
+/* semua grup sekaligus: {nama grup: {info, label}} - dipakai mode per emiten */
+function semuaGrup() {
+  if (semuaGrupCache && semuaGrupCache.m === MILIK && semuaGrupCache.p === PROFIL) return semuaGrupCache.isi;
+  const isi = {};
+  GRUP_PEMILIK.forEach(g => { const info = anggotaGrup(g); isi[g.n] = {g, info, label: labelSemua(info)}; });
+  semuaGrupCache = {m: MILIK, p: PROFIL, isi};
+  return isi;
+}
+function singkatGrup(n) { return n.replace(/\s*\(.*\)\s*$/, ""); }
+function panelPemilikEmiten(p) {
+  const kotak = el("div", "alat ph-alat");
+  const ic = el("input", "cari ph-cari");
+  ic.placeholder = "Kode emiten"; ic.value = klEm; ic.maxLength = 4;
+  ic.autocapitalize = "characters"; ic.autocomplete = "off"; ic.spellcheck = false;
+  kotak.appendChild(ic);
+  p.appendChild(kotak);
+  const SG = semuaGrup();
+  /* jalan pintas: emiten yang dipegang >=2 grup */
+  const hit = {};
+  Object.values(SG).forEach(x => Object.keys(x.info).forEach(k => { hit[k] = (hit[k] || 0) + 1; }));
+  const ganda = Object.keys(hit).filter(k => hit[k] > 1).sort();
+  const isi = el("div");
+  p.appendChild(isi);
+  const tampil = () => {
+    isi.innerHTML = "";
+    const k = klEm;
+    if (k.length < 4) {
+      isi.appendChild(el("div", "bantu", "Ketik kode emiten, atau pilih salah satu emiten yang dipegang lebih dari satu grup:"));
+      const ch = el("div", "ph-chip");
+      ganda.forEach(x => { const b = el("button", "kecil", x + " \u00b7 " + hit[x]); b.onclick = () => { klEm = x; ic.value = x; tampil(); }; ch.appendChild(b); });
+      isi.appendChild(ch);
+      return;
+    }
+    const prof = (PROFIL && PROFIL.data && PROFIL.data[k]) || null;
+    const rows = (MILIK.data && MILIK.data[k]) || null;
+    if (!rows) { isi.appendChild(el("div", "bantu bk-salah", k + " tidak ada di data pemegang saham \u22651% per " + tglID(MILIK.tanggal) + ".")); return; }
+    const kep = el("div", "ph-em-kepala");
+    kep.appendChild(el("b", "kode", k));
+    kep.appendChild(el("span", "nm", (prof && prof.nama) || (DATA.nama && DATA.nama[k]) || ""));
+    if (prof && prof.sektor) kep.appendChild(el("span", "ph-lain", prof.sektor + (prof.subsektor ? " \u00b7 " + prof.subsektor : "")));
+    isi.appendChild(kep);
+    const ikut = Object.values(SG).filter(x => x.info[k]).map(x => ({g: x.g, h: x.info[k], L: x.label[k]}))
+      .sort((a, b) => ((a.L.lbl === "pengendali" ? 0 : 1) - (b.L.lbl === "pengendali" ? 0 : 1)) || ((b.L.porsi || 0) - (a.L.porsi || 0)));
+    const bk = el("div", "ph-bukti");
+    bk.appendChild(el("div", "kf-judul", "GRUP PEMILIK " + k + " (" + ikut.length + ")"));
+    if (!ikut.length) bk.appendChild(el("div", "bantu", "Tidak termasuk grup mana pun di daftar. Pemegang terbesar: " +
+      rows[0][0] + " " + persenID(+rows[0][4]) + "."));
+    ikut.forEach(x => {
+      const r = el("div", "ph-bukti-r");
+      r.appendChild(el("b", "ph-em-grup", singkatGrup(x.g.n)));
+      const tk = el("span", "ph-bukti-t", x.h.manual && !x.h.bukti.length ? "ditambah manual"
+        : x.h.bukti.map(b => b[0] + " " + String(b[1]).replace(".", ",") + "%").join(" \u00b7 "));
+      if (x.h.anak) tk.appendChild(el("span", "ph-anak", "(anak usaha)"));
+      if (x.L.lewatAnggota && x.L.lewatAnggota.length) tk.appendChild(el("span", "ph-lain",
+        "+ lewat emiten anggota grup: " + x.L.lewatAnggota.map(y => y[0] + " " + persenID(y[1])).join(" \u00b7 ")));
+      if (x.L.lbl === "minoritas" && x.L.lain) {
+        const peng = ikut.find(y => y.L.lbl === "pengendali");
+        tk.appendChild(el("span", "ph-lain", "pengendali: " + (peng ? "grup " + singkatGrup(peng.g.n) + " " + persenID(peng.L.porsi)
+          : x.L.lain[0] + " " + persenID(x.L.lain[1]))));
+      }
+      r.appendChild(tk);
+      r.appendChild(lencanaPorsi(x.L));
+      r.classList.add("ph-bukti-klik");
+      r.title = "Buka grup " + x.g.n;
+      r.onclick = () => { klPer = "grup"; klGrup = x.g.n; halVolume(); };
+      bk.appendChild(r);
+    });
+    isi.appendChild(bk);
+    /* seluruh pemegang, ditandai nama grupnya */
+    const tandaiSemua = n => { const y = ikut.find(z => tandaiGrup(z.g, z.L)(n)); return y ? singkatGrup(y.g.n) : null; };
+    const rb = el("div", "ph-bukti");
+    rb.appendChild(el("div", "kf-judul", "SELURUH PEMEGANG \u22651% " + k));
+    rb.appendChild(rinciTabel(k, tandaiSemua, (tg, ts) => "Milik grup di daftar: " + persenID(tg) +
+      " \u00b7 tercatat \u22651%: " + persenID(ts) + " \u00b7 sisanya publik di bawah 1%. "));
+    isi.appendChild(rb);
+  };
+  ic.oninput = () => { ic.value = ic.value.replace(/[^a-z]/gi, "").toUpperCase(); klEm = ic.value; if (klEm.length === 4 || !klEm) tampil(); };
+  tampil();
+}   /* {kode: labelGrup} saat sub-menu KLASIFIKASI PEMILIK aktif */
 
 /* anggota satu grup pemilik: {kode: {bukti: [[nama, %]], manual: bool}} */
 function normNamaPT(t) {
@@ -4328,12 +4417,24 @@ function panelPersenHarga(w, mode) {
   w.appendChild(st);
   const p = el("div", "panel");
   p.appendChild(el("h2", null, mode === "sektor" ? "Klasifikasi sektor — %harga per sektor"
-    : mode === "pemilik" ? "Klasifikasi pemilik — %harga per grup" : "%Harga — naik & turun terbesar"));
+    : mode === "pemilik" ? (klPer === "emiten" ? "Klasifikasi pemilik — grup pemilik per emiten" : "Klasifikasi pemilik — %harga per grup")
+    : "%Harga — naik & turun terbesar"));
   if (mode && (!PROFIL || !MILIK)) {
     p.appendChild(el("div", "kosong", "Mengambil data sektor & kepemilikan…"));
     w.appendChild(p);
     muatKlas().then(() => { if (subVol === "persen" && phMode === mode) halVolume(); });
     return;
+  }
+  if (mode === "pemilik") {
+    /* lihat per grup (daftar emiten satu grup) atau per emiten (semua grup pemilik satu emiten) */
+    const sk = el("div", "saklar ph-saklar");
+    [["grup", "Per grup"], ["emiten", "Per emiten"]].forEach(([k, j]) => {
+      const b = el("button", klPer === k ? "aktif" : null, j);
+      b.onclick = () => { klPer = k; halVolume(); };
+      sk.appendChild(b);
+    });
+    p.appendChild(sk);
+    if (klPer === "emiten") { panelPemilikEmiten(p); w.appendChild(p); return; }
   }
   const tgl = [...new Set(daftarHari.map(r => r.tgl))].filter(Boolean).sort();
   if (!tgl.length) { p.appendChild(el("div", "bantu", "Belum ada data harian.")); w.appendChild(p); return; }
@@ -4497,8 +4598,15 @@ function panelPersenHarga(w, mode) {
       const L = phPorsi[k];
       if (L.lewatAnggota && L.lewatAnggota.length) tk.appendChild(el("span", "ph-lain",
         "+ lewat emiten anggota grup: " + L.lewatAnggota.map(x => x[0] + " " + persenID(x[1])).join(" · ")));
-      if (L.lain) tk.appendChild(el("span", "ph-lain", (L.lbl === "pengendali" ? "pemegang lain terbesar: " : "pengendali: ") +
-        L.lain[0] + " " + persenID(L.lain[1])));
+      if (L.lain) {
+        let teks = L.lain[0] + " " + persenID(L.lain[1]);
+        if (L.lbl === "minoritas") {
+          const SG = semuaGrup();
+          const pg = Object.values(SG).find(x => x.g.n !== klGrup && x.info[k] && x.label[k].lbl === "pengendali");
+          if (pg) teks = "grup " + singkatGrup(pg.g.n) + " " + persenID(pg.label[k].porsi);
+        }
+        tk.appendChild(el("span", "ph-lain", (L.lbl === "pengendali" ? "pemegang lain terbesar: " : "pengendali: ") + teks));
+      }
       r.appendChild(tk);
       r.appendChild(lencanaPorsi(L));
       /* ketuk = rincian seluruh pemegang >=1% emiten itu, per bulan */
@@ -4539,10 +4647,16 @@ function panelPersenHarga(w, mode) {
 
 /* rincian pemegang >=1% satu emiten untuk KLASIFIKASI PEMILIK: semua pemegang,
    porsi per pengumuman bulanan, dan tanda mana yang termasuk grup terpilih */
-function rinciPemegang(k, g, L) {
-  const w = el("div");
+function tandaiGrup(g, L) {
   const grupN = new Set((L.namaGrup || []).map(normNamaPT));
-  const diGrup = n => g.p.test(n) || (g.pa ? g.pa.test(n) : false) || grupN.has(normNamaPT(n));
+  return n => g.p.test(n) || (g.pa ? g.pa.test(n) : false) || grupN.has(normNamaPT(n)) ? "grup" : null;
+}
+function rinciPemegang(k, g, L) {
+  return rinciTabel(k, tandaiGrup(g, L), (tg, ts) => "Sisi grup " + g.n + ": " + persenID(tg) +
+    " \u00b7 tercatat \u22651%: " + persenID(ts) + " \u00b7 sisanya publik di bawah 1%. ");
+}
+function rinciTabel(k, tandai, ketAwal) {
+  const w = el("div");
   const rw = MILIK.riwayat && MILIK.riwayat.data && MILIK.riwayat.data[k] ? MILIK.riwayat : null;
   const tg = rw ? rw.tanggal : [MILIK.tanggal];
   const n = tg.length;
@@ -4566,12 +4680,12 @@ function rinciPemegang(k, g, L) {
   t.appendChild(th);
   let totGrup = 0, totSemua = 0;
   baris.forEach(b => {
-    const tr = el("tr"), grup = diGrup(b.n);
+    const tr = el("tr"), grup = tandai(b.n);
     const kini = akhir(b);
     if (kini >= 0) { totSemua += kini; if (grup) totGrup += kini; }
     if (grup) tr.className = "ph-rinci-grup";
     const c0 = el("td", null, b.n + (b.la === "F" ? " (asing)" : ""));
-    if (grup) c0.appendChild(el("span", "ph-rinci-tag", "grup"));
+    if (grup) c0.appendChild(el("span", "ph-rinci-tag", grup));
     tr.appendChild(c0);
     if (n > 1) {
       /* pembanding = angka PERTAMA yang tercatat di rentang, jadi pergeseran
@@ -4598,8 +4712,7 @@ function rinciPemegang(k, g, L) {
   const gulir = el("div", "ph-rinci-gulir");
   gulir.appendChild(t);
   w.appendChild(gulir);
-  w.appendChild(el("div", "ph-rinci-ket", "Sisi grup " + g.n + ": " + persenID(totGrup) +
-    " \u00b7 tercatat \u22651%: " + persenID(totSemua) + " \u00b7 sisanya publik di bawah 1%. " +
+  w.appendChild(el("div", "ph-rinci-ket", ketAwal(totGrup, totSemua) +
     "Angka = % kepemilikan per pengumuman bulanan KSEI, terbaru di kiri; \u2014 = tidak ada di daftar \u22651% bulan itu; " +
     "\u0394 = selisih poin persen dibanding angka pertama pemegang itu di rentang ini (baru = belum ada di awal rentang)."));
   return w;
@@ -5610,7 +5723,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-06-1";
+const VERSI_APP = "2026-10-06-2";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
