@@ -503,6 +503,11 @@ td .ph-porsi{display:block;width:max-content}
 .pt-tbl td:nth-child(2),.pt-tbl th:nth-child(2){text-align:left}
 .pt-hasil{display:flex;flex-direction:column;gap:2px;font-size:12px;background:var(--surface-2);border:1px solid var(--garis);border-radius:9px;padding:7px 9px;margin:6px 0}
 .pt-total td{font-weight:700;background:var(--surface-2)}
+.pt-b.turun{color:var(--turun)}
+.pt-aturan{font-size:12px;border-left:3px solid #2f7d4f;padding:5px 8px;margin:4px 0 8px;background:var(--surface-2);border-radius:0 8px 8px 0}
+.pt-batas{font-weight:700}
+.pt-gap-lewat{background:var(--turun-bg);color:var(--turun);font-weight:700}
+.pt-coret{text-decoration:line-through;opacity:.6}
 .ph-tag{font-size:10px;font-weight:700;color:#d9a441;border:1px solid #d9a441;border-radius:5px;padding:0 5px}
 .ph-kol td:nth-child(2),.ph-kol th:nth-child(2){text-align:left}
 .ph-kol td.no,.ph-kol th:first-child{text-align:center;color:var(--ink-3);padding:6px 3px;width:26px}
@@ -1103,16 +1108,23 @@ let favUrut = "vol", favArah = -1;
    Aturan hasil uji 6 Okt 2026 atas 408 hari bursa (Jan 2025 - Okt 2026), diukur
    di luar sampel 1 Jul 2025 - 30 Sep 2026:
    - semesta: transaksi rata-rata 20 hari >= Rp5 M, harga >= Rp50, ada transaksi
-   - %NF hari ini (net foreign / volume) di 20% teratas semesta, DAN
+   - %NF tanggal sinyal (net foreign / volume) di 20% teratas semesta, DAN
    - lot 10 hari / rata-rata lot 60 hari (x10) di 30% teratas (A) atau 30-50% (B).
+   Data foreign baru ada sesudah bursa tutup, jadi yang realistis BELI DI HARGA
+   BUKA H+1, jual di tutup H+3. Buka naik > +2% dari tutup sinyal menghapus
+   keunggulan (A: +0,21% lawan +0,86%), karena itu ada harga "batas beli".
    Fitur 2 minggu lain (%NF 2 minggu, %harga, partisipasi asing, volatilitas)
    sudah diuji dan tidak menambah apa-apa - jangan ditambahkan tanpa uji ulang. */
 const PT_STAT = {
-  A: {r3: 1.18, p03: 46.8, pex: 49.8, p2: 33.8, m2: 31.9, n: 3395},
-  B: {r3: 0.62, p03: 45.7, pex: 47.3, p2: 30.4, m2: 31.0, n: 2998},
-  lain: {r3: 0.06, p03: 41.9, pex: 42.2, p2: 29.3, m2: 37.2, n: 55126}
+  A: {r3: 0.86, p03: 45.2, m2: 32.8, n: 2995},
+  B: {r3: 0.25, p03: 43.1, m2: 32.6, n: 2752},
+  lain: {r3: -0.24, p03: 39.9, m2: 38.4, n: 60340}
 };
+const PT_GAP_MAX = 2;   /* % - di atas ini jangan dibeli */
 let ptTgl = "", ptAkhir = "";
+/* fraksi harga BEI */
+function fraksiHarga(h) { return h < 200 ? 1 : h < 500 ? 2 : h < 2000 ? 5 : h < 5000 ? 10 : 25; }
+function batasBeli(c) { const x = c * (1 + PT_GAP_MAX / 100), f = fraksiHarga(x); return Math.floor(x / f) * f; }
 function hitungPotensi(tglSinyal) {
   const perTgl = {};
   daftarHari.forEach(r => { if (r.tgl && !perTgl[r.tgl]) perTgl[r.tgl] = r.baris || {}; });
@@ -1121,6 +1133,7 @@ function hitungPotensi(tglSinyal) {
   if (i < 20) return null;
   const hari0 = perTgl[tglSinyal];
   const ambil = (k, n) => tgl.slice(Math.max(0, i - n + 1), i + 1).map(t => perTgl[t][k]).filter(Boolean);
+  const nanti = (k, n) => (i + n < tgl.length && perTgl[tgl[i + n]][k]) || null;
   const semesta = [];
   Object.keys(hari0).forEach(k => {
     const a = hari0[k];
@@ -1128,17 +1141,26 @@ function hitungPotensi(tglSinyal) {
     const h20 = ambil(k, 20);
     const val20 = h20.reduce((s, x) => s + (x.n || 0), 0) / 20;
     if (val20 < 5e9) return;
+    if (a.fb == null && a.fs == null) return;
     const h10 = ambil(k, 10), h60 = ambil(k, 60);
     const v10 = h10.reduce((s, x) => s + (x.v || 0), 0);
     const v60 = h60.reduce((s, x) => s + (x.v || 0), 0) / Math.max(h60.length, 1) * 10;
-    if (a.fb == null && a.fs == null) return;
     const nf1 = ((a.fb || 0) - (a.fs || 0)) / a.v * 100;
     const nf10 = v10 ? h10.reduce((s, x) => s + (x.fb || 0) - (x.fs || 0), 0) / v10 * 100 : null;
     const c10 = i >= 10 ? (perTgl[tgl[i - 10]][k] || {}).c : null;
     const r10 = c10 ? (a.c / c10 - 1) * 100 : null;
-    /* hasil sesudahnya (kalau tanggal sinyal bukan hari terakhir): H+1 .. H+3 */
-    const ke = n => (i + n < tgl.length && perTgl[tgl[i + n]][k] && perTgl[tgl[i + n]][k].c) ? (perTgl[tgl[i + n]][k].c / a.c - 1) * 100 : null;
-    semesta.push({em: k, c: a.c, nf1, nf10, r10, lonjak: v60 ? v10 / v60 : null, val20, h1: ke(1), h3: ke(3)});
+    /* sesudah tanggal sinyal: buka H+1, tutup H+1..H+3 (harga sudah disesuaikan aksi korporasi) */
+    const d1 = nanti(k, 1), d2 = nanti(k, 2), d3 = nanti(k, 3);
+    const o1 = d1 && d1.o ? d1.o : null;
+    const acuan = d1 && d1.p ? d1.p : a.c;
+    const gap = o1 ? (o1 / acuan - 1) * 100 : null;
+    const c1 = d1 && d1.c ? d1.c : null, c2 = d2 && d2.c ? d2.c : null, c3 = d3 && d3.c ? d3.c : null;
+    semesta.push({em: k, c: a.c, batas: batasBeli(a.c), nf1, nf10, r10, lonjak: v60 ? v10 / v60 : null, val20,
+      gap, o1, c1, c2, c3,
+      h1: o1 && c1 ? (c1 / o1 - 1) * 100 : null,
+      h3: o1 && c3 ? (c3 / o1 - 1) * 100 : null,
+      /* hasil sampai tutup TERAKHIR yang sudah ada (H+3, atau H+2/H+1 kalau belum sampai) */
+      hT: o1 && (c3 || c2 || c1) ? ((c3 || c2 || c1) / o1 - 1) * 100 : null});
   });
   const pct = (arr, f) => { const s = arr.filter(x => x[f] !== null).sort((a, b) => a[f] - b[f]);
     s.forEach((x, j) => { x["q_" + f] = s.length > 1 ? j / (s.length - 1) : 0.5; }); };
@@ -1146,7 +1168,7 @@ function hitungPotensi(tglSinyal) {
   semesta.forEach(x => {
     x.tk = x.q_nf1 > 0.8 && x.q_lonjak > 0.7 ? "A" : x.q_nf1 > 0.8 && x.q_lonjak > 0.5 ? "B" : "";
   });
-  return {semesta, sesudah: tgl.length - 1 - i};
+  return {semesta, sesudah: tgl.length - 1 - i, tglNanti: [1, 2, 3].map(n => tgl[i + n] || null)};
 }
 function panelPotensi(w) {
   const p = el("div", "panel");
@@ -1166,52 +1188,67 @@ function panelPotensi(w) {
   const H = hitungPotensi(ptTgl);
   if (!H) { p.appendChild(el("div", "bantu", "Riwayat harga di HP belum cukup (perlu minimal 60 hari bursa).")); w.appendChild(p); return; }
   const K = H.semesta.filter(x => x.tk).sort((a, b) => (a.tk < b.tk ? -1 : a.tk > b.tk ? 1 : 0) || b.nf1 - a.nf1);
-  /* ringkasan peluang hasil uji */
+  const pr = v => v === null || v === undefined || isNaN(v) ? "–" : (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(1).replace(".", ",") + "%";
+  const kls = v => v === null || v === undefined ? "" : v > 0 ? " naik" : v < 0 ? " turun" : "";
+  const tPendek = t => t ? tglID(t) : "H+?";
+  /* kartu peluang hasil uji (beli buka H+1 dengan gap <= +2%, jual tutup H+3) */
   const rg = el("div", "pt-kartu");
-  [["A", "Tingkat A", "lot melonjak 30% teratas"], ["B", "Tingkat B", "lot naik 30–50% teratas"], ["lain", "Saham lain", "pembanding"]].forEach(([k, j, ket]) => {
+  [["A", "Tingkat A"], ["B", "Tingkat B"], ["lain", "Saham lain"]].forEach(([k, j]) => {
     const s = PT_STAT[k], d = el("div", "pt-k " + (k === "lain" ? "" : "t" + k));
     const jum = k === "lain" ? H.semesta.length - K.length : K.filter(x => x.tk === k).length;
     d.appendChild(el("div", "pt-j", j + " · " + jum + " emiten"));
-    d.appendChild(el("div", "pt-b", (s.r3 > 0 ? "+" : "") + String(s.r3).replace(".", ",") + "%"));
-    d.appendChild(el("div", "pt-ket", "rata-rata 3 hari · " + ket));
+    d.appendChild(el("div", "pt-b" + (s.r3 < 0 ? " turun" : ""), (s.r3 > 0 ? "+" : s.r3 < 0 ? "−" : "") + String(Math.abs(s.r3)).replace(".", ",") + "%"));
+    d.appendChild(el("div", "pt-ket", "rata-rata buka H+1 → tutup H+3" + (k === "B" ? " · impas sesudah biaya" : "")));
     d.appendChild(el("div", "pt-ket", "naik >0,3%: " + String(s.p03).replace(".", ",") + "% · turun >2%: " + String(s.m2).replace(".", ",") + "%"));
     rg.appendChild(d);
   });
   p.appendChild(rg);
+  p.appendChild(el("div", "pt-aturan", "Cara pakai: data foreign baru ada malam hari, jadi beli di PEMBUKAAN hari bursa berikutnya. " +
+    "Lewati emiten yang dibuka di atas kolom Batas beli (naik > +" + PT_GAP_MAX + "% dari tutup sinyal). Jual sekitar tutup H+3."));
   const lalu = H.sesudah > 0;
   p.appendChild(el("div", "bantu", tglID(ptTgl) + " · " + H.semesta.length + " emiten di semesta · " + K.length + " kandidat" +
-    (lalu ? " · " + Math.min(H.sesudah, 3) + " hari bursa sudah lewat, hasil nyata ditampilkan" : "")));
-  const pr = v => v === null || v === undefined || isNaN(v) ? "\u2013" : (v > 0 ? "+" : v < 0 ? "\u2212" : "") + Math.abs(v).toFixed(1).replace(".", ",") + "%";
-  const kls = v => v === null || v === undefined ? "" : v > 0 ? " naik" : v < 0 ? " turun" : "";
+    (lalu ? " · " + Math.min(H.sesudah, 3) + " hari bursa sudah lewat, hasil nyata ditampilkan" : " · hasil H+1..H+3 muncul begitu datanya masuk")));
   if (lalu && K.length) {
-    /* hasil nyata sinyal tanggal ini: rata-rata per tingkat lawan semesta */
+    /* hasil nyata: beli buka H+1 (yang gap-nya lolos), jual tutup H+1 / H+3 */
     const rata = (a, f) => { const b = a.filter(x => x[f] !== null); return b.length ? b.reduce((s, x) => s + x[f], 0) / b.length : null; };
+    const lolos = a => a.filter(x => x.gap !== null && x.gap <= PT_GAP_MAX);
     const hn = el("div", "pt-hasil");
-    hn.appendChild(el("b", null, "Hasil nyata sinyal " + tglID(ptTgl) + (H.sesudah < 3 ? " (H+3 belum lengkap)" : "") + ":"));
-    [["A", K.filter(x => x.tk === "A")], ["B", K.filter(x => x.tk === "B")], ["semesta", H.semesta]].forEach(([j, a]) => {
-      const v1 = rata(a, "h1"), v3 = rata(a, "h3");
-      const sp = el("span", null, j + " ");
-      sp.appendChild(el("span", kls(v1).trim(), "H+1 " + pr(v1)));
-      sp.appendChild(document.createTextNode(" \u00b7 "));
-      sp.appendChild(el("span", kls(v3).trim(), "H+3 " + pr(v3)));
+    hn.appendChild(el("b", null, "Hasil nyata sinyal " + tglID(ptTgl) + " (beli buka " + tPendek(H.tglNanti[0]) + ", gap ≤ +" + PT_GAP_MAX + "%)" + (H.sesudah < 3 ? " — H+3 belum lengkap" : "") + ":"));
+    [["A", lolos(K.filter(x => x.tk === "A")), K.filter(x => x.tk === "A")], ["B", lolos(K.filter(x => x.tk === "B")), K.filter(x => x.tk === "B")], ["semesta", H.semesta, H.semesta]].forEach(([j, a, semua]) => {
+      const v1 = rata(a, "h1"), v3 = rata(a, "hT");
+      const sp = el("span", null, j + (j === "semesta" ? "" : " (" + a.length + " dari " + semua.length + ")") + ": ");
+      sp.appendChild(el("span", kls(v1).trim(), "s/d tutup H+1 " + pr(v1)));
+      sp.appendChild(document.createTextNode(" · "));
+      sp.appendChild(el("span", kls(v3).trim(), "s/d tutup H+" + Math.min(H.sesudah, 3) + " " + pr(v3)));
       hn.appendChild(sp);
     });
     p.appendChild(hn);
   }
   const bung = el("div", "tbl-bungkus");
   const t = el("table", "pt-tbl"), th = el("tr");
-  ["Tk", "Emiten", "%NF hari ini", "Lot 2 mg \u00f7 3 bln"].concat(lalu ? ["Hasil H+1", "Hasil H+3"] : [])
-    .concat(["Harga", "%NF 2 mg", "%Harga 2 mg", "Value/hari"])
-    .forEach((j, n) => th.appendChild(el("th", n > 1 ? "num" : null, j)));
+  const kol = ["Tk", "Emiten", "%NF", "Lot 2 mg ÷ 3 bln", "Harga " + tglID(ptTgl), "Batas beli (+" + PT_GAP_MAX + "%)"]
+    .concat(lalu ? ["Gap buka H+1", "Buka H+1", "Tutup " + tPendek(H.tglNanti[0]), "Tutup " + tPendek(H.tglNanti[1]), "Tutup " + tPendek(H.tglNanti[2]), "Hasil buka→H+3"] : [])
+    .concat(["%NF 2 mg", "%Harga 2 mg", "Value/hari"]);
+  kol.forEach((j, n) => th.appendChild(el("th", n > 1 ? "num" : null, j)));
   t.appendChild(th);
+  const hg = (v, dasar) => { const td = el("td", "num", v ? rp(v) : "–"); if (v && dasar) td.className = "num" + kls(v - dasar); return td; };
   K.forEach(x => {
     const tr = el("tr", "klik");
     const c0 = el("td"); c0.appendChild(el("span", "pt-tier t" + x.tk, x.tk)); tr.appendChild(c0);
     const c1 = el("td"); c1.appendChild(el("span", "kode", x.em)); c1.appendChild(el("span", "nm", (DATA.nama && DATA.nama[x.em]) || "")); tr.appendChild(c1);
     tr.appendChild(el("td", "num" + kls(x.nf1), pr(x.nf1)));
-    tr.appendChild(el("td", "num", x.lonjak === null ? "\u2013" : x.lonjak.toFixed(2).replace(".", ",") + "\u00d7"));
-    if (lalu) { tr.appendChild(el("td", "num" + kls(x.h1), pr(x.h1))); tr.appendChild(el("td", "num" + kls(x.h3), pr(x.h3))); }
+    tr.appendChild(el("td", "num", x.lonjak === null ? "–" : x.lonjak.toFixed(2).replace(".", ",") + "×"));
     tr.appendChild(el("td", "num", rp(x.c)));
+    tr.appendChild(el("td", "num pt-batas", rp(x.batas)));
+    if (lalu) {
+      const g = el("td", "num", pr(x.gap));
+      if (x.gap !== null && x.gap > PT_GAP_MAX) { g.className = "num pt-gap-lewat"; g.title = "Dibuka di atas batas beli - dilewati"; }
+      else if (x.gap !== null) g.className = "num" + kls(x.gap);
+      tr.appendChild(g);
+      tr.appendChild(hg(x.o1, x.c));
+      tr.appendChild(hg(x.c1, x.o1)); tr.appendChild(hg(x.c2, x.o1)); tr.appendChild(hg(x.c3, x.o1));
+      tr.appendChild(el("td", "num" + kls(x.hT) + (x.gap !== null && x.gap > PT_GAP_MAX ? " pt-coret" : ""), pr(x.hT)));
+    }
     tr.appendChild(el("td", "num" + kls(x.nf10), pr(x.nf10)));
     tr.appendChild(el("td", "num" + kls(x.r10), pr(x.r10)));
     tr.appendChild(el("td", "num", rpSingkat(x.val20)));
@@ -1219,15 +1256,16 @@ function panelPotensi(w) {
     tr.onclick = () => { rek.em = x.em; rek.dari = ptTgl; rek.sampai = akhir; subScr = "rekomendasi"; halScreener(); };
     t.appendChild(tr);
   });
-  if (!K.length) { const tr = el("tr"); const td = el("td", null, "Tidak ada kandidat di tanggal ini."); td.colSpan = 8; tr.appendChild(td); t.appendChild(tr); }
+  if (!K.length) { const tr = el("tr"); const td = el("td", null, "Tidak ada kandidat di tanggal ini."); td.colSpan = kol.length; tr.appendChild(td); t.appendChild(tr); }
   bung.appendChild(t); p.appendChild(bung);
   p.appendChild(el("div", "bantu",
-    "Semesta: emiten dengan transaksi rata-rata 20 hari \u2265 Rp5 M dan harga \u2265 Rp50. " +
-    "A = %NF hari ini (net foreign \u00f7 volume) di 20% teratas DAN lot 10 hari \u00f7 rata-rata 3 bulan di 30% teratas; " +
-    "B = sama, lonjakan lot di 30\u201350% teratas. Urutan di tiap tingkat: %NF hari ini terbesar. " +
-    "Angka peluang di kartu dari uji luar sampel 1 Jul 2025 \u2013 30 Sep 2026 (298 hari bursa): " +
-    "peluang per saham tetap di bawah 50%, keunggulannya pada rata-rata. Sinyal terkuat 1\u20133 hari, habis \u00b110 hari. " +
-    "Pilih tanggal lampau untuk melihat hasil nyata sesudahnya. Ketuk baris untuk membuka Rekomendasi. Bukan rekomendasi investasi."));
+    "Semesta: emiten dengan transaksi rata-rata 20 hari ≥ Rp5 M dan harga ≥ Rp50. %NF = net foreign ÷ volume pada tanggal sinyal. " +
+    "A = %NF di 20% teratas DAN lot 10 hari ÷ rata-rata 3 bulan di 30% teratas; B = sama, lonjakan lot 30–50% teratas. " +
+    "Urutan di tiap tingkat: %NF terbesar. Batas beli = tutup sinyal + " + PT_GAP_MAX + "%, dibulatkan ke fraksi harga BEI: " +
+    "pagi hari bandingkan harga pembukaan di aplikasi sekuritas dengan angka ini. Gap buka H+1 merah = dibuka di atas batas (hasilnya dicoret). " +
+    "Harga H+1..H+3 berwarna hijau/merah terhadap harga buka H+1. Angka di kartu dari uji luar sampel 1 Jul 2025 – 30 Sep 2026: " +
+    "peluang per saham di bawah 50%, keunggulannya pada rata-rata; tingkat B impas sesudah biaya ±0,3%. " +
+    "Pilih tanggal lampau untuk melihat hasil nyata. Ketuk baris untuk membuka Rekomendasi. Bukan rekomendasi investasi."));
   w.appendChild(p);
 }
 
@@ -5867,7 +5905,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-06-4";
+const VERSI_APP = "2026-10-06-5";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
