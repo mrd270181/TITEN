@@ -492,6 +492,17 @@ td .ph-porsi{display:block;width:max-content}
 .ph-em-kepala .kode{font-size:17px}
 .ph-em-kepala .ph-lain{flex-basis:100%}
 .ph-em-grup{min-width:86px;font-size:12px}
+.pt-kartu{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:8px 0}
+.pt-k{border:1px solid var(--garis);border-radius:9px;padding:7px 8px;background:var(--surface-2)}
+.pt-k.tA{border-color:#2f7d4f} .pt-k.tB{border-color:#6ea54a}
+.pt-j{font-size:11px;font-weight:700;color:var(--ink-2)} .pt-b{font-size:19px;font-weight:800;color:var(--naik)}
+.pt-ket{font-size:10px;color:var(--ink-3);line-height:1.35}
+.pt-tier{display:inline-block;width:20px;text-align:center;border-radius:5px;color:#fff;font-weight:700;font-size:11px}
+.pt-tier.tA{background:#2f7d4f} .pt-tier.tB{background:#6ea54a}
+.pt-tbl td .nm{display:block;max-width:150px;overflow:hidden;text-overflow:ellipsis}
+.pt-tbl td:nth-child(2),.pt-tbl th:nth-child(2){text-align:left}
+.pt-hasil{display:flex;flex-direction:column;gap:2px;font-size:12px;background:var(--surface-2);border:1px solid var(--garis);border-radius:9px;padding:7px 9px;margin:6px 0}
+.pt-total td{font-weight:700;background:var(--surface-2)}
 .ph-tag{font-size:10px;font-weight:700;color:#d9a441;border:1px solid #d9a441;border-radius:5px;padding:0 5px}
 .ph-kol td:nth-child(2),.ph-kol th:nth-child(2){text-align:left}
 .ph-kol td.no,.ph-kol th:first-child{text-align:center;color:var(--ink-3);padding:6px 3px;width:26px}
@@ -1087,6 +1098,138 @@ let bkDari = "", bkSampai = "", bkAkhir = "", bkMin = 5,   /* BROKER AKUM */
 let favDari = "", favSampai = "", favAkhir = "";
 let favKriteria = [{gab: "DAN", metrik: "pnet", op: ">", nilai: null}];
 let favUrut = "vol", favArah = -1;
+
+/* ---------- POTENSI 3 HARI ----------
+   Aturan hasil uji 6 Okt 2026 atas 408 hari bursa (Jan 2025 - Okt 2026), diukur
+   di luar sampel 1 Jul 2025 - 30 Sep 2026:
+   - semesta: transaksi rata-rata 20 hari >= Rp5 M, harga >= Rp50, ada transaksi
+   - %NF hari ini (net foreign / volume) di 20% teratas semesta, DAN
+   - lot 10 hari / rata-rata lot 60 hari (x10) di 30% teratas (A) atau 30-50% (B).
+   Fitur 2 minggu lain (%NF 2 minggu, %harga, partisipasi asing, volatilitas)
+   sudah diuji dan tidak menambah apa-apa - jangan ditambahkan tanpa uji ulang. */
+const PT_STAT = {
+  A: {r3: 1.18, p03: 46.8, pex: 49.8, p2: 33.8, m2: 31.9, n: 3395},
+  B: {r3: 0.62, p03: 45.7, pex: 47.3, p2: 30.4, m2: 31.0, n: 2998},
+  lain: {r3: 0.06, p03: 41.9, pex: 42.2, p2: 29.3, m2: 37.2, n: 55126}
+};
+let ptTgl = "", ptAkhir = "";
+function hitungPotensi(tglSinyal) {
+  const perTgl = {};
+  daftarHari.forEach(r => { if (r.tgl && !perTgl[r.tgl]) perTgl[r.tgl] = r.baris || {}; });
+  const tgl = Object.keys(perTgl).sort();
+  const i = tgl.indexOf(tglSinyal);
+  if (i < 20) return null;
+  const hari0 = perTgl[tglSinyal];
+  const ambil = (k, n) => tgl.slice(Math.max(0, i - n + 1), i + 1).map(t => perTgl[t][k]).filter(Boolean);
+  const semesta = [];
+  Object.keys(hari0).forEach(k => {
+    const a = hari0[k];
+    if (!a || !a.v || !a.c || a.c < 50) return;
+    const h20 = ambil(k, 20);
+    const val20 = h20.reduce((s, x) => s + (x.n || 0), 0) / 20;
+    if (val20 < 5e9) return;
+    const h10 = ambil(k, 10), h60 = ambil(k, 60);
+    const v10 = h10.reduce((s, x) => s + (x.v || 0), 0);
+    const v60 = h60.reduce((s, x) => s + (x.v || 0), 0) / Math.max(h60.length, 1) * 10;
+    if (a.fb == null && a.fs == null) return;
+    const nf1 = ((a.fb || 0) - (a.fs || 0)) / a.v * 100;
+    const nf10 = v10 ? h10.reduce((s, x) => s + (x.fb || 0) - (x.fs || 0), 0) / v10 * 100 : null;
+    const c10 = i >= 10 ? (perTgl[tgl[i - 10]][k] || {}).c : null;
+    const r10 = c10 ? (a.c / c10 - 1) * 100 : null;
+    /* hasil sesudahnya (kalau tanggal sinyal bukan hari terakhir): H+1 .. H+3 */
+    const ke = n => (i + n < tgl.length && perTgl[tgl[i + n]][k] && perTgl[tgl[i + n]][k].c) ? (perTgl[tgl[i + n]][k].c / a.c - 1) * 100 : null;
+    semesta.push({em: k, c: a.c, nf1, nf10, r10, lonjak: v60 ? v10 / v60 : null, val20, h1: ke(1), h3: ke(3)});
+  });
+  const pct = (arr, f) => { const s = arr.filter(x => x[f] !== null).sort((a, b) => a[f] - b[f]);
+    s.forEach((x, j) => { x["q_" + f] = s.length > 1 ? j / (s.length - 1) : 0.5; }); };
+  pct(semesta, "nf1"); pct(semesta, "lonjak");
+  semesta.forEach(x => {
+    x.tk = x.q_nf1 > 0.8 && x.q_lonjak > 0.7 ? "A" : x.q_nf1 > 0.8 && x.q_lonjak > 0.5 ? "B" : "";
+  });
+  return {semesta, sesudah: tgl.length - 1 - i};
+}
+function panelPotensi(w) {
+  const p = el("div", "panel");
+  p.appendChild(el("h2", null, "Potensi 3 hari — asing net beli + lonjakan lot"));
+  const tgl = [...new Set(daftarHari.map(r => r.tgl))].filter(Boolean).sort();
+  const akhir = tgl[tgl.length - 1];
+  if (akhir !== ptAkhir) { ptAkhir = akhir; ptTgl = akhir; }
+  if (tgl.indexOf(ptTgl) < 0) ptTgl = akhir;
+  const rt = el("div", "alat");
+  const lb = el("label", "bantu", "Sinyal tanggal: ");
+  lb.appendChild(kotakTanggal(ptTgl, tgl.slice(60), t => { ptTgl = t; halScreener(); }));
+  rt.appendChild(lb);
+  const bT = el("button", "kecil", "Terbaru");
+  bT.onclick = () => { ptTgl = akhir; halScreener(); };
+  rt.appendChild(bT);
+  p.appendChild(rt);
+  const H = hitungPotensi(ptTgl);
+  if (!H) { p.appendChild(el("div", "bantu", "Riwayat harga di HP belum cukup (perlu minimal 60 hari bursa).")); w.appendChild(p); return; }
+  const K = H.semesta.filter(x => x.tk).sort((a, b) => (a.tk < b.tk ? -1 : a.tk > b.tk ? 1 : 0) || b.nf1 - a.nf1);
+  /* ringkasan peluang hasil uji */
+  const rg = el("div", "pt-kartu");
+  [["A", "Tingkat A", "lot melonjak 30% teratas"], ["B", "Tingkat B", "lot naik 30–50% teratas"], ["lain", "Saham lain", "pembanding"]].forEach(([k, j, ket]) => {
+    const s = PT_STAT[k], d = el("div", "pt-k " + (k === "lain" ? "" : "t" + k));
+    const jum = k === "lain" ? H.semesta.length - K.length : K.filter(x => x.tk === k).length;
+    d.appendChild(el("div", "pt-j", j + " · " + jum + " emiten"));
+    d.appendChild(el("div", "pt-b", (s.r3 > 0 ? "+" : "") + String(s.r3).replace(".", ",") + "%"));
+    d.appendChild(el("div", "pt-ket", "rata-rata 3 hari · " + ket));
+    d.appendChild(el("div", "pt-ket", "naik >0,3%: " + String(s.p03).replace(".", ",") + "% · turun >2%: " + String(s.m2).replace(".", ",") + "%"));
+    rg.appendChild(d);
+  });
+  p.appendChild(rg);
+  const lalu = H.sesudah > 0;
+  p.appendChild(el("div", "bantu", tglID(ptTgl) + " · " + H.semesta.length + " emiten di semesta · " + K.length + " kandidat" +
+    (lalu ? " · " + Math.min(H.sesudah, 3) + " hari bursa sudah lewat, hasil nyata ditampilkan" : "")));
+  const pr = v => v === null || v === undefined || isNaN(v) ? "\u2013" : (v > 0 ? "+" : v < 0 ? "\u2212" : "") + Math.abs(v).toFixed(1).replace(".", ",") + "%";
+  const kls = v => v === null || v === undefined ? "" : v > 0 ? " naik" : v < 0 ? " turun" : "";
+  if (lalu && K.length) {
+    /* hasil nyata sinyal tanggal ini: rata-rata per tingkat lawan semesta */
+    const rata = (a, f) => { const b = a.filter(x => x[f] !== null); return b.length ? b.reduce((s, x) => s + x[f], 0) / b.length : null; };
+    const hn = el("div", "pt-hasil");
+    hn.appendChild(el("b", null, "Hasil nyata sinyal " + tglID(ptTgl) + (H.sesudah < 3 ? " (H+3 belum lengkap)" : "") + ":"));
+    [["A", K.filter(x => x.tk === "A")], ["B", K.filter(x => x.tk === "B")], ["semesta", H.semesta]].forEach(([j, a]) => {
+      const v1 = rata(a, "h1"), v3 = rata(a, "h3");
+      const sp = el("span", null, j + " ");
+      sp.appendChild(el("span", kls(v1).trim(), "H+1 " + pr(v1)));
+      sp.appendChild(document.createTextNode(" \u00b7 "));
+      sp.appendChild(el("span", kls(v3).trim(), "H+3 " + pr(v3)));
+      hn.appendChild(sp);
+    });
+    p.appendChild(hn);
+  }
+  const bung = el("div", "tbl-bungkus");
+  const t = el("table", "pt-tbl"), th = el("tr");
+  ["Tk", "Emiten", "%NF hari ini", "Lot 2 mg \u00f7 3 bln"].concat(lalu ? ["Hasil H+1", "Hasil H+3"] : [])
+    .concat(["Harga", "%NF 2 mg", "%Harga 2 mg", "Value/hari"])
+    .forEach((j, n) => th.appendChild(el("th", n > 1 ? "num" : null, j)));
+  t.appendChild(th);
+  K.forEach(x => {
+    const tr = el("tr", "klik");
+    const c0 = el("td"); c0.appendChild(el("span", "pt-tier t" + x.tk, x.tk)); tr.appendChild(c0);
+    const c1 = el("td"); c1.appendChild(el("span", "kode", x.em)); c1.appendChild(el("span", "nm", (DATA.nama && DATA.nama[x.em]) || "")); tr.appendChild(c1);
+    tr.appendChild(el("td", "num" + kls(x.nf1), pr(x.nf1)));
+    tr.appendChild(el("td", "num", x.lonjak === null ? "\u2013" : x.lonjak.toFixed(2).replace(".", ",") + "\u00d7"));
+    if (lalu) { tr.appendChild(el("td", "num" + kls(x.h1), pr(x.h1))); tr.appendChild(el("td", "num" + kls(x.h3), pr(x.h3))); }
+    tr.appendChild(el("td", "num", rp(x.c)));
+    tr.appendChild(el("td", "num" + kls(x.nf10), pr(x.nf10)));
+    tr.appendChild(el("td", "num" + kls(x.r10), pr(x.r10)));
+    tr.appendChild(el("td", "num", rpSingkat(x.val20)));
+    tr.title = "Buka Rekomendasi " + x.em;
+    tr.onclick = () => { rek.em = x.em; rek.dari = ptTgl; rek.sampai = akhir; subScr = "rekomendasi"; halScreener(); };
+    t.appendChild(tr);
+  });
+  if (!K.length) { const tr = el("tr"); const td = el("td", null, "Tidak ada kandidat di tanggal ini."); td.colSpan = 8; tr.appendChild(td); t.appendChild(tr); }
+  bung.appendChild(t); p.appendChild(bung);
+  p.appendChild(el("div", "bantu",
+    "Semesta: emiten dengan transaksi rata-rata 20 hari \u2265 Rp5 M dan harga \u2265 Rp50. " +
+    "A = %NF hari ini (net foreign \u00f7 volume) di 20% teratas DAN lot 10 hari \u00f7 rata-rata 3 bulan di 30% teratas; " +
+    "B = sama, lonjakan lot di 30\u201350% teratas. Urutan di tiap tingkat: %NF hari ini terbesar. " +
+    "Angka peluang di kartu dari uji luar sampel 1 Jul 2025 \u2013 30 Sep 2026 (298 hari bursa): " +
+    "peluang per saham tetap di bawah 50%, keunggulannya pada rata-rata. Sinyal terkuat 1\u20133 hari, habis \u00b110 hari. " +
+    "Pilih tanggal lampau untuk melihat hasil nyata sesudahnya. Ketuk baris untuk membuka Rekomendasi. Bukan rekomendasi investasi."));
+  w.appendChild(p);
+}
 
 /* ---------- HARGA & VOL ----------
    Rentang tanggalnya SENDIRI, tidak ikut ANALISA FAVORIT: di sana bawaannya
@@ -3295,7 +3438,7 @@ function halScreener() {
   const tab = el("div", "sub-tab lima");
   [["saringan", "KRITERIA SARINGAN"], ["favorit", "ANALISA FAVORIT"],
    ["rekomendasi", "REKOMENDASI"], ["forakum", "FOREIGN AKUM"],
-   ["brkakum", "BROKER AKUM"], ["hargavol", "HARGA & VOL"]]
+   ["brkakum", "BROKER AKUM"], ["hargavol", "HARGA & VOL"], ["potensi", "POTENSI 3 HARI"]]
     .forEach(([k, judul]) => {
       const b = el("button", subScr === k ? "aktif" : null, judul);
       b.onclick = () => { subScr = k; halScreener(); };
@@ -3307,6 +3450,7 @@ function halScreener() {
   if (subScr === "forakum") { panelForeignAkum(w); return; }
   if (subScr === "brkakum") { panelBrokerAkum(w); return; }
   if (subScr === "hargavol") { panelHargaVol(w); return; }
+  if (subScr === "potensi") { panelPotensi(w); return; }
 
   const p = el("div", "panel");
   p.appendChild(el("h2", null, "Kriteria saringan"));
@@ -5723,7 +5867,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-06-2";
+const VERSI_APP = "2026-10-06-4";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -6543,8 +6687,9 @@ function gambarUlang() {
    tepat sebelumnya - kalau ada hari yang bolong (mis. 25 Agu 2026 tidak ada),
    p berasal dari hari yang tidak kita punya dan rasionya palsu; (2) rasio
    >= 1,8 atau <= 0,55 - pergerakan sebesar itu mustahil dalam sehari (ARA/ARB
-   maks ~35%); (3) penutupan hari itu wajar terhadap p (0,6-1,6x). Rights issue
-   dengan rasio kecil sengaja tidak ikut: bedanya kecil, risiko salahnya besar. Semua harga sebelum tanggal
+   maks ~35%); (3) penutupan hari itu wajar terhadap p (0,6-1,6x). Sejak versi
+   2026-10-06-3 rasio kecil (rights issue, saham bonus) juga ikut, asal tanggal
+   itu bukan tanggal "massal" (hari bolong). Semua harga sebelum tanggal
    itu dibagi rasio, volume dikali rasio. Hasilnya idempoten: data yang sudah
    disesuaikan tidak memicu penyesuaian lagi, karena rasionya jadi 1.
 
@@ -6570,6 +6715,22 @@ function sesuaikanSplitHarga(rekaman) {
     const hari = Math.round((b - a) / 864e5);
     return hari === 1 || (hari === 3 && b.getUTCDay() === 1);
   };
+  /* Tanggal "massal": kalau banyak emiten sekaligus punya p != penutupan hari
+     sebelumnya di HP, itu tanda ada hari bursa yang bolong (data 7 Feb, 18 Sep,
+     1 Des 2025 begitu: >70% emiten), bukan aksi korporasi. */
+  const massal = {};
+  {
+    const nBeda = {}, nAda = {};
+    Object.keys(perEm).forEach(k => {
+      const L = perEm[k].slice().sort((a, b) => a.tgl < b.tgl ? -1 : 1);
+      let cK = 0;
+      L.forEach(r => { const b = r.baris[k];
+        if (b.p > 0 && cK > 0) { nAda[r.tgl] = (nAda[r.tgl] || 0) + 1;
+          if (Math.abs(cK / b.p - 1) > 0.005) nBeda[r.tgl] = (nBeda[r.tgl] || 0) + 1; }
+        if (b.c > 0) cK = b.c; });
+    });
+    Object.keys(nBeda).forEach(t => { if (nBeda[t] > 0.03 * nAda[t] && nBeda[t] > 5) massal[t] = true; });
+  }
   Object.keys(perEm).forEach(k => {
     const L = perEm[k].slice().sort((a, b) => a.tgl < b.tgl ? -1 : 1);
     const ev = [];
@@ -6578,13 +6739,21 @@ function sesuaikanSplitHarga(rekaman) {
       const b = r.baris[k];
       if (b.p > 0 && cKemarin > 0 && b.c > 0 && tKemarin === tglSebelum[r.tgl]) {
         const rasio = cKemarin / b.p, wajar = b.c / b.p;
-        if ((rasio >= 1.8 || rasio <= 0.55) && wajar > 0.6 && wajar < 1.6) {
+        /* besar = split / reverse split. kecil = rights issue, saham bonus dsb.
+           (mis. ENRG 5 Okt 2026: tutup 1.440, p 1.065, rasio 1,35) - dipercaya
+           kalau tanggal itu bukan tanggal massal (hari bolong) */
+        const besar = rasio >= 1.8 || rasio <= 0.55;
+        const kecil = !besar && Math.abs(rasio - 1) > 0.005 && !massal[r.tgl];
+        if ((besar || kecil) && wajar > 0.6 && wajar < 1.6) {
           const lsR = (b.ls > 0 && lsKemarin > 0) ? b.ls / lsKemarin : 0;
-          const lsCocok = lsR > 0 && Math.abs(lsR / rasio - 1) < 0.1;
+          /* saham tercatat harus BENAR berubah, sebanding rasio - toleransi ikut
+             mengecil untuk rasio kecil supaya ls yang tetap tidak dianggap cocok */
+          const lsCocok = lsR > 0 && Math.abs(lsR - 1) > 0.005 &&
+            Math.abs(lsR / rasio - 1) < Math.min(0.1, Math.abs(rasio - 1) * 0.25);
           const bulat = Math.abs(rasio - Math.round(rasio)) < 0.06 && rasio >= 1.9;
           /* harga naik tajam (rasio < 1, reverse split) hanya dipercaya kalau
              saham tercatat ikut menyusut; jarak tanggal janggal juga begitu */
-          const percaya = lsCocok || (rasio >= 1.8 && jarakNormal(r.tgl));
+          const percaya = lsCocok || (besar ? rasio >= 1.8 && jarakNormal(r.tgl) : true);
           if (percaya) ev.push({tgl: r.tgl, r: rasio, split: lsCocok || bulat});
         }
       }
