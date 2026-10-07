@@ -634,6 +634,9 @@ th.rek-b,td.rek-b{background:var(--naik-bg)}
 th.rek-j,td.rek-j{background:var(--turun-bg)}
 th.rek-gb,th.rek-gj{text-align:center}
 td.rek-lawan{outline:1.5px solid currentColor;outline-offset:-3px;font-weight:800}
+.rek-pv{display:block;font-size:.8em;font-weight:400;opacity:.75;margin-top:1px}
+.rek-ng{margin:14px 0 6px;padding:12px 14px;border:1px solid var(--line,#333);border-radius:8px}
+.rek-ng h2{margin:0 0 4px}
 .rek-avg{margin-left:4px;font-weight:400;opacity:.7;font-size:.88em;white-space:nowrap}
 tfoot td{border-top:2px solid var(--garis);font-weight:800;background:var(--surface-2)}
 #barisVersi{
@@ -3197,9 +3200,13 @@ function rekAvgSisi(a, net) {
 }
 
 /* sel lot + harga rata-rata dalam kurung di kanannya */
-function rekSelLot(kelas, v, avg) {
+function rekSelLot(kelas, v, avg, vol) {
   const td = el("td", kelas, rekLot(v));
   if (avg) td.appendChild(el("span", "rek-avg", "(" + Math.round(avg).toLocaleString("id-ID") + ")"));
+  /* %Net/V. Tot di bawah lot: net broker ÷ volume emiten (hari itu, atau sepanjang
+     rentang di baris TOTAL) - satuan yang sama dengan label AKUM besar >= 2% */
+  if (vol) { const p = Math.round(v / vol * 10000) / 100 || 0;
+    td.appendChild(el("span", "rek-pv", (p > 0 ? "+" : "") + p.toFixed(2).replace(".", ",") + "%")); }
   return td;
 }
 
@@ -3538,6 +3545,33 @@ function panelRekomendasi(w) {
     tglID(akhir.tgl) + " · reguler"));
   p.appendChild(kartu);
 
+  /* ---- % NET TERHADAP GROSS: batang panjang sama dengan menu BROKER > %NET > RASIO ---- */
+  {
+    const cekNG = periksaGross(rek.em, rek.pasar, rek.dari, rek.sampai);
+    const ng = el("div", "rek-ng");
+    ng.appendChild(el("h2", null, "% Net terhadap gross \u2014 " + rek.em));
+    ng.appendChild(el("div", "bantu", tglID(rek.dari) + " \u2013 " + tglID(rek.sampai) + " \u00b7 " + rek.pasar));
+    if (!cekNG.semuaGross || !gross) {
+      ng.appendChild(el("div", "bantu", "Rasio tidak dihitung: data broker pada rentang ini bukan (seluruhnya) GROSS IPOT."));
+    } else {
+      ng.appendChild(batangRasio(netPindah, gross));
+      ng.appendChild(el("div", "bantu",
+        "Gross " + rp(gross) + " lot \u00b7 berpindah " + rp(netPindah) + " lot (" +
+        (netPindah / gross * 100).toFixed(1).replace(".", ",") + "%) \u00b7 crossing " +
+        rp(gross - netPindah) + " lot (" + ((gross - netPindah) / gross * 100).toFixed(1).replace(".", ",") + "%)"));
+      let tb = "", tp = 0;
+      Object.keys(agg).forEach(k => { const m = Math.min(agg[k].beli, agg[k].jual); if (m > tp) { tp = m; tb = k; } });
+      if (tb && gross - netPindah > 0) ng.appendChild(el("div", "bantu",
+        "Perputaran terbesar: " + tb + " (" + namaBroker(tb) + ") " + rp(tp) + " lot, " +
+        Math.round(tp / (gross - netPindah) * 100) + "% dari seluruh crossing emiten ini."));
+      ng.appendChild(el("div", "bantu",
+        "Gross = jumlah sisi BELI seluruh broker, yaitu volume emiten itu sendiri (pilih pasar REGULER supaya sebanding dengan volume IDX). " +
+        "Hijau = lot yang benar-benar berpindah antar broker (= jumlah %Net/V. Tot semua broker net beli). Kelabu = lot yang cuma " +
+        "berputar di broker yang sama. Porsi kecil di tengah volume besar berarti ramainya semu. Bandingkan dengan kebiasaan saham itu sendiri, bukan dengan saham lain."));
+    }
+    p.appendChild(ng);
+  }
+
   /* ---- strip posisi: 5 pemegang terbesar & 5 pengurang terbesar ---- */
   if (adaBroker) {
     const hasilPos = rekPosisi(rek.em);
@@ -3653,7 +3687,9 @@ function panelRekomendasi(w) {
     const d = (i && sblm && x.c) ? (x.c / sblm - 1) * 100 : null;
     tr.appendChild(el("td", "num" + (d === null ? "" : " " + arah(d).k),
                       d === null ? "–" : rekPersen(d, 1)));
-    tr.appendChild(el("td", "num " + arah(x.nf).k, rekLot(x.nf / LOT)));
+    { const td = el("td", "num " + arah(x.nf).k, rekLot(x.nf / LOT));
+      if (x.v) td.appendChild(el("span", "rek-avg", "(" + rekPersen(x.nf / x.v * 100) + ")"));
+      tr.appendChild(td); }
     tr.appendChild(el("td", "num", lotSingkat(Math.round(x.v / LOT))));
     tr.appendChild(el("td", "num", x.n ? rpSingkat(x.n) : "\u2013"));
     if (adaBroker) {
@@ -3662,12 +3698,12 @@ function panelRekomendasi(w) {
       brBeli.forEach(k => {
         const v = hari[k] || 0;
         tr.appendChild(rekSelLot("num rek-b " + arah(v).k + (v < 0 ? " rek-lawan" : ""),
-                                 v, rekAvgSisi(avH[k], v)));
+                                 v, rekAvgSisi(avH[k], v), x.v / LOT));
       });
       brJual.forEach(k => {
         const v = hari[k] || 0;
         tr.appendChild(rekSelLot("num rek-j " + arah(v).k + (v > 0 ? " rek-lawan" : ""),
-                                 v, rekAvgSisi(avH[k], v)));
+                                 v, rekAvgSisi(avH[k], v), x.v / LOT));
       });
     }
     tbody.appendChild(tr);
@@ -3679,14 +3715,16 @@ function panelRekomendasi(w) {
   trf.appendChild(el("td", "num", ""));
   trf.appendChild(el("td", "num" + (totPct === null ? "" : " " + arah(totPct).k),
                      rekPersen(totPct, 1)));
-  trf.appendChild(el("td", "num " + arah(nfTot).k, rekLot(nfTot / LOT)));
+  { const td = el("td", "num " + arah(nfTot).k, rekLot(nfTot / LOT));
+    if (volTot) td.appendChild(el("span", "rek-avg", "(" + rekPersen(nfTot / volTot * 100) + ")"));
+    trf.appendChild(td); }
   trf.appendChild(el("td", "num", lotSingkat(Math.round(volTot / LOT))));
   trf.appendChild(el("td", "num", valTot ? rpSingkat(valTot) : "\u2013"));
   if (adaBroker) {
     brBeli.forEach(k => trf.appendChild(rekSelLot("num rek-b " + arah(brk.total[k]).k,
-      brk.total[k], rekAvgSisi(brk.avgTot[k], brk.total[k]))));
+      brk.total[k], rekAvgSisi(brk.avgTot[k], brk.total[k]), volTot / LOT)));
     brJual.forEach(k => trf.appendChild(rekSelLot("num rek-j " + arah(brk.total[k]).k,
-      brk.total[k], rekAvgSisi(brk.avgTot[k], brk.total[k]))));
+      brk.total[k], rekAvgSisi(brk.avgTot[k], brk.total[k]), volTot / LOT)));
   }
   tfoot.appendChild(trf); t.appendChild(tfoot);
   bungkus.appendChild(t); p.appendChild(bungkus);
@@ -3702,7 +3740,10 @@ function panelRekomendasi(w) {
       "rata-rata sepanjang rentang. Sel bergaris kotak = hari yang " +
       "arahnya berlawanan dengan arah broker itu sepanjang rentang — pembeli " +
       "terbesar yang ternyata net jual hari itu, atau sebaliknya. Justru hari " +
-      "seperti itu yang berguna dilihat, jadi tidak disembunyikan."));
+      "seperti itu yang berguna dilihat, jadi tidak disembunyikan. " +
+      "Angka kecil di bawah lot = %Net/V. Tot: net broker \u00f7 volume emiten hari itu " +
+      "(baris TOTAL: sepanjang rentang) \u2014 sama dengan label AKUM besar (\u2265 2%) di POTENSI 3 HARI. " +
+      "Angka dalam kurung di kolom Net Foreign = %NF (net asing \u00f7 volume)."));
   } else {
     p.appendChild(el("div", "bantu",
       rek.em + " tidak ada di daftar pantau, jadi data brokernya memang tidak " +
@@ -6623,7 +6664,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-07-13";
+const VERSI_APP = "2026-10-07-15";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -9912,7 +9953,10 @@ function panelDashboard(w) {
             pputar: pnet === null ? null : 100 - Math.abs(pnet),
             /* %Net/V. Tot = Net Lot dibagi VOLUME EMITEN (gross di panel atas) -
                satuan yang sama dengan label AKUM besar (>= 2%) di POTENSI 3 HARI. */
-            pvol: gross ? (Math.round((a.beli - a.jual) / gross * 10000) / 100 || 0) : null};
+            pvol: gross ? (Math.round((a.beli - a.jual) / gross * 10000) / 100 || 0) : null,
+            /* %Partisipasi = Net Lot \u00f7 total net (lot yang benar-benar berpindah):
+               broker net beli berjumlah +100%, net jual -100% */
+            ppart: net ? (Math.round((a.beli - a.jual) / net * 1000) / 10 || 0) : null};
   });
   const p2 = el("div", "panel");
   p2.appendChild(el("h2", null, "Rasio tiap broker"));
@@ -9925,6 +9969,7 @@ function panelDashboard(w) {
     {judul: "%Net", kunci: "pnet", angka: true, persen: true, silang: true},
     {judul: "%Crossing", kunci: "pputar", angka: true, persen: true},
     {judul: "%Net/V. Tot", kunci: "pvol", angka: true, persen: true, warna: true},
+    {judul: "%Partisipasi (Net/Net V. Tot)", kunci: "ppart", angka: true, persen: true, warna: true},
   ], baris, "pputar", true));
   p2.appendChild(el("div", "bantu",
     "Contoh: CC beli 100 jual 90 berarti %Net 10% dan %Crossing 90% — keduanya selalu " +
@@ -9933,7 +9978,10 @@ function panelDashboard(w) {
     "%Net/V. Tot = Net Lot dibagi volume total emiten (Gross di panel atas): seberapa besar " +
     "net broker ini dibanding seluruh transaksi saham itu. Contoh: net 19.000 lot dari " +
     "volume 3.053.767 lot = 0,62%. Angka inilah yang dipakai label AKUM besar (\u2265 2%) " +
-    "di POTENSI 3 HARI."));
+    "di POTENSI 3 HARI; semua broker net beli dijumlah = % berpindah di panel atas, bukan 100%. " +
+    "%Partisipasi (Net/Net V. Tot) = Net Lot dibagi TOTAL lot yang benar-benar berpindah (net seluruh broker): " +
+    "net 19.000 dari 632.052 = 3,0%. Broker net beli dijumlah tepat +100%, net jual \u2212100%. " +
+    "Untuk sinyal pakai %Net/V. Tot; %Partisipasi hanya keterangan siapa yang menguasai barang yang berpindah."));
   w.appendChild(p2);
 
   /* ---------- 3. satu broker, hari per hari ---------- */
