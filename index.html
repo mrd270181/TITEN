@@ -508,6 +508,31 @@ td .ph-porsi{display:block;width:max-content}
 .pt-batas{font-weight:700}
 .pt-gap-lewat{background:var(--turun-bg);color:var(--turun);font-weight:700}
 .pt-coret{text-decoration:line-through;opacity:.6}
+.pt-tier.tP{background:#8a8f98}
+.pt-mf{border:2px solid var(--naik);border-radius:12px;padding:10px 12px;margin:8px 0 10px;background:var(--surface-2)}
+.pt-mf-j{font-weight:800;font-size:12.5px;margin-bottom:7px}
+.pt-mf-u{background:var(--naik);color:#fff;border:0;border-radius:9px;padding:10px 14px;font-weight:800;font-size:14px;letter-spacing:.4px;cursor:pointer}
+.pt-mf-u:disabled{opacity:.6}
+.pt-mf-st{margin-top:7px;font-size:12px;font-weight:600}
+.pt-mf-manual{margin-top:7px;font-size:12.5px}.pt-mf-manual summary{cursor:pointer;color:var(--ink-2)}
+.pt-mf-saring{margin-top:7px;display:flex;flex-wrap:wrap;gap:5px;align-items:center}
+.pt-mf-saring button.aktif{background:var(--naik);color:#fff}
+.pt-mf-kor{margin-top:10px;border:1px dashed var(--garis);border-radius:10px;padding:8px 10px}
+.pt-mf-kor summary{font-weight:700;cursor:pointer}
+.mf-ta{width:100%;box-sizing:border-box;margin:6px 0;font:12px monospace;background:var(--surface);color:var(--ink);border:1px solid var(--garis);border-radius:8px;padding:6px}
+.mf-in{width:70px;font:inherit;font-size:12px;text-align:right;background:var(--surface);color:var(--ink);border:1px solid var(--garis);border-radius:6px;padding:3px 5px}
+.mf-in.kode{width:56px;text-align:left;font-weight:700}
+.mf-alt{display:block;font-size:10px;color:var(--ink-3)}
+.mf-kor tr.mf-st-periksa td{background:var(--turun-bg)}
+.mf-kor tr.mf-st-dibetulkan td{background:rgba(230,180,0,.16)}
+.pt-kel td{font-weight:700;font-size:12px;color:var(--ink-2);background:var(--surface-2);padding:6px 8px;text-align:left}
+.pt-kel.k1 td{background:rgba(47,125,79,.16);color:var(--naik)}
+.pt-kel.k5 td{background:var(--turun-bg);color:var(--turun)}
+tr.pt-dicoret td{opacity:.6} tr.pt-dicoret .kode{text-decoration:line-through}
+.pt-ket{font-size:11px;font-weight:700;padding:2px 7px;border-radius:6px;white-space:nowrap}
+.pt-ket.ganda{background:#2f7d4f;color:#fff}.pt-ket.beli{background:rgba(47,125,79,.16);color:var(--naik)}
+.pt-ket.pantau{background:var(--surface-2);color:var(--ink-2)}.pt-ket.tunggu{background:rgba(230,180,0,.18);color:#8a6500}
+.pt-ket.jual{background:var(--turun-bg);color:var(--turun)}
 .pt-tgl-h{display:block;font-size:9.5px;font-weight:400;opacity:.85}
 .ph-tag{font-size:10px;font-weight:700;color:#d9a441;border:1px solid #d9a441;border-radius:5px;padding:0 5px}
 .ph-kol td:nth-child(2),.ph-kol th:nth-child(2){text-align:left}
@@ -1105,6 +1130,316 @@ let favDari = "", favSampai = "", favAkhir = "";
 let favKriteria = [{gab: "DAN", metrik: "pnet", op: ">", nilai: null}];
 let favUrut = "vol", favArah = -1;
 
+/* --- pembaca teks hasil OCR layar Stockbit "Half Time · Sesi 1" ---
+   Satu baris layar: KODE  N.Foreign  N.Lot   (mis. "UNSP 980.77M 26.11K").
+   Kesalahan OCR yang sering: B terbaca 8 ("1.098"), titik hilang ("491B"),
+   tanda minus hilang, kode terpotong/berubah karena logo di sebelahnya.
+   Kode dipulihkan dengan bantuan HARGA TERSIRAT: N.Foreign ÷ (N.Lot × 100)
+   harus dekat dengan harga tutup kemarin. */
+const MF_KALI = {T: 1e12, B: 1e9, M: 1e6, K: 1e3};
+function mfAngka(tok, bolehTanpaAkhiran) {
+  if (!/^[^A-Za-z0-9]*[-+]?[\dOo]/.test(String(tok)) || /^[^A-Za-z0-9]*[Oo][A-Za-z]/.test(String(tok))) return null;   /* harus diawali angka */
+  let s = String(tok).replace(/[Oo]/g, "0").replace(/,/g, ".").replace(/[^0-9.\-+BMKTb]/g, "");
+  if (!s) return null;
+  const neg = /^-/.test(s); s = s.replace(/[-+]/g, "");
+  let akh = (s.match(/[BMKTb]$/) || [""])[0].toUpperCase(); if (akh) s = s.slice(0, -1);
+  /* "1.098" = 1.09B: Stockbit selalu 2 desimal, jadi digit ke-3 sesudah titik = huruf B */
+  if (!akh && /^\d+\.\d\d8$/.test(s)) { akh = "B"; s = s.slice(0, -1); }
+  if (akh && /^\d+\.\d\d8$/.test(s)) s = s.slice(0, -1);   /* "2.978B" = 2.97B (B terbaca dua kali) */
+  if (!/^\d+(\.\d+)?$/.test(s)) return null;
+  if (!s.includes(".") && s.length >= 3 && akh) s = s.slice(0, -2) + "." + s.slice(-2);   /* "491B" -> 4.91B */
+  if (!akh && !bolehTanpaAkhiran) return null;
+  const v = parseFloat(s) * (MF_KALI[akh] || 1);
+  return isFinite(v) ? {v: neg ? -v : v, akh, neg} : null;
+}
+function mfKode(tok) {
+  return String(tok || "").toUpperCase().replace(/0/g, "O").replace(/1/g, "I").replace(/5/g, "S").replace(/8/g, "B").replace(/[^A-Z]/g, "");
+}
+/* teks -> [{ocr, nf, lot}]; sisi +1 (kolom Buy) / -1 (Sell) / 0 (dari tanda minus) */
+function mfBacaTeks(teks, sisi) {
+  const hasil = [];
+  String(teks).split(/\n/).forEach(br => {
+    const tok = br.trim().split(/\s+/).filter(Boolean);
+    /* cari pasangan angka berurutan: N.Foreign (berakhiran B/M/K) lalu N.Lot (K/M) */
+    for (let i = 0; i < tok.length - 1; i++) {
+      /* N.Lot boleh gagal terbaca (mis. "JPR:") - baris tetap diambil, tanpa cek harga */
+      const a = mfAngka(tok[i]), b = mfAngka(tok[i + 1], true);
+      if (!a || a.akh === "T" || (!b && !(a.akh === "B" || a.akh === "M"))) continue;
+      let kode = "", j = i - 1;
+      /* "10TF" = IOTF: token berhuruf >= 2 tetap dianggap kode walau diawali angka */
+      while (j >= 0 && !kode) { const k = mfKode(tok[j]); if (k && (!mfAngka(tok[j]) || /[A-Za-z].*[A-Za-z]/.test(tok[j]))) kode = k; j--; if (i - j > 3) break; }
+      if (/^(BUY|SELL|NET|FOREIGN|NFOREIGN|NLOT)$/.test(kode) || kode.length > 6) continue;
+      const tanda = sisi || (a.neg ? -1 : 1);
+      hasil.push({ocr: kode, nf: tanda * Math.abs(a.v), lot: b ? Math.abs(b.v) : null});
+      if (b) i++;
+    }
+  });
+  return hasil;
+}
+/* jarak edit sederhana */
+function mfJarak(a, b) {
+  const d = Array.from({length: a.length + 1}, (_, i) => [i]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++)
+    d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  return d[a.length][b.length];
+}
+/* tetapkan kode emiten. harga = {kode: tutup kemarin}. status: ok / dibetulkan / periksa */
+const mfRingkas = k => k.replace(/(.)\1+/g, "$1");   /* "BSSSSR" -> "BSR" */
+function mfCocokkan(baris, harga) {
+  const kodeSemua = Object.keys(harga);
+  const jarak = (o, k) => Math.min(mfJarak(o, k), mfJarak(mfRingkas(o), mfRingkas(k)));
+  return baris.map(r => {
+    const tersirat = r.lot ? Math.abs(r.nf) / (r.lot * 100) : null;
+    const dekat = k => tersirat && harga[k] ? Math.abs(Math.log(tersirat / harga[k])) : 9;
+    const o = Object.assign({}, r, {tersirat});
+    if (harga[r.ocr] && dekat(r.ocr) < 0.3) return Object.assign(o, {em: r.ocr, st: "ok"});
+    /* calon: jarak edit <= 2 dan harga tersirat dalam ±30% (sesi I bisa bergerak jauh) */
+    /* dua huruf saja ("UT" = ULTJ): hanya kalau hurufnya berurutan ada di kode DAN harganya sangat dekat */
+    const urut = (o, k) => { let n = 0; for (const c of k) if (c === o[n]) n++; return n === o.length; };
+    const calon = r.ocr.length < 2 ? [] : kodeSemua.filter(k => r.ocr.length === 2 ? urut(r.ocr, k) && dekat(k) < 0.08 : dekat(k) < 0.3 && jarak(r.ocr, k) <= 2)
+      .map(k => ({k, j: jarak(r.ocr, k), h: dekat(k)})).sort((x, y) => (x.j + 5 * x.h) - (y.j + 5 * y.h));
+    if (calon.length) return Object.assign(o, {em: calon[0].k, st: mfRingkas(r.ocr) === mfRingkas(calon[0].k) && calon[0].h < 0.3 ? "ok" : "dibetulkan", skor: calon[0].j + 5 * calon[0].h,
+      alt: calon.slice(1, 4).map(c => c.k)});
+    if (harga[r.ocr]) return Object.assign(o, {em: r.ocr, st: "periksa"});
+    return Object.assign(o, {em: "", st: "periksa"});
+  });
+}
+const MF_BLN = {JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, MEI: 5, JUN: 6, JUL: 7, AUG: 8, AGU: 8, SEP: 9, OCT: 10, OKT: 10, NOV: 11, DEC: 12, DES: 12};
+function mfTanggal(teks) {
+  const m = String(teks).toUpperCase().replace(/0CT/g, "OCT").match(/\b(\d{1,2})\s*(JAN|FEB|MAR|APR|MAY|MEI|JUN|JUL|AUG|AGU|SEP|OCT|OKT|NOV|DEC|DES)[A-Z]*\s*(\d{2,4})/);
+  if (!m) return "";
+  const y = m[3].length === 2 ? "20" + m[3] : m[3];
+  return y + "-" + String(MF_BLN[m[2]]).padStart(2, "0") + "-" + m[1].padStart(2, "0");
+}
+/* gabungkan baris dari beberapa gambar: buang duplikat (gambar bertumpuk),
+   dan kalau satu kode dipakai dua baris berbeda, yang hasil tebakan pindah ke
+   kode alternatifnya (atau ditandai periksa) */
+function mfGabung(baris) {
+  const pakai = {}, out = [];
+  const sama = (a, b) => Math.abs(a.nf - b.nf) <= Math.max(Math.abs(a.nf), Math.abs(b.nf)) * 0.006 + 1;
+  /* yang paling yakin dulu: jelas, diketik, lalu tebakan dengan skor terkecil */
+  const mutu = r => r.st === "ok" || r.st === "manual" ? -1 : r.st === "dibetulkan" ? (r.skor || 0) : 99;
+  const kembar = r => out.some(x => x.lot && r.lot && Math.abs(x.lot - r.lot) < 1 && Math.abs(x.nf - r.nf) < 1);
+  baris.slice().sort((a, b) => mutu(a) - mutu(b)).forEach(r => {
+    if ((!r.em || pakai[r.em]) && kembar(r)) return;   /* baris sama dari gambar bertumpuk, kodenya terbaca lain */
+    if (r.em && pakai[r.em]) {
+      if (sama(pakai[r.em], r)) return;   /* duplikat */
+      const alt = (r.alt || []).find(k => !pakai[k]);
+      r = Object.assign({}, r, alt ? {em: alt, st: "dibetulkan"} : {em: "", st: "periksa"});
+      if (alt) { pakai[alt] = r; }
+      out.push(r); return;
+    }
+    if (r.em) pakai[r.em] = r;
+    out.push(r);
+  });
+  return out;
+}
+
+/* ---------- MF (MIDDAY FOREIGN) ----------
+   Net foreign SESI I dari layar Stockbit "Half Time · Sesi 1" (desktop: daftar Buy
+   di kiri, Sell di kanan; HP: satu daftar). User cuma bisa mengirim SCREENSHOT,
+   jadi angkanya dibaca dengan OCR (tesseract.js, diambil dari jsdelivr saat
+   pertama dipakai), lalu dikoreksi di tabel. Dasar aturan (uji 7 Okt 2026):
+   - net beli sesi I bertahan sampai tutup 96% kasus, berlanjut di sesi II 78%;
+   - ukuran r = net foreign sesi I ÷ rata-rata value 20 hari (proksi %NF,
+     korelasi peringkat 0,95; tier A proksi akhir hari +0,94%, t 6,32);
+   - A: r >= 10% dan VMA10/VMA50 di 30% teratas; B: r >= 10% dan 30-50%;
+     pantau: r >= 4%. Ambang 10% SEMENTARA - hasil beli di sesi II belum diuji,
+     karena itu harga beli dicatat per tanggal supaya nanti bisa diuji.
+   Semua isian disimpan di localStorage "titenMF" {tgl: {baris, beli}}. */
+let mfSemuaBaris = false, mfPesan = "", mfPesanTgl = "", mfBukaKor = false, ptSaring = "semua";
+const mfUrut = {kor: {k: "", a: -1}};
+const MF_A = 0.10, MF_PANTAU = 0.04;
+function mfMuat() { try { return JSON.parse(localStorage.getItem("titenMF") || "{}") || {}; } catch (e) { return {}; } }
+function mfSimpan(semua) {
+  const t = Object.keys(semua).sort();
+  t.slice(0, Math.max(0, t.length - 120)).forEach(k => delete semua[k]);   /* simpan 120 hari terakhir */
+  try { localStorage.setItem("titenMF", JSON.stringify(semua)); } catch (e) { mfPesan = "Gagal menyimpan di HP: " + e.message; }
+}
+function mfHariIni() {
+  try { return new Date().toLocaleDateString("sv-SE", {timeZone: "Asia/Jakarta"}); }
+  catch (e) { return new Date().toISOString().slice(0, 10); }
+}
+const mfSB = v => { const a = Math.abs(v), s = v < 0 ? "-" : "";
+  return a >= 1e12 ? s + (a / 1e12).toFixed(2) + "T" : a >= 1e9 ? s + (a / 1e9).toFixed(2) + "B" : a >= 1e6 ? s + (a / 1e6).toFixed(2) + "M" : s + (a / 1e3).toFixed(2) + "K"; };
+/* ---- OCR ---- */
+let mfWorker = null;
+async function mfSiapOCR(lapor) {
+  if (!window.Tesseract) {
+    lapor("Mengambil pustaka OCR (sekali saja, ±5 MB)…");
+    await new Promise((ok, gagal) => {
+      const s = document.createElement("script");
+      s.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";
+      s.onload = ok; s.onerror = () => gagal(new Error("pustaka OCR tidak bisa diambil - periksa internet"));
+      document.head.appendChild(s);
+    });
+  }
+  if (!mfWorker) {
+    lapor("Menyiapkan OCR…");
+    mfWorker = await window.Tesseract.createWorker("eng", 1);
+    await mfWorker.setParameters({tessedit_pageseg_mode: "6"});
+  }
+  return mfWorker;
+}
+/* gambar -> potongan siap baca: kanal paling terang, dibalik (teks gelap di latar
+   putih), diperbesar. Layar lebar (desktop) dibelah dua: kiri Buy, kanan Sell. */
+async function mfPotong(file) {
+  const img = await new Promise((ok, gagal) => { const im = new Image(); im.onload = () => ok(im);
+    im.onerror = () => gagal(new Error(file.name + " bukan gambar")); im.src = URL.createObjectURL(file); });
+  const W = img.naturalWidth, H = img.naturalHeight, lebar = W / H > 1.1;
+  const bagian = lebar ? [[0, Math.round(W * 0.49), 1], [Math.round(W * 0.49), W, -1]] : [[0, W, 0]];
+  return bagian.map(([x0, x1, sisi]) => {
+    const sk = Math.min(3, 2400 / (x1 - x0), 6000 / H);
+    const cv = document.createElement("canvas");
+    cv.width = Math.round((x1 - x0) * sk); cv.height = Math.round(H * sk);
+    const g = cv.getContext("2d"); g.imageSmoothingEnabled = true; g.imageSmoothingQuality = "high";
+    g.drawImage(img, x0, 0, x1 - x0, H, 0, 0, cv.width, cv.height);
+    const d = g.getImageData(0, 0, cv.width, cv.height), p = d.data;
+    let jum = 0; for (let i = 0; i < p.length; i += 4) jum += Math.max(p[i], p[i + 1], p[i + 2]);
+    const gelap = jum / (p.length / 4) < 128;   /* latar gelap -> dibalik */
+    for (let i = 0; i < p.length; i += 4) { let m = Math.max(p[i], p[i + 1], p[i + 2]); if (gelap) m = 255 - m; else m = Math.min(p[i], p[i + 1], p[i + 2]); p[i] = p[i + 1] = p[i + 2] = m; }
+    g.putImageData(d, 0, 0);
+    return {cv, sisi};
+  });
+}
+async function mfBacaGambar(files, harga, lapor) {
+  const w = await mfSiapOCR(lapor);
+  const semua = []; let tgl = "", halfTime = false;
+  for (let i = 0; i < files.length; i++) {
+    const pot = await mfPotong(files[i]);
+    for (let j = 0; j < pot.length; j++) {
+      lapor("Membaca gambar " + (i + 1) + " dari " + files.length + (pot.length > 1 ? (j ? " (kolom Sell)" : " (kolom Buy)") : "") + "…");
+      const r = await w.recognize(pot[j].cv);
+      const t = r.data.text || "";
+      tgl = tgl || mfTanggal(t);
+      if (/half\s*ti|sesi\s*[1il|]/i.test(t)) halfTime = true;
+      semua.push(...mfCocokkan(mfBacaTeks(t, pot[j].sisi), harga));
+    }
+  }
+  return {baris: semua, tgl, halfTime};
+}
+/* tabel bersama: judul beku + ketuk judul untuk mengurutkan */
+function mfTabel(kol, data, urut, isiBaris, kelas) {
+  const bung = el("div", "tbl-bungkus tbl-kunci"), t = el("table", "pt-tbl " + (kelas || "")), th = el("tr");
+  if (urut.k && !kol.some(c => c[1] === urut.k)) urut.k = "";
+  kol.forEach(([j, k, teks], n) => {
+    const h = el("th", teks ? null : "num", j + (urut.k === k ? (urut.a < 0 ? " ▼" : " ▲") : ""));
+    if (k) { h.style.cursor = "pointer"; h.title = "Urutkan menurut " + j;
+      h.onclick = () => { if (urut.k === k) urut.a = -urut.a; else { urut.k = k; urut.a = teks ? 1 : -1; } halScreener(); }; }
+    th.appendChild(h);
+  });
+  t.appendChild(th);
+  if (urut.k) {
+    const k = urut.k;
+    data.sort((x, y) => { const a = x[k], b = y[k];
+      if (a === null || a === undefined || a === "") return 1; if (b === null || b === undefined || b === "") return -1;
+      return (typeof a === "string" ? a.localeCompare(b) : a - b) * urut.a; });
+  }
+  data.forEach(x => t.appendChild(isiBaris(x)));
+  if (!data.length) { const tr = el("tr"), td = el("td", null, "Belum ada data."); td.colSpan = kol.length; tr.appendChild(td); t.appendChild(tr); }
+  bung.appendChild(t); return bung;
+}
+/* kotak MF di POTENSI 3 HARI: tombol UNGGAH MF1, ketik manual, status.
+   tglMF = hari bursa sesudah tanggal sinyal; harga = {kode: tutup tanggal sinyal}.
+   saatTanggalLain(t): gambar ternyata bertanggal lain -> pindah tanggal sinyal */
+function mfKotak(tglMF, tglSinyal, harga, isi, simpanIsi, ringkas, saatTanggalLain) {
+  const box = el("div", "pt-mf");
+  box.appendChild(el("div", "pt-mf-j", "MF sesi I · " + tglID(tglMF) + " (hari bursa sesudah sinyal " + tglID(tglSinyal) + ")"));
+  const fi = el("input"); fi.type = "file"; fi.accept = "image/*"; fi.multiple = true; fi.style.display = "none";
+  const bU = el("button", "pt-mf-u", "📷 UNGGAH MF1");
+  bU.title = "Screenshot Stockbit Half Time · Sesi 1 - boleh beberapa gambar sekaligus";
+  bU.onclick = () => fi.click();
+  const st = el("div", "pt-mf-st", mfPesanTgl === tglMF && mfPesan ? mfPesan : ringkas);
+  fi.onchange = async () => {
+    const files = [...fi.files]; if (!files.length) return;
+    bU.disabled = true;
+    try {
+      const B = await mfBacaGambar(files, harga, t => { st.textContent = t; });
+      const tgl = B.tgl || tglMF;
+      const s = mfMuat(); const tujuan = tgl === tglMF ? isi : (s[tgl] || {baris: [], beli: {}});
+      const lama = tujuan.baris.length;
+      tujuan.baris = mfGabung(tujuan.baris.concat(B.baris)); s[tgl] = tujuan; mfSimpan(s);
+      const per = tujuan.baris.filter(r => r.st === "periksa" || !r.em).length, dib = tujuan.baris.filter(r => r.st === "dibetulkan").length;
+      mfPesan = (tujuan.baris.length - lama) + " baris baru terbaca dari " + files.length + " gambar" +
+        (B.halfTime ? "" : " (tulisan \"Half Time Sesi 1\" tidak terlihat - pastikan gambarnya benar)") + ". " +
+        (per ? per + " baris PERLU DICEK (merah), " : "") + (dib ? dib + " kode ditebak dari harga (kuning) - lihat Hasil baca MF1 di bawah tabel." : "");
+      mfPesanTgl = tgl;
+      if (tgl !== tglMF) { mfPesan = "Gambar bertanggal " + tglID(tgl) + " - tanggal sinyal dipindah ke hari bursa sebelumnya. " + mfPesan; saatTanggalLain(tgl); }
+    } catch (e) { mfPesan = "Gagal membaca: " + e.message; mfPesanTgl = tglMF; }
+    bU.disabled = false; halScreener();
+  };
+  box.appendChild(bU); box.appendChild(fi);
+  const det = el("details", "pt-mf-manual");
+  det.appendChild(el("summary", null, "Ketik manual"));
+  const ta = el("textarea", "mf-ta"); ta.rows = 4;
+  ta.placeholder = "Satu emiten per baris, format Stockbit (B = miliar, M = juta), jual pakai minus:\nBBRI 60.15B\nUNSP 980.77M\nBBCA -132.14B";
+  det.appendChild(ta);
+  const bT = el("button", "kecil", "Tambahkan");
+  bT.onclick = () => {
+    const baru = [];
+    ta.value.split(/\n|;/).forEach(br => {
+      const tk = br.trim().split(/\s+/); if (tk.length < 2) return;
+      const em = mfKode(tk[0]), a = mfAngka(tk.slice(1).join(""), true);
+      if (em && a) baru.push({ocr: em, em: harga[em] ? em : "", nf: a.v, lot: null, tersirat: null, st: harga[em] ? "manual" : "periksa"});
+    });
+    isi.baris = mfGabung(isi.baris.concat(baru)); simpanIsi();
+    mfPesan = baru.length + " baris ditambahkan secara manual."; mfPesanTgl = tglMF; halScreener();
+  };
+  det.appendChild(bT);
+  box.appendChild(det);
+  box.appendChild(st);
+  return box;
+}
+/* tabel koreksi hasil baca (dilipat) */
+function mfKoreksi(tglMF, tglSinyal, harga, isi, simpanIsi) {
+  const det = el("details", "pt-mf-kor");
+  const nPer = isi.baris.filter(r => r.st === "periksa" || !r.em).length, nDib = isi.baris.filter(r => r.st === "dibetulkan").length;
+  det.open = mfBukaKor; det.ontoggle = () => { mfBukaKor = det.open; };
+  det.appendChild(el("summary", null, "Hasil baca MF1 · " + isi.baris.length + " baris · " + nPer + " perlu dicek · " + nDib + " ditebak"));
+  det.appendChild(el("div", "bantu", "Merah = kode tidak dikenali, ketik kodenya. Kuning = kode ditebak dari kemiripan huruf + harga tersirat (N.Foreign ÷ N.Lot), cocokkan dengan gambar. " +
+    "N.Foreign memakai format Stockbit (B = miliar, M = juta); minus = jual."));
+  const ra = el("div", "alat");
+  const bS = el("button", "kecil", mfSemuaBaris ? "Tampilkan yang perlu dicek saja" : "Tampilkan semua " + isi.baris.length + " baris");
+  bS.onclick = () => { mfSemuaBaris = !mfSemuaBaris; halScreener(); }; ra.appendChild(bS);
+  const bD = el("button", "kecil", "Hapus semua MF " + tglID(tglMF));
+  bD.onclick = () => { if (bD.dataset.yakin) { isi.baris = []; isi.beli = {}; simpanIsi(); mfPesan = ""; halScreener(); }
+    else { bD.dataset.yakin = "1"; bD.textContent = "Ketuk sekali lagi untuk menghapus"; } };
+  ra.appendChild(bD);
+  det.appendChild(ra);
+  const urutSt = {periksa: 0, dibetulkan: 1, manual: 2, ok: 3};
+  const kor = isi.baris.map((r, i) => ({i, r, st: r.em ? r.st : "periksa", stU: urutSt[r.em ? r.st : "periksa"], em: r.em || "", ocr: r.ocr || "", nf: r.nf, lot: r.lot,
+    tersirat: r.tersirat, c: harga[r.em] || null, sisi: r.nf < 0 ? "Sell" : "Buy"}))
+    .filter(x => mfSemuaBaris || x.stU < 2);
+  if (!mfUrut.kor.k) kor.sort((a, b) => a.stU - b.stU || Math.abs(b.nf) - Math.abs(a.nf));
+  if (!kor.length) { det.appendChild(el("div", "bantu", "Semua " + isi.baris.length + " baris terbaca jelas.")); return det; }
+  det.appendChild(mfTabel([["Sisi", "sisi", 1], ["Kode", "em", 1], ["Terbaca", "ocr", 1], ["N.Foreign", "nf"], ["N.Lot", "lot"], ["Harga tersirat", "tersirat"],
+    ["Tutup " + tglID(tglSinyal), "c"], ["Status", "stU"], ["", ""]], kor, mfUrut.kor, x => {
+    const tr = el("tr", "mf-st-" + x.st);
+    tr.appendChild(el("td", x.nf < 0 ? "turun" : "naik", x.sisi));
+    const ck = el("td"); const ik = el("input", "mf-in kode"); ik.value = x.em; ik.maxLength = 5; ik.style.textTransform = "uppercase";
+    ik.onchange = () => { const k = ik.value.toUpperCase().replace(/[^A-Z]/g, ""); const r = isi.baris[x.i];
+      r.em = k; r.st = harga[k] ? "manual" : "periksa"; r.alt = []; isi.baris = mfGabung(isi.baris); simpanIsi(); halScreener(); };
+    ck.appendChild(ik);
+    const alt = (x.r.alt || []).filter(k => k !== x.em);
+    if (alt.length && x.st === "dibetulkan") ck.appendChild(el("span", "mf-alt", "atau " + alt.join(", ")));
+    tr.appendChild(ck);
+    tr.appendChild(el("td", "bantu", x.ocr || "?"));
+    const cn = el("td", "num"); const inf = el("input", "mf-in"); inf.value = mfSB(x.nf);
+    inf.onchange = () => { const a = mfAngka(inf.value.replace(/\s/g, ""), true); const r = isi.baris[x.i];
+      if (a) { r.nf = a.v; r.st = r.em && harga[r.em] ? "manual" : "periksa"; simpanIsi(); } halScreener(); };
+    cn.appendChild(inf); tr.appendChild(cn);
+    tr.appendChild(el("td", "num", x.lot ? lotSingkat(Math.round(x.lot)) : "–"));
+    tr.appendChild(el("td", "num", x.tersirat ? rp(Math.round(x.tersirat)) : "–"));
+    tr.appendChild(el("td", "num", x.c ? rp(x.c) : "–"));
+    tr.appendChild(el("td", null, {periksa: "perlu dicek", dibetulkan: "ditebak", manual: "diketik", ok: "jelas"}[x.st] || x.st));
+    const cx = el("td"); const bx = el("button", "kecil", "✕"); bx.title = "Hapus baris";
+    bx.onclick = () => { isi.baris.splice(x.i, 1); simpanIsi(); halScreener(); }; cx.appendChild(bx); tr.appendChild(cx);
+    return tr;
+  }, "mf-kor"));
+  return det;
+}
+
 /* ---------- POTENSI 3 HARI ----------
    Aturan hasil uji 6 Okt 2026 atas 408 hari bursa (Jan 2025 - Okt 2026), diukur
    di luar sampel 1 Jul 2025 - 30 Sep 2026:
@@ -1214,6 +1549,47 @@ function panelPotensi(w) {
   p.appendChild(rg);
   p.appendChild(el("div", "pt-aturan", "Cara pakai: data foreign baru ada malam hari, jadi beli di PEMBUKAAN hari bursa berikutnya. " +
     "Lewati emiten yang dibuka di atas kolom Batas beli (naik > +" + PT_GAP_MAX + "% dari tutup sinyal). Jual sekitar tutup H+3."));
+  /* ---- MF sesi I: hari bursa SESUDAH tanggal sinyal (H+1). Kalau sinyal = data
+     terbaru, H+1 = hari ini. Data per tanggal di localStorage "titenMF". ---- */
+  const hariIni = mfHariIni();
+  const mfT = H.tglNanti[0] || (hariIni > ptTgl ? hariIni : "");
+  const isi = (mfT && mfMuat()[mfT]) || {baris: [], beli: {}};
+  if (!isi.beli) isi.beli = {};
+  const simpanIsi = () => { const s = mfMuat(); if (isi.baris.length || Object.keys(isi.beli).length) s[mfT] = isi; else delete s[mfT]; mfSimpan(s); };
+  const hargaSinyal = {}; const bS0 = (daftarHari.find(r => r.tgl === ptTgl) || {}).baris || {};
+  Object.keys(bS0).forEach(k => { if (bS0[k] && bS0[k].c) hargaSinyal[k] = bS0[k].c; });
+  const MFv = {}; isi.baris.forEach(r => { if (r.em) MFv[r.em] = (MFv[r.em] || 0) + r.nf; });
+  const adaMF = isi.baris.length > 0;
+  H.semesta.forEach(x => {
+    x.mf = adaMF && MFv[x.em] !== undefined ? MFv[x.em] : null;
+    x.r = x.mf !== null && x.val20 ? x.mf / x.val20 * 100 : null;
+    x.tm = x.r === null ? "" : x.r >= MF_A * 100 && x.q_lonjak > 0.7 ? "A" : x.r >= MF_A * 100 && x.q_lonjak > 0.5 ? "B" : x.r >= MF_PANTAU * 100 ? "P" : "";
+    x.tmU = x.tm === "A" ? 1 : x.tm === "B" ? 2 : x.tm === "P" ? 3 : 9;
+    /* kelompok keputusan sesi II */
+    x.grup = !adaMF ? 0 : x.tk && x.mf !== null && x.mf < 0 ? 5 : x.tk && (x.tm === "A" || x.tm === "B") ? 1 : (x.tm === "A" || x.tm === "B") ? 2 :
+      x.tm === "P" || (x.tk && x.mf !== null) ? 3 : x.tk ? 4 : 9;
+    x.beli = isi.beli[x.em] || null;
+    x.aneh = !!(x.beli && (x.beli < x.c * 0.65 || x.beli > x.c * 1.35));
+    const akh = x.c3 || x.c2 || x.c1;
+    x.hb = x.beli && akh ? (akh / x.beli - 1) * 100 : null;
+  });
+  if (adaMF) { K.length = 0; H.semesta.filter(x => x.grup && x.grup < 9).forEach(x => K.push(x)); }
+  if (mfT) {
+    const nG = g => K.filter(x => x.grup === g).length;
+    const nPer = isi.baris.filter(r => r.st === "periksa" || !r.em).length;
+    const ringkas = adaMF ? isi.baris.length + " baris MF1 tersimpan" + (nPer ? " · " + nPer + " perlu dicek (Hasil baca MF1 di bawah tabel)" : "") +
+      " · " + nG(1) + " sinyal ganda, " + nG(2) + " baru dari MF, " + nG(5) + " dijual asing." :
+      "Belum ada MF1. Sekitar pukul 12.00 unggah screenshot Stockbit Half Time · Sesi 1 (boleh beberapa gambar).";
+    const kotak = mfKotak(mfT, ptTgl, hargaSinyal, isi, simpanIsi, ringkas, t => {
+      const lalu2 = tgl.filter(x => x < t); if (lalu2.length) ptTgl = lalu2[lalu2.length - 1]; });
+    if (adaMF) {
+      const sr = el("div", "pt-mf-saring"); sr.appendChild(el("span", "bantu", "Tampilkan: "));
+      [["semua", "Semua"], ["beli", "Beli sesi II (" + (nG(1) + nG(2)) + ")"], ["jual", "Dijual asing (" + nG(5) + ")"]].forEach(([k, j]) => {
+        const b = el("button", "kecil" + (ptSaring === k ? " aktif" : ""), j); b.onclick = () => { ptSaring = k; halScreener(); }; sr.appendChild(b); });
+      kotak.appendChild(sr);
+    }
+    p.appendChild(kotak);
+  }
   const lalu = H.sesudah > 0;
   p.appendChild(el("div", "bantu", tglID(ptTgl) + " · " + H.semesta.length + " emiten di semesta · " + K.length + " kandidat" +
     (lalu ? " · " + Math.min(H.sesudah, 3) + " hari bursa sudah lewat, hasil nyata ditampilkan" : " · hasil H+1..H+3 muncul begitu datanya masuk")));
@@ -1233,22 +1609,29 @@ function panelPotensi(w) {
     });
     p.appendChild(hn);
   }
+  if (adaMF && ptSaring !== "semua") { const s2 = K.filter(x => ptSaring === "beli" ? x.grup === 1 || x.grup === 2 : x.grup === 5); K.length = 0; s2.forEach(x => K.push(x)); }
+  if (adaMF && !ptUrut.k) K.sort((a, b) => a.grup - b.grup || (a.grup === 5 ? (a.r || 0) - (b.r || 0) : a.grup === 4 ? b.nf1 - a.nf1 : (b.r || 0) - (a.r || 0)));
   const bung = el("div", "tbl-bungkus tbl-kunci");   /* judul kolom beku saat digulir */
   const t = el("table", "pt-tbl"), th = el("tr");
   /* kolom: [judul, kunci urut]; ketuk judul = urutkan, ketuk lagi = balik.
      Bawaan (ptUrut.k kosong): tingkat A dulu lalu B, masing-masing %NF terbesar. */
-  const kol = [["Tk", "tk"], ["Emiten", "em"], ["%NF", "nf1"], ["VMA5/VMA20", "v520"], ["VMA10/VMA50 \u2605", "lonjak"], ["Harga " + tglID(ptTgl), "c"], ["Batas beli (+" + PT_GAP_MAX + "%)", "batas"]]
+  const kol = (adaMF ? [["Tk POTENSI", "tk"], ["Tk MF", "tmU"], ["Emiten", "em"], ["MF sesi I", "mf"], ["MF \u00f7 Value 20h", "r"]] : [["Tk", "tk"], ["Emiten", "em"]])
+    .concat([["%NF", "nf1"], ["VMA5/VMA20", "v520"], ["VMA10/VMA50 \u2605", "lonjak"], ["Harga " + tglID(ptTgl), "c"], ["Batas beli (+" + PT_GAP_MAX + "%)", "batas"]])
+    .concat(adaMF ? [["Harga beli", "beli"]] : [])
     .concat(lalu ? [["Gap buka H+1", "gap"], ["H+1 \u00b7 " + tPendek(H.tglNanti[0]), "c1"], ["H+2 \u00b7 " + tPendek(H.tglNanti[1]), "c2"], ["H+3 \u00b7 " + tPendek(H.tglNanti[2]), "c3"],
       ["Hasil buka\u2192" + (H.sesudah >= 3 ? "H+3" : "H+" + H.sesudah), "hT"]] : [])
-    .concat([["%NF 2 mg", "nf10"], ["%Harga 2 mg", "r10"], ["Volume " + tPendek(H.tglLalu), "lotm1"], ["Volume " + tglID(ptTgl), "lot0"], ["Value " + tglID(ptTgl), "val0"]]);
+    .concat(adaMF && lalu ? [["Hasil harga beli\u2192" + (H.sesudah >= 3 ? "H+3" : "H+" + H.sesudah), "hb"]] : [])
+    .concat([["%NF 2 mg", "nf10"], ["%Harga 2 mg", "r10"], ["Volume " + tPendek(H.tglLalu), "lotm1"], ["Volume " + tglID(ptTgl), "lot0"], ["Value " + tglID(ptTgl), "val0"]])
+    .concat(adaMF ? [["Keputusan sesi II", "grup"]] : []);
   if (ptUrut.k && !kol.some(c => c[1] === ptUrut.k)) ptUrut.k = "";   /* kolom hasil hilang di tanggal terbaru */
   kol.forEach(([j, k], n) => {
     const tanda = ptUrut.k === k ? (ptUrut.a < 0 ? " \u25bc" : " \u25b2") : "";
-    const h = el("th", n > 1 ? "num" : null, j + tanda);
+    const h = el("th", n > (adaMF ? 2 : 1) ? "num" : null, j + tanda);
+    if (k === "em") h.style.textAlign = "left";
     h.style.cursor = "pointer"; h.title = "Urutkan menurut " + j;
     h.onclick = () => {
       if (ptUrut.k === k) ptUrut.a = -ptUrut.a;
-      else { ptUrut.k = k; ptUrut.a = (k === "em" || k === "tk") ? 1 : -1; }
+      else { ptUrut.k = k; ptUrut.a = (k === "em" || k === "tk" || k === "tmU" || k === "grup") ? 1 : -1; }
       halScreener();
     };
     th.appendChild(h);
@@ -1264,15 +1647,38 @@ function panelPotensi(w) {
     });
   }
   const hg = (v, dasar) => { const td = el("td", "num", v ? rp(v) : "\u2013"); if (v && dasar) td.className = "num" + kls(v - dasar); return td; };
+  const PT_KEL = {1: ["\u2460 Sinyal ganda \u2014 kandidat POTENSI + MF sesi I kuat", "Beli sesi II", "ganda"], 2: ["\u2461 Baru dari MF sesi I (bukan kandidat POTENSI)", "Beli sesi II", "beli"],
+    3: ["\u2462 Pantau", "Pantau", "pantau"], 4: ["\u2463 Kandidat POTENSI yang tidak muncul di daftar MF", "Tunggu \u2013 tak ada di MF", "tunggu"],
+    5: ["\u2464 Kandidat POTENSI yang DIJUAL asing di sesi I", "Jangan dulu \u2013 dijual asing", "jual"]};
+  let kelLalu = 0;
   K.forEach(x => {
-    const tr = el("tr", "klik");
-    const c0 = el("td"); c0.appendChild(el("span", "pt-tier t" + x.tk, x.tk)); tr.appendChild(c0);
-    const c1 = el("td"); c1.appendChild(el("span", "kode", x.em)); c1.appendChild(el("span", "nm", (DATA.nama && DATA.nama[x.em]) || "")); tr.appendChild(c1);
+    if (adaMF && !ptUrut.k && x.grup !== kelLalu) {
+      kelLalu = x.grup; const g = el("tr", "pt-kel k" + x.grup), gd = el("td", null, PT_KEL[x.grup][0]); gd.colSpan = kol.length; g.appendChild(gd); t.appendChild(g);
+    }
+    const tr = el("tr", "klik" + (x.grup === 5 ? " pt-dicoret" : ""));
+    const c0 = el("td"); if (x.tk) c0.appendChild(el("span", "pt-tier t" + x.tk, x.tk)); else c0.textContent = "\u2013"; tr.appendChild(c0);
+    if (adaMF) { const cm = el("td"); if (x.tm) cm.appendChild(el("span", "pt-tier t" + x.tm, x.tm)); else cm.textContent = "\u2013"; tr.appendChild(cm); }
+    const c1 = el("td"); c1.appendChild(el("span", "kode", x.em)); c1.appendChild(el("span", "nm", (DATA.nama && DATA.nama[x.em]) || "")); c1.style.textAlign = "left"; tr.appendChild(c1);
+    if (adaMF) {
+      tr.appendChild(el("td", "num" + kls(x.mf), x.mf === null ? "\u2013" : rpSingkat(x.mf)));
+      tr.appendChild(el("td", "num pt-batas" + kls(x.r), pr(x.r)));
+    }
     tr.appendChild(el("td", "num" + kls(x.nf1), pr(x.nf1)));
     tr.appendChild(el("td", "num", x.v520 === null ? "\u2013" : x.v520.toFixed(2).replace(".", ",") + "\u00d7"));
     tr.appendChild(el("td", "num pt-batas", x.lonjak === null ? "\u2013" : x.lonjak.toFixed(2).replace(".", ",") + "\u00d7"));
     tr.appendChild(el("td", "num", rp(x.c)));
     tr.appendChild(el("td", "num pt-batas", rp(x.batas)));
+    if (adaMF) {
+      const cb = el("td", "num" + (x.aneh || (x.beli && x.beli > x.batas) ? " pt-gap-lewat" : ""));
+      if (x.grup === 1 || x.grup === 2 || x.beli) {
+        const ib = el("input", "mf-in"); ib.type = "number"; ib.inputMode = "numeric"; ib.value = x.beli || ""; ib.placeholder = "\u2013";
+        ib.onclick = e => e.stopPropagation();
+        ib.onchange = () => { const v = parseFloat(ib.value); if (v > 0) isi.beli[x.em] = v; else delete isi.beli[x.em]; simpanIsi(); halScreener(); };
+        cb.appendChild(ib);
+        if (x.aneh) cb.title = "Harga beli jauh dari harga tutup - salah ketik?"; else if (x.beli && x.beli > x.batas) cb.title = "Di atas batas beli";
+      } else cb.textContent = "";
+      tr.appendChild(cb);
+    }
     if (lalu) {
       const g = el("td", "num", pr(x.gap));
       if (x.gap !== null && x.gap > PT_GAP_MAX) { g.className = "num pt-gap-lewat"; g.title = "Dibuka di atas batas beli - dilewati"; }
@@ -1281,6 +1687,7 @@ function panelPotensi(w) {
       /* harga TUTUP H+1..H+3, warna terhadap harga tutup tanggal sinyal */
       [x.c1, x.c2, x.c3].forEach(v => { const td = hg(v, x.c); if (x.o1) td.title = "Buka H+1: " + rp(x.o1); tr.appendChild(td); });
       tr.appendChild(el("td", "num" + kls(x.hT) + (x.gap !== null && x.gap > PT_GAP_MAX ? " pt-coret" : ""), pr(x.hT)));
+      if (adaMF) tr.appendChild(el("td", "num" + kls(x.hb) + (x.aneh ? " pt-coret" : ""), pr(x.hb)));
     }
     tr.appendChild(el("td", "num" + kls(x.nf10), pr(x.nf10)));
     tr.appendChild(el("td", "num" + kls(x.r10), pr(x.r10)));
@@ -1290,12 +1697,19 @@ function panelPotensi(w) {
     if (x.lotm1) c0v.title = "Volume " + tglID(ptTgl) + " = " + (x.lot0 / x.lotm1).toFixed(2).replace(".", ",") + "\u00d7 hari sebelumnya";
     tr.appendChild(c0v);
     tr.appendChild(el("td", "num", rpSingkat(x.val0)));
+    if (adaMF) { const ck = el("td"); ck.appendChild(el("span", "pt-ket " + PT_KEL[x.grup][2], PT_KEL[x.grup][1])); tr.appendChild(ck); }
     tr.title = "Buka Rekomendasi " + x.em;
     tr.onclick = () => { rek.em = x.em; rek.dari = ptTgl; rek.sampai = akhir; subScr = "rekomendasi"; halScreener(); };
     t.appendChild(tr);
   });
   if (!K.length) { const tr = el("tr"); const td = el("td", null, "Tidak ada kandidat di tanggal ini."); td.colSpan = kol.length; tr.appendChild(td); t.appendChild(tr); }
   bung.appendChild(t); p.appendChild(bung);
+  if (adaMF) {
+    const hb = K.filter(x => x.hb !== null && !x.aneh);
+    if (hb.length) { const rt2 = hb.reduce((a, x) => a + x.hb, 0) / hb.length; const sp = el("div", "pt-hasil");
+      sp.appendChild(el("b", null, "Hasil harga beli sesi II yang dicatat (" + hb.length + " emiten): ")); sp.appendChild(el("span", kls(rt2).trim(), "rata-rata " + pr(rt2))); p.appendChild(sp); }
+    p.appendChild(mfKoreksi(mfT, ptTgl, hargaSinyal, isi, simpanIsi));
+  }
   p.appendChild(el("div", "bantu",
     "Semesta: emiten dengan transaksi rata-rata 20 hari ≥ Rp5 M dan harga ≥ Rp50. %NF = net foreign ÷ volume pada tanggal sinyal. " +
     "A = %NF di 20% teratas DAN VMA10/VMA50 (\u2605, rata-rata volume 10 hari \u00f7 50 hari bursa) di 30% teratas; B = sama, VMA10/VMA50 di 30\u201350% teratas. " +
@@ -1304,7 +1718,10 @@ function panelPotensi(w) {
     "pagi hari bandingkan harga pembukaan di aplikasi sekuritas dengan angka ini. Gap buka H+1 merah = dibuka di atas batas (hasilnya dicoret). " +
     "Volume = jumlah lot yang ditransaksikan pada hari bursa sebelum tanggal sinyal dan pada tanggal sinyal; Value = nilai transaksi (Rp) pada tanggal sinyal. H+1, H+2, H+3 = harga tutup hari-hari sesudah tanggal sinyal, hijau/merah terhadap harga tutup tanggal sinyal (arahkan ke angkanya untuk melihat harga buka H+1). Angka di kartu dari uji luar sampel 1 Jul 2025 – 30 Sep 2026: " +
     "peluang per saham di bawah 50%, keunggulannya pada rata-rata; tingkat B impas sesudah biaya ±0,3%. " +
-    "Pilih tanggal lampau untuk melihat hasil nyata. Ketuk baris untuk membuka Rekomendasi. Bukan rekomendasi investasi."));
+    "Pilih tanggal lampau untuk melihat hasil nyata. Ketuk baris untuk membuka Rekomendasi. " +
+    "MF (UNGGAH MF1) = net foreign sesi I hari bursa sesudah tanggal sinyal, dari screenshot Stockbit Half Time \u00b7 Sesi 1. MF \u00f7 Value 20h = MF dibagi rata-rata nilai transaksi 20 hari. " +
+    "Tk MF: A = MF \u00f7 Value 20h \u2265 10% dan VMA10/VMA50 di 30% teratas; B = sama, 30\u201350%; P = pantau (\u2265 4%). Net beli asing sesi I bertahan sampai tutup 96% kasus dan berlanjut di sesi II 78% (19 hari, 325 kasus); " +
+    "ambang 10% masih SEMENTARA dan beli di sesi II belum diuji - karena itu Harga beli dicatat (tersimpan di HP ini). Hasil harga beli = harga beli \u2192 tutup terakhir s/d H+3 tanggal sinyal. Bukan rekomendasi investasi."));
   w.appendChild(p);
 }
 
@@ -5944,7 +6361,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-06-8";
+const VERSI_APP = "2026-10-07-2";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
