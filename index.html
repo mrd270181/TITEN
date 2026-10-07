@@ -521,10 +521,25 @@ td .ph-porsi{display:block;width:max-content}
 .pt-mf-kor summary{font-weight:700;cursor:pointer}
 .mf-ok{margin-left:4px;padding:2px 7px}
 .pt-em{width:90px;font-weight:700}
+.pb-sel{text-align:left;white-space:normal;min-width:260px}
+.pb-x{display:inline-flex;gap:4px;align-items:center;border:1px solid var(--garis);border-radius:7px;padding:2px 6px;margin:2px 6px 2px 0;background:var(--surface-2);cursor:help}
+.pb-x b{font-family:monospace}
+.pb-po{color:var(--ink-3);font-size:11.5px}
+.pb-l{font-size:10.5px;font-weight:800;border-radius:4px;padding:1px 5px;letter-spacing:.3px}
+.pb-l.pn{background:rgba(47,125,79,.18);color:var(--naik)}
+.pb-l.pb{background:var(--turun-bg);color:var(--turun)}
+.pb-l.ak{background:rgba(230,170,0,.16);color:#a87400}
+.pb-l.ak.kuat{background:#d99a00;color:#1c1400}
+.pb-ket{display:flex;flex-direction:column;gap:10px;margin-top:12px}
+.pb-blok{border:1px solid var(--garis);border-radius:10px;padding:8px 10px}
+.pb-judul{font-size:12.5px;line-height:1.5;margin-bottom:6px}
+.pb-daftar{display:flex;flex-wrap:wrap;gap:5px}
+.pb-chip{border:1px solid var(--garis);border-radius:20px;padding:2px 9px;font-size:12px;background:var(--surface-2);cursor:help}
+.pb-chip b{font-family:monospace}
 .pt-mf-pasar{margin-top:8px;border-radius:9px;padding:8px 10px;background:var(--surface);border:1px solid var(--garis);font-size:12.5px}
 .pt-mf-pasar.jual{border-color:var(--turun);background:var(--turun-bg)}
 .pt-mf-pasar.beli{border-color:var(--naik)}
-.pt-mf-pasar-n{font-weight:800}
+.pt-mf-pasar-n{font-weight:900;font-size:24px;letter-spacing:.5px;margin:6px 0 2px;line-height:1.15}
 .pt-mf-pasar-k{margin-top:4px;font-size:12px;line-height:1.45}
 .mf-in.pasar{width:92px;text-align:right;font-weight:700;margin-left:4px}
 .mf-ta{width:100%;box-sizing:border-box;margin:6px 0;font:12px monospace;background:var(--surface);color:var(--ink);border:1px solid var(--garis);border-radius:8px;padding:6px}
@@ -1419,8 +1434,10 @@ function mfKotak(tglMF, tglSinyal, harga, isi, simpanIsi, ringkas, saatTanggalLa
     ip.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); ip.blur(); } };
     ip.onchange = simpanPasar;
     kiri.appendChild(ip);
-    if (nf !== null) kiri.appendChild(el("span", "pt-mf-pasar-n " + (nf < 0 ? "turun" : "naik"), " " + rpSingkat(nf) + (nf < 0 ? " \u2014 pasar net JUAL asing" : " \u2014 pasar net BELI asing")));
     ps.appendChild(kiri);
+    /* angka besar: NET SELL / NET BUY FOREIGN */
+    if (nf !== null) ps.appendChild(el("div", "pt-mf-pasar-n " + (nf < 0 ? "turun" : "naik"),
+      (nf < 0 ? "NET SELL FOREIGN " : "NET BUY FOREIGN ") + (nf < 0 ? "\u2212" : "+") + rpSingkat(Math.abs(nf))));
     ps.appendChild(el("div", "pt-mf-pasar-k", nf === null ? "Belum terbaca dari gambar - ketik angka \"Net Foreign\" di kepala layar Half Time (format Stockbit, B = miliar)." :
       nf < 0 ? "\u26a0 Saat pasar net jual asing, sinyal MF cenderung lebih lemah. Uji Jan\u2013Sep 2026: MF tier A rata-rata \u22120,08% (pasar net jual) lawan +1,04% (net beli). Di Jul\u2013Des 2025 bedanya kecil, jadi ini peringatan, bukan larangan." :
       "\u2713 Pasar net beli asing \u2014 kondisi terbaik untuk sinyal MF (uji: MF tier A rata-rata +1,44% lawan +0,40% saat pasar net jual)."));
@@ -1799,9 +1816,140 @@ function panelPotensi(w) {
     "VALUE MF (UNGGAH MF1) = nilai net foreign sesi I hari bursa sesudah tanggal sinyal, dari screenshot Stockbit Half Time \u00b7 Sesi 1. VOL MF1 = N.Lot (net lot asing) sesi I dari layar yang sama - keterangan saja. MF \u00f7 Value 20h = MF dibagi rata-rata nilai transaksi 20 hari. " +
     "Tr MF (tier MF): A = MF \u00f7 Value 20h \u2265 10% dan VMA10/VMA50 di 30% teratas; B = sama, 30\u201350%; P = pantau (\u2265 4%). Net beli asing sesi I bertahan sampai tutup 96% kasus dan berlanjut di sesi II 78% (19 hari, 325 kasus); " +
     "ambang 10% masih SEMENTARA dan beli di sesi II belum diuji - karena itu Harga beli dicatat (tersimpan di HP ini). Hasil harga beli = harga beli \u2192 tutup terakhir s/d H+3 tanggal sinyal. Bukan rekomendasi investasi."));
-  w.appendChild(p);
+  w.appendChild(p);  /* bagian bawah: pembeli besar + label broker (penahan / pembuang / akum) */
+  try { w.appendChild(pbPanel(K, ptTgl, adaMF)); }
+  catch (e) { w.appendChild(el("div", "bantu", "Label broker gagal dihitung: " + e.message)); }
 }
 
+
+/* ---------- PEMBELI BESAR + LABEL BROKER (bagian bawah POTENSI 3 HARI) ----------
+   Dari data broker gross REGULER yang ada di HP (A1 + B1). Uji 7 Okt 2026 atas
+   3 Agu - 7 Okt (17.884 beli besar):
+   - beli besar = net beli (lot beli - lot jual) >= 2% volume emiten hari itu dan
+     bernilai >= Rp500 juta;
+   - PENAHAN = <=25% beli besarnya dijual lagi >=70% dalam 3 hari bursa;
+     PEMBUANG = >=50%; tanpa label = 25-50% atau beli besarnya < 30 kali;
+   - AKUM n h = broker yang sama net beli >=2% volume n hari bursa berturut-turut.
+     Akumulasi >=4 hari: kelebihan +0,34% (beli buka H+1, jual tutup H+3), t 2,4.
+     Beli besar oleh penahan +0,36% (t 1,9), oleh pembuang -0,28% (t -1,5).
+   Semua dihitung ulang di HP setiap data broker berubah. */
+const PB_MIN_PORSI = 0.02, PB_MIN_NILAI = 5e8, PB_MIN_N = 30, PB_AKUM = 4;
+let pbCache = null;
+let pbUrut = {k: "", a: -1}, pbUrutL = {k: "", a: -1};
+function pbHitung() {
+  const reg = (semuaTrx().REG || []);
+  const kunci = reg.length + "|" + daftarHari.length + "|" + (daftarHari[0] || {}).tgl;
+  if (pbCache && pbCache.kunci === kunci) return pbCache;
+  const vol = {};   /* em|tgl -> volume lembar */
+  daftarHari.forEach(r => { const b = r.baris || {}; Object.keys(b).forEach(e => { if (b[e] && b[e].v) vol[e + "|" + r.tgl] = b[e].v; }); });
+  const net = new Map(), adaBlok = new Set(), tglSet = new Set();
+  reg.forEach(x => {
+    const k = x.em + "|" + x.br + "|" + x.tgl;
+    const o = net.get(k) || {n: 0, ab: 0, bl: 0};
+    o.n += (x.beli || 0) - (x.jual || 0);
+    if (x.beli) { o.ab = (o.ab * o.bl + x.avgB * x.beli) / (o.bl + x.beli); o.bl += x.beli; }
+    net.set(k, o); adaBlok.add(x.em + "|" + x.tgl); tglSet.add(x.tgl);
+  });
+  const TB = [...tglSet].sort(), ixT = {}; TB.forEach((t, i) => ixT[t] = i);
+  /* persen: lot x 100 lembar / volume lembar x 100 */
+  const porsi = (em, br, t) => { const o = net.get(em + "|" + br + "|" + t), v = vol[em + "|" + t]; return o && v ? o.n * 100 / v * 100 : 0; };
+  /* statistik beli-buang per broker */
+  const st = {};
+  net.forEach((o, k) => {
+    if (o.n <= 0) return;
+    const [em, br, t] = k.split("|"), v = vol[em + "|" + t];
+    if (!v || o.n * 100 / v < PB_MIN_PORSI || o.n * 100 * (o.ab || 0) < PB_MIN_NILAI) return;
+    const i = ixT[t]; if (i + 3 >= TB.length) return;
+    const nx = TB.slice(i + 1, i + 4);
+    if (!nx.every(t2 => adaBlok.has(em + "|" + t2))) return;   /* data bolong */
+    let jual = 0; nx.forEach(t2 => { const o2 = net.get(em + "|" + br + "|" + t2); if (o2 && o2.n < 0) jual -= o2.n; });
+    const s = st[br] || (st[br] = {n: 0, f: 0}); s.n++; if (jual / o.n >= 0.7) s.f++;
+  });
+  const lab = {};
+  Object.keys(st).forEach(b => { const s = st[b]; s.pf = s.f / s.n * 100;
+    s.lab = s.n < PB_MIN_N ? "" : s.pf <= 25 ? "penahan" : s.pf >= 50 ? "pembuang" : ""; lab[b] = s; });
+  const runtun = (em, br, t) => { let i = ixT[t], n = 0; if (i === undefined) return 0;
+    while (i - n >= 0 && porsi(em, br, TB[i - n]) >= PB_MIN_PORSI * 100) n++; return n; };
+  /* pembeli terbesar per emiten per tanggal */
+  const top = {};
+  net.forEach((o, k) => { if (o.n <= 0) return; const [em, br, t] = k.split("|"); const kk = em + "|" + t;
+    (top[kk] || (top[kk] = [])).push({br, n: o.n}); });
+  Object.values(top).forEach(a => a.sort((x, y) => y.n - x.n));
+  const akhirEm = {}; adaBlok.forEach(k => { const [em, t] = k.split("|"); if (!akhirEm[em] || t > akhirEm[em]) akhirEm[em] = t; });
+  pbCache = {kunci, lab, top, runtun, porsi, akhirEm, TB, vol, net};
+  return pbCache;
+}
+/* kotak broker berlabel */
+function pbKotak(em, br, t, C) {
+  const s = C.lab[br] || {}, por = C.porsi(em, br, t), rt = C.runtun(em, br, t);
+  const k = el("span", "pb-x");
+  k.title = (namaBroker(br) || br) + (s.n ? " · dibuang ≤3 hari " + Math.round(s.pf) + "% dari " + s.n + " beli besar" : " · riwayat belum cukup");
+  k.appendChild(el("b", null, br));
+  k.appendChild(el("span", "pb-po", por.toFixed(1).replace(".", ",") + "%"));
+  if (s.lab === "penahan") k.appendChild(el("span", "pb-l pn", "PENAHAN"));
+  if (s.lab === "pembuang") k.appendChild(el("span", "pb-l pb", "PEMBUANG"));
+  if (rt >= 2) k.appendChild(el("span", "pb-l ak" + (rt >= PB_AKUM ? " kuat" : ""), "AKUM " + rt + "h"));
+  return k;
+}
+function pbPanel(K, tgl, adaMF) {
+  const C = pbHitung();
+  const p = el("div", "panel");
+  p.appendChild(el("h2", null, "Pembeli besar & label broker · " + tglID(tgl)));
+  if (!C.TB.length) { p.appendChild(el("div", "bantu", "Data broker belum ada di HP ini.")); return p; }
+  p.appendChild(el("div", "bantu", "Maksimal 3 broker dengan net beli terbesar di tanggal sinyal untuk tiap kandidat di tabel atas (ikut pilihan Tampilkan/Emiten). " +
+    "Persen = lot net beli broker ÷ volume emiten hari itu. Ketuk kotak broker untuk melihat namanya dan persentase buangnya."));
+  /* tabel kandidat */
+  const data = K.map(x => {
+    const tp = (C.top[x.em + "|" + tgl] || []).filter(o => C.porsi(x.em, o.br, tgl) >= 1).slice(0, 3);
+    const akum = Math.max(0, ...tp.map(o => C.runtun(x.em, o.br, tgl)));
+    const nPn = tp.filter(o => (C.lab[o.br] || {}).lab === "penahan").length, nPb = tp.filter(o => (C.lab[o.br] || {}).lab === "pembuang").length;
+    return {em: x.em, tk: x.tk || "", tm: x.tm || "", tmU: x.tmU || 9, tp, akum, nPn, nPb, akhir: C.akhirEm[x.em] || ""};
+  });
+  if (!pbUrut.k) data.sort((a, b) => b.akum - a.akum || b.nPn - a.nPn || a.em.localeCompare(b.em));
+  const kol = [["Tr POTENSI", "tk", 1]].concat(adaMF ? [["Tr MF", "tmU", 1]] : []).concat([["Emiten", "em", 1], ["Pembeli besar", "", 1], ["Akum terlama", "akum"], ["Penahan", "nPn"], ["Pembuang", "nPb"]]);
+  p.appendChild(mfTabel(kol, data, pbUrut, x => {
+    const tr = el("tr");
+    const c0 = el("td"); if (x.tk) c0.appendChild(el("span", "pt-tier t" + x.tk, x.tk)); else c0.textContent = "–"; tr.appendChild(c0);
+    if (adaMF) { const c1 = el("td"); if (x.tm) c1.appendChild(el("span", "pt-tier t" + x.tm, x.tm)); else c1.textContent = "–"; tr.appendChild(c1); }
+    const ce = el("td", "kode", x.em); ce.style.textAlign = "left"; tr.appendChild(ce);
+    const cb = el("td", "pb-sel");
+    if (x.tp.length) x.tp.forEach(o => cb.appendChild(pbKotak(x.em, o.br, tgl, C)));
+    else cb.appendChild(el("span", "bantu", x.akhir ? (x.akhir < tgl ? "data broker terakhir " + tglID(x.akhir) : "tidak ada net beli ≥ 1% volume") : "tidak dipantau (bukan emiten A1/B1)"));
+    tr.appendChild(cb);
+    tr.appendChild(el("td", "num" + (x.akum >= PB_AKUM ? " naik" : ""), x.akum ? x.akum + " h" : "–"));
+    tr.appendChild(el("td", "num", x.nPn || "–"));
+    tr.appendChild(el("td", "num" + (x.nPb ? " turun" : ""), x.nPb || "–"));
+    return tr;
+  }, "pb-tbl"));
+  /* daftar broker per label */
+  const lab = Object.keys(C.lab).map(b => Object.assign({br: b, nm: namaBroker(b) || ""}, C.lab[b])).filter(s => s.lab);
+  const ket = el("div", "pb-ket");
+  const blok = (judul, kelas, isi, daftar) => {
+    const d = el("div", "pb-blok");
+    const h = el("div", "pb-judul"); h.appendChild(el("span", "pb-l " + kelas, judul)); h.appendChild(el("span", null, " " + isi)); d.appendChild(h);
+    const w = el("div", "pb-daftar");
+    daftar.forEach(([kode, teks, tt]) => { const c = el("span", "pb-chip"); c.appendChild(el("b", null, kode)); c.appendChild(el("span", null, " " + teks)); if (tt) c.title = tt; w.appendChild(c); });
+    if (!daftar.length) w.appendChild(el("span", "bantu", "tidak ada"));
+    d.appendChild(w); return d;
+  };
+  ket.appendChild(blok("PENAHAN", "pn", "jarang beli-buang: ≤25% beli besarnya dijual lagi dalam 3 hari bursa. Beli besar oleh penahan rata-rata +0,36% di atas pasar (t 1,9) — penguat.",
+    lab.filter(s => s.lab === "penahan").sort((a, b) => a.pf - b.pf).map(s => [s.br, Math.round(s.pf) + "%", s.nm + " · " + s.n + " beli besar"])));
+  ket.appendChild(blok("PEMBUANG", "pb", "sering beli-buang: ≥50% beli besarnya dijual lagi dalam 3 hari. Beli besar oleh pembuang rata-rata −0,28% (t −1,5) — rem, jangan dikejar.",
+    lab.filter(s => s.lab === "pembuang").sort((a, b) => b.pf - a.pf).map(s => [s.br, Math.round(s.pf) + "%", s.nm + " · " + s.n + " beli besar"])));
+  /* akumulasi >= 4 hari di tanggal sinyal, SEMUA emiten A1/B1 */
+  const ak = [];
+  Object.keys(C.top).forEach(kk => { const [em, t] = kk.split("|"); if (t !== tgl) return;
+    C.top[kk].forEach(o => { const r = C.runtun(em, o.br, tgl); if (r >= PB_AKUM) ak.push({em, br: o.br, r}); }); });
+  ak.sort((a, b) => b.r - a.r || a.em.localeCompare(b.em));
+  ket.appendChild(blok("AKUM ≥" + PB_AKUM + "h", "ak kuat", "broker yang sama net beli ≥2% volume " + PB_AKUM + " hari bursa berturut-turut atau lebih sampai " + tglID(tgl) +
+    " (semua emiten A1/B1, bukan hanya kandidat). Rata-rata +0,34% di atas pasar (t 2,4) — sinyal tambahan, bukan sinyal utama. Label AKUM 2–3h di tabel hanya keterangan.",
+    ak.map(a => [a.em, a.br + " " + a.r + "h", (namaBroker(a.br) || a.br) + " · " + a.r + " hari beruntun"])));
+  ket.appendChild(el("div", "bantu", "Tanpa label = broker biasa (25–50% dibuang dalam 3 hari) atau beli besarnya belum " + PB_MIN_N + " kali. " +
+    "Satu kode broker = gabungan banyak nasabah. Label dihitung dari data broker di HP (" + tglID(C.TB[0]) + " – " + tglID(C.TB[C.TB.length - 1]) + "); " +
+    "makin panjang riwayat broker yang diunduh, makin tepat. Bukan rekomendasi investasi."));
+  p.appendChild(ket);
+  return p;
+}
 /* ---------- HARGA & VOL ----------
    Rentang tanggalnya SENDIRI, tidak ikut ANALISA FAVORIT: di sana bawaannya
    satu hari, sedangkan tabel ini justru butuh sederet hari untuk dibaca. */
@@ -6438,7 +6586,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-07-9";
+const VERSI_APP = "2026-10-07-11";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
