@@ -1597,7 +1597,7 @@ function panelPotensi(w) {
   const adaMF = isi.baris.length > 0;
   H.semesta.forEach(x => {
     x.mf = adaMF && MFv[x.em] !== undefined ? MFv[x.em] : null;
-    x.mfLot = adaMF && MFlot[x.em] !== undefined ? MFlot[x.em] : null;   /* N.Lot sesi I - keterangan saja, tidak menentukan tier */
+    x.mfLot = adaMF && MFlot[x.em] !== undefined ? MFlot[x.em] : null;   /* VOL MF1 = N.Lot sesi I - keterangan saja, tidak menentukan tier */
     x.r = x.mf !== null && x.val20 ? x.mf / x.val20 * 100 : null;
     x.tm = x.r === null ? "" : x.r >= MF_A * 100 && x.q_lonjak > 0.7 ? "A" : x.r >= MF_A * 100 && x.q_lonjak > 0.5 ? "B" : x.r >= MF_PANTAU * 100 ? "P" : "";
     x.tmU = x.tm === "A" ? 1 : x.tm === "B" ? 2 : x.tm === "P" ? 3 : 9;
@@ -1654,8 +1654,8 @@ function panelPotensi(w) {
   const t = el("table", "pt-tbl"), th = el("tr");
   /* kolom: [judul, kunci urut]; ketuk judul = urutkan, ketuk lagi = balik.
      Bawaan (ptUrut.k kosong): tingkat A dulu lalu B, masing-masing %NF terbesar. */
-  const kol = (adaMF ? [["Tk POTENSI", "tk"], ["Tk MF", "tmU"], ["Emiten", "em"], ["MF sesi I", "mf"], ["N.Lot sesi I", "mfLot"], ["MF \u00f7 Value 20h", "r"]] : [["Tk", "tk"], ["Emiten", "em"]])
-    .concat([["%NF", "nf1"], ["VMA5/VMA20", "v520"], ["VMA10/VMA50 \u2605", "lonjak"], ["Harga " + tglID(ptTgl), "c"], ["Batas beli (+" + PT_GAP_MAX + "%)", "batas"]])
+  const kol = (adaMF ? [["Tk POTENSI", "tk"], ["Tk MF", "tmU"], ["Emiten", "em"], ["MF sesi I", "mf"], ["VOL MF1", "mfLot"], ["MF \u00f7 Value 20h", "r"]] : [["Tk", "tk"], ["Emiten", "em"]])
+    .concat([["%NF " + tglID(ptTgl), "nf1"], ["VMA5/VMA20", "v520"], ["VMA10/VMA50 \u2605", "lonjak"], ["Harga " + tglID(ptTgl), "c"], ["Batas beli (+" + PT_GAP_MAX + "%)", "batas"]])
     .concat(adaMF ? [["Harga beli", "beli"]] : [])
     .concat(lalu ? [["Gap buka H+1", "gap"], ["H+1 \u00b7 " + tPendek(H.tglNanti[0]), "c1"], ["H+2 \u00b7 " + tPendek(H.tglNanti[1]), "c2"], ["H+3 \u00b7 " + tPendek(H.tglNanti[2]), "c3"],
       ["Hasil buka\u2192" + (H.sesudah >= 3 ? "H+3" : "H+" + H.sesudah), "hT"]] : [])
@@ -1761,7 +1761,7 @@ function panelPotensi(w) {
     "Volume = jumlah lot yang ditransaksikan pada hari bursa sebelum tanggal sinyal dan pada tanggal sinyal; Value = nilai transaksi (Rp) pada tanggal sinyal. H+1, H+2, H+3 = harga tutup hari-hari sesudah tanggal sinyal, hijau/merah terhadap harga tutup tanggal sinyal (arahkan ke angkanya untuk melihat harga buka H+1). Angka di kartu dari uji luar sampel 1 Jul 2025 – 30 Sep 2026: " +
     "peluang per saham di bawah 50%, keunggulannya pada rata-rata; tingkat B impas sesudah biaya ±0,3%. " +
     "Pilih tanggal lampau untuk melihat hasil nyata. Ketuk baris untuk membuka Rekomendasi. " +
-    "MF (UNGGAH MF1) = net foreign sesi I hari bursa sesudah tanggal sinyal, dari screenshot Stockbit Half Time \u00b7 Sesi 1. MF \u00f7 Value 20h = MF dibagi rata-rata nilai transaksi 20 hari. " +
+    "MF (UNGGAH MF1) = net foreign sesi I hari bursa sesudah tanggal sinyal, dari screenshot Stockbit Half Time \u00b7 Sesi 1. VOL MF1 = N.Lot (net lot asing) sesi I dari layar yang sama - keterangan saja. MF \u00f7 Value 20h = MF dibagi rata-rata nilai transaksi 20 hari. " +
     "Tk MF: A = MF \u00f7 Value 20h \u2265 10% dan VMA10/VMA50 di 30% teratas; B = sama, 30\u201350%; P = pantau (\u2265 4%). Net beli asing sesi I bertahan sampai tutup 96% kasus dan berlanjut di sesi II 78% (19 hari, 325 kasus); " +
     "ambang 10% masih SEMENTARA dan beli di sesi II belum diuji - karena itu Harga beli dicatat (tersimpan di HP ini). Hasil harga beli = harga beli \u2192 tutup terakhir s/d H+3 tanggal sinyal. Bukan rekomendasi investasi."));
   w.appendChild(p);
@@ -6403,7 +6403,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-07-5";
+const VERSI_APP = "2026-10-07-6";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
