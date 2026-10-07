@@ -521,6 +521,12 @@ td .ph-porsi{display:block;width:max-content}
 .pt-mf-kor summary{font-weight:700;cursor:pointer}
 .mf-ok{margin-left:4px;padding:2px 7px}
 .pt-em{width:90px;font-weight:700}
+.pt-mf-pasar{margin-top:8px;border-radius:9px;padding:8px 10px;background:var(--surface);border:1px solid var(--garis);font-size:12.5px}
+.pt-mf-pasar.jual{border-color:var(--turun);background:var(--turun-bg)}
+.pt-mf-pasar.beli{border-color:var(--naik)}
+.pt-mf-pasar-n{font-weight:800}
+.pt-mf-pasar-k{margin-top:4px;font-size:12px;line-height:1.45}
+.mf-in.pasar{width:92px;text-align:right;font-weight:700;margin-left:4px}
 .mf-ta{width:100%;box-sizing:border-box;margin:6px 0;font:12px monospace;background:var(--surface);color:var(--ink);border:1px solid var(--garis);border-radius:8px;padding:6px}
 .mf-in{width:70px;font:inherit;font-size:12px;text-align:right;background:var(--surface);color:var(--ink);border:1px solid var(--garis);border-radius:6px;padding:3px 5px}
 .mf-in.kode{width:56px;text-align:left;font-weight:700}
@@ -1308,7 +1314,7 @@ async function mfPotong(file) {
 }
 async function mfBacaGambar(files, harga, lapor) {
   const w = await mfSiapOCR(lapor);
-  const semua = []; let tgl = "", halfTime = false;
+  const semua = []; let tgl = "", halfTime = false, pasarNF = null;
   for (let i = 0; i < files.length; i++) {
     const pot = await mfPotong(files[i]);
     for (let j = 0; j < pot.length; j++) {
@@ -1316,11 +1322,14 @@ async function mfBacaGambar(files, harga, lapor) {
       const r = await w.recognize(pot[j].cv);
       const t = r.data.text || "";
       tgl = tgl || mfTanggal(t);
+      /* "Net Foreign -663.34B" di kepala layar = net foreign SELURUH pasar sesi I */
+      if (pasarNF === null) { const m = t.match(/Net\s*Fore[il1]gn\s*[:|]?\s*([-\u2013\u2212]?\s*[\dOo][\dOo.,]*\s?[TBM8])/i);
+        if (m) { const a = mfAngka(m[1].replace(/[\u2013\u2212]/, "-").replace(/\s/g, "")); if (a) pasarNF = a.v; } }
       if (/half\s*ti|sesi\s*[1il|]/i.test(t)) halfTime = true;
       semua.push(...mfCocokkan(mfBacaTeks(t, pot[j].sisi), harga));
     }
   }
-  return {baris: semua, tgl, halfTime};
+  return {baris: semua, tgl, halfTime, pasarNF};
 }
 /* tabel bersama: judul beku + ketuk judul untuk mengurutkan */
 function mfTabel(kol, data, urut, isiBaris, kelas) {
@@ -1362,7 +1371,9 @@ function mfKotak(tglMF, tglSinyal, harga, isi, simpanIsi, ringkas, saatTanggalLa
       const tgl = B.tgl || tglMF;
       const s = mfMuat(); const tujuan = tgl === tglMF ? isi : (s[tgl] || {baris: [], beli: {}});
       const lama = tujuan.baris.length;
-      tujuan.baris = mfGabung(tujuan.baris.concat(B.baris)); s[tgl] = tujuan; mfSimpan(s);
+      tujuan.baris = mfGabung(tujuan.baris.concat(B.baris));
+      if (B.pasarNF !== null && !(tujuan.pasar && tujuan.pasar.manual)) tujuan.pasar = {nf: B.pasarNF};
+      s[tgl] = tujuan; mfSimpan(s);
       const per = tujuan.baris.filter(r => r.st === "periksa" || !r.em).length, dib = tujuan.baris.filter(r => r.st === "dibetulkan").length;
       mfPesan = (tujuan.baris.length - lama) + " baris baru terbaca dari " + files.length + " gambar" +
         (B.halfTime ? "" : " (tulisan \"Half Time Sesi 1\" tidak terlihat - pastikan gambarnya benar)") + ". " +
@@ -1392,6 +1403,29 @@ function mfKotak(tglMF, tglSinyal, harga, isi, simpanIsi, ringkas, saatTanggalLa
   det.appendChild(bT);
   box.appendChild(det);
   box.appendChild(st);
+  /* Net foreign seluruh pasar sesi I - PERINGATAN saja, tidak mengubah tier.
+     Uji 7 Okt 2026 (data seharian sebagai proksi), MF tier A: pasar net beli +1,44%,
+     net jual +0,40%; Jan-Sep 2026 +1,04% lawan -0,08%, tapi Jul-Des 2025 hampir
+     sama (+1,79% / +1,54%) - belum konsisten, jadi belum dijadikan syarat. */
+  if (isi.baris.length || isi.pasar) {
+    const nf = isi.pasar ? isi.pasar.nf : null;
+    const ps = el("div", "pt-mf-pasar" + (nf === null ? "" : nf < 0 ? " jual" : " beli"));
+    const kiri = el("div");
+    kiri.appendChild(el("b", null, "Net foreign seluruh pasar sesi I: "));
+    const ip = el("input", "mf-in pasar"); ip.value = nf === null ? "" : mfSB(nf); ip.placeholder = "mis. -663.34B";
+    ip.title = "Angka \"Net Foreign\" di kepala layar Half Time - terbaca otomatis, boleh diketik";
+    const simpanPasar = () => { const a = mfAngka(ip.value.replace(/\s/g, ""), true);
+      isi.pasar = a ? {nf: a.v, manual: true} : null; simpanIsi(); halScreener(); };
+    ip.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); ip.blur(); } };
+    ip.onchange = simpanPasar;
+    kiri.appendChild(ip);
+    if (nf !== null) kiri.appendChild(el("span", "pt-mf-pasar-n " + (nf < 0 ? "turun" : "naik"), " " + rpSingkat(nf) + (nf < 0 ? " \u2014 pasar net JUAL asing" : " \u2014 pasar net BELI asing")));
+    ps.appendChild(kiri);
+    ps.appendChild(el("div", "pt-mf-pasar-k", nf === null ? "Belum terbaca dari gambar - ketik angka \"Net Foreign\" di kepala layar Half Time (format Stockbit, B = miliar)." :
+      nf < 0 ? "\u26a0 Saat pasar net jual asing, sinyal MF cenderung lebih lemah. Uji Jan\u2013Sep 2026: MF tier A rata-rata \u22120,08% (pasar net jual) lawan +1,04% (net beli). Di Jul\u2013Des 2025 bedanya kecil, jadi ini peringatan, bukan larangan." :
+      "\u2713 Pasar net beli asing \u2014 kondisi terbaik untuk sinyal MF (uji: MF tier A rata-rata +1,44% lawan +0,40% saat pasar net jual)."));
+    box.appendChild(ps);
+  }
   return box;
 }
 /* tabel koreksi hasil baca (dilipat) */
@@ -1655,7 +1689,7 @@ function panelPotensi(w) {
   const t = el("table", "pt-tbl"), th = el("tr");
   /* kolom: [judul, kunci urut]; ketuk judul = urutkan, ketuk lagi = balik.
      Bawaan (ptUrut.k kosong): tingkat A dulu lalu B, masing-masing %NF terbesar. */
-  const kol = (adaMF ? [["Tk POTENSI", "tk"], ["Tk MF", "tmU"], ["Emiten", "em"], ["MF sesi I", "mf"], ["VOL MF1", "mfLot"], ["MF \u00f7 Value 20h", "r"]] : [["Tk", "tk"], ["Emiten", "em"]])
+  const kol = (adaMF ? [["Tr POTENSI", "tk"], ["Tr MF", "tmU"], ["Emiten", "em"], ["VALUE MF", "mf"], ["VOL MF1", "mfLot"], ["MF \u00f7 Value 20h", "r"]] : [["Tr", "tk"], ["Emiten", "em"]])
     .concat([["%NF " + tglID(ptTgl), "nf1"], ["VMA5/VMA20", "v520"], ["VMA10/VMA50 \u2605", "lonjak"], ["Harga " + tglID(ptTgl), "c"], ["Batas beli (+" + PT_GAP_MAX + "%)", "batas"]])
     .concat(adaMF ? [["Harga beli", "beli"]] : [])
     .concat(lalu ? [["Gap buka H+1", "gap"], ["H+1 \u00b7 " + tPendek(H.tglNanti[0]), "c1"], ["H+2 \u00b7 " + tPendek(H.tglNanti[1]), "c2"], ["H+3 \u00b7 " + tPendek(H.tglNanti[2]), "c3"],
@@ -1762,8 +1796,8 @@ function panelPotensi(w) {
     "Volume = jumlah lot yang ditransaksikan pada hari bursa sebelum tanggal sinyal dan pada tanggal sinyal; Value = nilai transaksi (Rp) pada tanggal sinyal. H+1, H+2, H+3 = harga tutup hari-hari sesudah tanggal sinyal, hijau/merah terhadap harga tutup tanggal sinyal (arahkan ke angkanya untuk melihat harga buka H+1). Angka di kartu dari uji luar sampel 1 Jul 2025 – 30 Sep 2026: " +
     "peluang per saham di bawah 50%, keunggulannya pada rata-rata; tingkat B impas sesudah biaya ±0,3%. " +
     "Pilih tanggal lampau untuk melihat hasil nyata. Ketuk baris untuk membuka Rekomendasi. " +
-    "MF (UNGGAH MF1) = net foreign sesi I hari bursa sesudah tanggal sinyal, dari screenshot Stockbit Half Time \u00b7 Sesi 1. VOL MF1 = N.Lot (net lot asing) sesi I dari layar yang sama - keterangan saja. MF \u00f7 Value 20h = MF dibagi rata-rata nilai transaksi 20 hari. " +
-    "Tk MF: A = MF \u00f7 Value 20h \u2265 10% dan VMA10/VMA50 di 30% teratas; B = sama, 30\u201350%; P = pantau (\u2265 4%). Net beli asing sesi I bertahan sampai tutup 96% kasus dan berlanjut di sesi II 78% (19 hari, 325 kasus); " +
+    "VALUE MF (UNGGAH MF1) = nilai net foreign sesi I hari bursa sesudah tanggal sinyal, dari screenshot Stockbit Half Time \u00b7 Sesi 1. VOL MF1 = N.Lot (net lot asing) sesi I dari layar yang sama - keterangan saja. MF \u00f7 Value 20h = MF dibagi rata-rata nilai transaksi 20 hari. " +
+    "Tr MF (tier MF): A = MF \u00f7 Value 20h \u2265 10% dan VMA10/VMA50 di 30% teratas; B = sama, 30\u201350%; P = pantau (\u2265 4%). Net beli asing sesi I bertahan sampai tutup 96% kasus dan berlanjut di sesi II 78% (19 hari, 325 kasus); " +
     "ambang 10% masih SEMENTARA dan beli di sesi II belum diuji - karena itu Harga beli dicatat (tersimpan di HP ini). Hasil harga beli = harga beli \u2192 tutup terakhir s/d H+3 tanggal sinyal. Bukan rekomendasi investasi."));
   w.appendChild(p);
 }
@@ -6404,7 +6438,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-07-7";
+const VERSI_APP = "2026-10-07-9";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
