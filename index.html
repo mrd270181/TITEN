@@ -536,6 +536,8 @@ td .ph-porsi{display:block;width:max-content}
 .pb-daftar{display:flex;flex-wrap:wrap;gap:5px}
 .pb-chip{border:1px solid var(--garis);border-radius:20px;padding:2px 9px;font-size:12px;background:var(--surface-2);cursor:help}
 .pb-chip b{font-family:monospace}
+.pt-tutup{display:block;font-size:.78em;font-weight:400;opacity:.85;white-space:nowrap;margin-top:2px}
+.pt-tutup span{display:block}
 .pb-pilih{align-items:center;margin:6px 0 8px}
 .pb-cari{max-width:220px;padding:6px 10px;font-size:13px}
 .pb-pil{cursor:pointer;color:inherit;font:inherit;font-size:12px}
@@ -548,6 +550,8 @@ td .ph-porsi{display:block;width:max-content}
 .pt-mf-pasar.jual{border-color:var(--turun);background:var(--turun-bg)}
 .pt-mf-pasar.beli{border-color:var(--naik)}
 .pt-mf-pasar-n{font-weight:900;font-size:24px;letter-spacing:.5px;margin:6px 0 2px;line-height:1.15}
+.pt-mf-pasar-t{margin-top:6px;padding-top:6px;border-top:1px dashed var(--garis);font-size:13px;line-height:1.6}
+.pt-mf-pasar-t b{font-size:15px}
 .pt-mf-pasar-k{margin-top:4px;font-size:12px;line-height:1.45}
 .mf-in.pasar{width:92px;text-align:right;font-weight:700;margin-left:4px}
 .mf-ta{width:100%;box-sizing:border-box;margin:6px 0;font:12px monospace;background:var(--surface);color:var(--ink);border:1px solid var(--garis);border-radius:8px;padding:6px}
@@ -642,6 +646,9 @@ td.rek-lawan{outline:1.5px solid currentColor;outline-offset:-3px;font-weight:80
 .rek-pv{display:block;font-size:.8em;font-weight:400;opacity:.75;margin-top:1px}
 .rek-ng{margin:14px 0 6px;padding:12px 14px;border:1px solid var(--line,#333);border-radius:8px}
 .rek-ng h2{margin:0 0 4px}
+.rek-nf{margin:3px 0;font-size:14px}
+.rek-nf-j{display:inline-block;min-width:230px;color:var(--ink-2)}
+.rek-nf b{margin-right:6px}
 .rek-avg{margin-left:4px;font-weight:400;opacity:.7;font-size:.88em;white-space:nowrap}
 tfoot td{border-top:2px solid var(--garis);font-weight:800;background:var(--surface-2)}
 #barisVersi{
@@ -1452,9 +1459,31 @@ function mfKotak(tglMF, tglSinyal, harga, isi, simpanIsi, ringkas, saatTanggalLa
     ps.appendChild(el("div", "pt-mf-pasar-k", nf === null ? "Belum terbaca dari gambar - ketik angka \"Net Foreign\" di kepala layar Half Time (format Stockbit, B = miliar)." :
       nf < 0 ? "\u26a0 Saat pasar net jual asing, sinyal MF cenderung lebih lemah. Uji Jan\u2013Sep 2026: MF tier A rata-rata \u22120,08% (pasar net jual) lawan +1,04% (net beli). Di Jul\u2013Des 2025 bedanya kecil, jadi ini peringatan, bukan larangan." :
       "\u2713 Pasar net beli asing \u2014 kondisi terbaik untuk sinyal MF (uji: MF tier A rata-rata +1,44% lawan +0,40% saat pasar net jual)."));
+    /* penutupan (sehari penuh) seluruh pasar + sesi II = penutupan - sesi I */
+    const tp = mfPasarTutup(tglMF);
+    const pt = el("div", "pt-mf-pasar-t");
+    if (tp === null) pt.appendChild(el("span", "bantu", "Penutupan " + tglID(tglMF) + ": belum ada \u2014 muncul sesudah data harian tanggal itu diimpor."));
+    else {
+      const s2 = nf === null ? null : tp - nf;
+      const tulis = (j, v) => { const d = el("div"); d.appendChild(el("span", null, j + " "));
+        d.appendChild(el("b", v < 0 ? "turun" : "naik", (v < 0 ? "NET SELL " : "NET BUY ") + (v < 0 ? "\u2212" : "+") + rpSingkat(Math.abs(v)))); return d; };
+      pt.appendChild(tulis("Penutupan " + tglID(tglMF) + ":", tp));
+      if (s2 !== null) pt.appendChild(tulis("Sesi II (penutupan \u2212 sesi I):", s2));
+      pt.title = "Taksiran: net foreign tiap emiten (lembar, Ringkasan Saham IDX) \u00d7 harga rata-rata hari itu, dijumlah seluruh emiten";
+    }
+    ps.appendChild(pt);
     box.appendChild(ps);
   }
   return box;
+}
+/* net foreign SELURUH pasar sehari penuh (rupiah, taksiran) - null kalau data tanggal itu belum diimpor */
+function mfPasarTutup(t) {
+  const b = (daftarHari.find(r => r.tgl === t) || {}).baris;
+  if (!b) return null;
+  let s = 0, ada = false;
+  Object.keys(b).forEach(k => { const d = b[k]; if (!d || !d.v || (d.fb == null && d.fs == null)) return;
+    ada = true; s += ((d.fb || 0) - (d.fs || 0)) * (d.n ? d.n / d.v : d.c || 0); });
+  return ada ? s : null;
 }
 /* tabel koreksi hasil baca (dilipat) */
 function mfKoreksi(tglMF, tglSinyal, harga, isi, simpanIsi) {
@@ -1657,10 +1686,18 @@ function panelPotensi(w) {
   const MFv = {}, MFlot = {}; isi.baris.forEach(r => { if (r.em) { MFv[r.em] = (MFv[r.em] || 0) + r.nf;
     if (r.lot) MFlot[r.em] = (MFlot[r.em] || 0) + Math.sign(r.nf) * r.lot; } });
   const adaMF0 = isi.baris.length > 0;              /* MF1 tersimpan untuk tanggal ini */
+  /* net foreign PENUTUPAN (sehari penuh) tanggal MF, dari Ringkasan Saham IDX - baru ada sesudah data hari itu diimpor.
+     fb/fs dalam LEMBAR; rupiah ditaksir dengan harga rata-rata hari itu (nilai / volume). Sesi II = penutupan - sesi I. */
+  const bMF = (daftarHari.find(r => r.tgl === mfT) || {}).baris || {};
+  const adaTutup = Object.keys(bMF).length > 0;
   const adaMF = adaMF0 && ptSaring !== "tanpa";      /* "Tanpa MF" = tabel POTENSI biasa */
   H.semesta.forEach(x => {
     x.mf = adaMF0 && MFv[x.em] !== undefined ? MFv[x.em] : null;
-    x.mfLot = adaMF0 && MFlot[x.em] !== undefined ? MFlot[x.em] : null;   /* VOL MF1 = N.Lot sesi I - keterangan saja, tidak menentukan tier */
+    x.mfLot = adaMF0 && MFlot[x.em] !== undefined ? MFlot[x.em] : null;
+    { const d = bMF[x.em]; const ok = d && d.v && (d.fb != null || d.fs != null);
+      const nfL = ok ? (d.fb || 0) - (d.fs || 0) : null;
+      x.nfTutup = ok ? nfL * (d.n && d.v ? d.n / d.v : d.c || 0) : null;   /* rupiah */
+      x.nfTutupLot = ok ? nfL / LOT : null; }   /* VOL MF1 = N.Lot sesi I - keterangan saja, tidak menentukan tier */
     x.r = x.mf !== null && x.val20 ? x.mf / x.val20 * 100 : null;
     x.tm = x.r === null ? "" : x.r >= MF_A * 100 && x.q_lonjak > 0.7 ? "A" : x.r >= MF_A * 100 && x.q_lonjak > 0.5 ? "B" : x.r >= MF_PANTAU * 100 ? "P" : "";
     x.tmU = x.tm === "A" ? 1 : x.tm === "B" ? 2 : x.tm === "P" ? 3 : 9;
@@ -1763,8 +1800,23 @@ function panelPotensi(w) {
     if (adaMF) { const cm = el("td"); if (x.tm) cm.appendChild(el("span", "pt-tier t" + x.tm, x.tm)); else cm.textContent = "\u2013"; tr.appendChild(cm); }
     const c1 = el("td"); c1.appendChild(el("span", "kode", x.em)); c1.appendChild(el("span", "nm", (DATA.nama && DATA.nama[x.em]) || "")); c1.style.textAlign = "left"; tr.appendChild(c1);
     if (adaMF) {
-      tr.appendChild(el("td", "num" + kls(x.mf), x.mf === null ? "\u2013" : rpSingkat(x.mf)));
-      tr.appendChild(el("td", "num" + kls(x.mfLot), x.mfLot === null ? "\u2013" : lotSingkat(Math.round(x.mfLot))));
+      const cv = el("td", "num" + kls(x.mf), x.mf === null ? "\u2013" : rpSingkat(x.mf));
+      const cl = el("td", "num" + kls(x.mfLot), x.mfLot === null ? "\u2013" : lotSingkat(Math.round(x.mfLot)));
+      if (adaTutup) {
+        /* baris kecil di bawah sesi I: N penutupan (sehari penuh) dan sesi II = penutupan - sesi I */
+        const s2 = x.nfTutup === null ? null : x.nfTutup - (x.mf || 0);
+        const bv = el("span", "pt-tutup");
+        bv.appendChild(el("span", kls(x.nfTutup).trim(), "tutup " + (x.nfTutup === null ? "\u2013" : rpSingkat(x.nfTutup))));
+        bv.appendChild(el("span", kls(s2).trim(), "sesi II " + (s2 === null ? "\u2013" : rpSingkat(s2))));
+        bv.title = "Net foreign penutupan " + tglID(mfT) + " (sehari penuh, taksiran rupiah dari harga rata-rata) dan sesi II = penutupan \u2212 sesi I";
+        cv.appendChild(bv);
+        const s2l = x.nfTutupLot === null ? null : x.nfTutupLot - (x.mfLot || 0);
+        const bl = el("span", "pt-tutup");
+        bl.appendChild(el("span", kls(x.nfTutupLot).trim(), "tutup " + (x.nfTutupLot === null ? "\u2013" : lotSingkat(Math.round(x.nfTutupLot)))));
+        bl.appendChild(el("span", kls(s2l).trim(), "sesi II " + (s2l === null ? "\u2013" : lotSingkat(Math.round(s2l)))));
+        cl.appendChild(bl);
+      }
+      tr.appendChild(cv); tr.appendChild(cl);
       tr.appendChild(el("td", "num pt-batas" + kls(x.r), pr(x.r)));
     }
     tr.appendChild(el("td", "num" + kls(x.nf1), pr(x.nf1)));
@@ -1825,6 +1877,7 @@ function panelPotensi(w) {
     "peluang per saham di bawah 50%, keunggulannya pada rata-rata; tingkat B impas sesudah biaya ±0,3%. " +
     "Pilih tanggal lampau untuk melihat hasil nyata. Ketuk baris untuk membuka Rekomendasi. " +
     "VALUE MF (UNGGAH MF1) = nilai net foreign sesi I hari bursa sesudah tanggal sinyal, dari screenshot Stockbit Half Time \u00b7 Sesi 1. VOL MF1 = N.Lot (net lot asing) sesi I dari layar yang sama - keterangan saja. MF \u00f7 Value 20h = MF dibagi rata-rata nilai transaksi 20 hari. " +
+    "Baris kecil di bawah VALUE MF dan VOL MF1: tutup = net foreign sehari penuh tanggal MF (dari Ringkasan Saham IDX, muncul sesudah data hari itu diimpor; rupiah ditaksir dari harga rata-rata), sesi II = tutup \u2212 sesi I. " +
     "Tr MF (tier MF): A = MF \u00f7 Value 20h \u2265 10% dan VMA10/VMA50 di 30% teratas; B = sama, 30\u201350%; P = pantau (\u2265 4%). Net beli asing sesi I bertahan sampai tutup 96% kasus dan berlanjut di sesi II 78% (19 hari, 325 kasus); " +
     "ambang 10% masih SEMENTARA dan beli di sesi II belum diuji - karena itu Harga beli dicatat (tersimpan di HP ini). Hasil harga beli = harga beli \u2192 tutup terakhir s/d H+3 tanggal sinyal. Bukan rekomendasi investasi."));
   w.appendChild(p);  /* bagian bawah: pembeli besar + label broker (penahan / pembuang / akum) */
@@ -3591,6 +3644,37 @@ function panelRekomendasi(w) {
         "berputar di broker yang sama. Porsi kecil di tengah volume besar berarti ramainya semu. Bandingkan dengan kebiasaan saham itu sendiri, bukan dengan saham lain."));
     }
     p.appendChild(ng);
+  }
+  /* ---- NET FOREIGN PENUTUPAN: di bawah % net terhadap gross ---- */
+  {
+    const nfB = el("div", "rek-ng");
+    nfB.appendChild(el("h2", null, "Net foreign penutupan \u2014 " + rek.em));
+    const rpH = x => x.nf * (x.n && x.v ? x.n / x.v : (x.c || 0));   /* lembar x harga rata-rata = taksiran rupiah */
+    const baris = (judul, lot, rpv, pnfv) => {
+      const d = el("div", "rek-nf");
+      d.appendChild(el("span", "rek-nf-j", judul));
+      d.appendChild(el("b", lot < 0 ? "turun" : lot > 0 ? "naik" : "", (lot < 0 ? "NET SELL " : "NET BUY ") + rekLot(lot)  + " lot"));
+      d.appendChild(el("span", lot < 0 ? "turun" : "naik", " \u2248 " + (rpv < 0 ? "\u2212" : "+") + "Rp " + rpSingkat(Math.abs(rpv))));
+      if (pnfv !== null) d.appendChild(el("span", "rek-avg", "(%NF " + rekPersen(pnfv) + ")"));
+      return d; };
+    nfB.appendChild(baris("Penutupan " + tglID(akhir.tgl) + ":", akhir.nf / LOT, rpH(akhir), akhir.v ? akhir.nf / akhir.v * 100 : null));
+    /* sesi I dari MF1 (kalau screenshot hari itu diunggah di POTENSI 3 HARI) -> sesi II = penutupan - sesi I */
+    let s1 = null, s1L = null;
+    try { const m = (mfMuat()[akhir.tgl] || {}).baris || [];
+      m.forEach(r => { if (r.em === rek.em) { s1 = (s1 || 0) + r.nf; if (r.lot) s1L = (s1L || 0) + Math.sign(r.nf) * r.lot; } }); } catch (e) {}
+    if (s1 !== null) {
+      const d1 = el("div", "rek-nf"); d1.appendChild(el("span", "rek-nf-j", "Sesi I (MF1):"));
+      d1.appendChild(el("b", s1 < 0 ? "turun" : "naik", (s1 < 0 ? "\u2212" : "+") + "Rp " + rpSingkat(Math.abs(s1)) + (s1L !== null ? " \u00b7 " + rekLot(s1L) + " lot" : "")));
+      nfB.appendChild(d1);
+      const s2 = rpH(akhir) - s1;
+      const d2 = el("div", "rek-nf"); d2.appendChild(el("span", "rek-nf-j", "Sesi II (penutupan \u2212 sesi I):"));
+      d2.appendChild(el("b", s2 < 0 ? "turun" : "naik", (s2 < 0 ? "\u2212" : "+") + "Rp " + rpSingkat(Math.abs(s2)) + (s1L !== null ? " \u00b7 " + rekLot(akhir.nf / LOT - s1L) + " lot" : "")));
+      nfB.appendChild(d2);
+    }
+    if (hr.length > 1) nfB.appendChild(baris("Total " + tglID(rek.dari) + " \u2013 " + tglID(rek.sampai) + ":", nfTot / LOT, hr.reduce((t, x) => t + rpH(x), 0), pnf));
+    nfB.appendChild(el("div", "bantu", "Dari Ringkasan Saham IDX (sehari penuh, pasar reguler). Rupiah = taksiran: lot asing \u00d7 harga rata-rata hari itu. " +
+      (s1 === null ? "Sesi I/II muncul kalau screenshot MF1 tanggal " + tglID(akhir.tgl) + " sudah diunggah di POTENSI 3 HARI dan " + rek.em + " ada di daftarnya." : "Sesi I dari screenshot MF1 yang diunggah di POTENSI 3 HARI.")));
+    p.appendChild(nfB);
   }
 
   /* ---- strip posisi: 5 pemegang terbesar & 5 pengurang terbesar ---- */
@@ -6685,7 +6769,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-07-17";
+const VERSI_APP = "2026-10-07-18";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
