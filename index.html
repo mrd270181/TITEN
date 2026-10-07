@@ -1594,15 +1594,16 @@ function panelPotensi(w) {
   Object.keys(bS0).forEach(k => { if (bS0[k] && bS0[k].c) hargaSinyal[k] = bS0[k].c; });
   const MFv = {}, MFlot = {}; isi.baris.forEach(r => { if (r.em) { MFv[r.em] = (MFv[r.em] || 0) + r.nf;
     if (r.lot) MFlot[r.em] = (MFlot[r.em] || 0) + Math.sign(r.nf) * r.lot; } });
-  const adaMF = isi.baris.length > 0;
+  const adaMF0 = isi.baris.length > 0;              /* MF1 tersimpan untuk tanggal ini */
+  const adaMF = adaMF0 && ptSaring !== "tanpa";      /* "Tanpa MF" = tabel POTENSI biasa */
   H.semesta.forEach(x => {
-    x.mf = adaMF && MFv[x.em] !== undefined ? MFv[x.em] : null;
-    x.mfLot = adaMF && MFlot[x.em] !== undefined ? MFlot[x.em] : null;   /* VOL MF1 = N.Lot sesi I - keterangan saja, tidak menentukan tier */
+    x.mf = adaMF0 && MFv[x.em] !== undefined ? MFv[x.em] : null;
+    x.mfLot = adaMF0 && MFlot[x.em] !== undefined ? MFlot[x.em] : null;   /* VOL MF1 = N.Lot sesi I - keterangan saja, tidak menentukan tier */
     x.r = x.mf !== null && x.val20 ? x.mf / x.val20 * 100 : null;
     x.tm = x.r === null ? "" : x.r >= MF_A * 100 && x.q_lonjak > 0.7 ? "A" : x.r >= MF_A * 100 && x.q_lonjak > 0.5 ? "B" : x.r >= MF_PANTAU * 100 ? "P" : "";
     x.tmU = x.tm === "A" ? 1 : x.tm === "B" ? 2 : x.tm === "P" ? 3 : 9;
     /* kelompok keputusan sesi II */
-    x.grup = !adaMF ? 0 : x.tk && x.mf !== null && x.mf < 0 ? 5 : x.tk && (x.tm === "A" || x.tm === "B") ? 1 : (x.tm === "A" || x.tm === "B") ? 2 :
+    x.grup = !adaMF0 ? 0 : x.tk && x.mf !== null && x.mf < 0 ? 5 : x.tk && (x.tm === "A" || x.tm === "B") ? 1 : (x.tm === "A" || x.tm === "B") ? 2 :
       x.tm === "P" || (x.tk && x.mf !== null) ? 3 : x.tk ? 4 : 9;
     x.beli = isi.beli[x.em] || null;
     x.aneh = !!(x.beli && (x.beli < x.c * 0.65 || x.beli > x.c * 1.35));
@@ -1611,16 +1612,16 @@ function panelPotensi(w) {
   });
   if (adaMF) { K.length = 0; H.semesta.filter(x => x.grup && x.grup < 9).forEach(x => K.push(x)); }
   if (mfT) {
-    const nG = g => K.filter(x => x.grup === g).length;
+    const nG = g => H.semesta.filter(x => x.grup === g).length;
     const nPer = isi.baris.filter(r => r.st === "periksa" || !r.em).length;
-    const ringkas = adaMF ? isi.baris.length + " baris MF1 tersimpan" + (nPer ? " · " + nPer + " perlu dicek (Hasil baca MF1 di bawah tabel)" : "") +
+    const ringkas = adaMF0 ? isi.baris.length + " baris MF1 tersimpan" + (nPer ? " · " + nPer + " perlu dicek (Hasil baca MF1 di bawah tabel)" : "") +
       " · " + nG(1) + " sinyal ganda, " + nG(2) + " baru dari MF, " + nG(5) + " dijual asing." :
       "Belum ada MF1. Sekitar pukul 12.00 unggah screenshot Stockbit Half Time · Sesi 1 (boleh beberapa gambar).";
     const kotak = mfKotak(mfT, ptTgl, hargaSinyal, isi, simpanIsi, ringkas, t => {
       const lalu2 = tgl.filter(x => x < t); if (lalu2.length) ptTgl = lalu2[lalu2.length - 1]; });
-    if (adaMF) {
+    if (adaMF0) {
       const sr = el("div", "pt-mf-saring"); sr.appendChild(el("span", "bantu", "Tampilkan: "));
-      [["semua", "Semua"], ["beli", "Beli sesi II (" + (nG(1) + nG(2)) + ")"], ["jual", "Dijual asing (" + nG(5) + ")"]].forEach(([k, j]) => {
+      [["semua", "Semua"], ["beli", "Beli sesi II (" + (nG(1) + nG(2)) + ")"], ["jual", "Dijual asing (" + nG(5) + ")"], ["tanpa", "Tanpa MF"]].forEach(([k, j]) => {
         const b = el("button", "kecil" + (ptSaring === k ? " aktif" : ""), j); b.onclick = () => { ptSaring = k; halScreener(); }; sr.appendChild(b); });
       kotak.appendChild(sr);
     }
@@ -1695,7 +1696,7 @@ function panelPotensi(w) {
     if (adaMF && !ptUrut.k && x.grup !== kelLalu) {
       kelLalu = x.grup; const g = el("tr", "pt-kel k" + x.grup), gd = el("td", null, PT_KEL[x.grup][0]); gd.colSpan = kol.length; g.appendChild(gd); t.appendChild(g);
     }
-    const tr = el("tr", "klik" + (x.grup === 5 ? " pt-dicoret" : ""));
+    const tr = el("tr", "klik" + (adaMF && x.grup === 5 ? " pt-dicoret" : ""));
     const c0 = el("td"); if (x.tk) c0.appendChild(el("span", "pt-tier t" + x.tk, x.tk)); else c0.textContent = "\u2013"; tr.appendChild(c0);
     if (adaMF) { const cm = el("td"); if (x.tm) cm.appendChild(el("span", "pt-tier t" + x.tm, x.tm)); else cm.textContent = "\u2013"; tr.appendChild(cm); }
     const c1 = el("td"); c1.appendChild(el("span", "kode", x.em)); c1.appendChild(el("span", "nm", (DATA.nama && DATA.nama[x.em]) || "")); c1.style.textAlign = "left"; tr.appendChild(c1);
@@ -6403,7 +6404,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-07-6";
+const VERSI_APP = "2026-10-07-7";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
