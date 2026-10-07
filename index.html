@@ -1224,7 +1224,7 @@ function mfGabung(baris) {
   /* ketikan user (manual) selalu menang atas hasil OCR */
   const mutu = r => r.st === "manual" ? -2 : r.st === "ok" ? -1 : r.st === "dibetulkan" ? (r.skor || 0) : 99;
   const kembar = r => out.some(x => x.lot && r.lot && Math.abs(x.lot - r.lot) < 1 && Math.abs(x.nf - r.nf) < 1);
-  baris.slice().sort((a, b) => mutu(a) - mutu(b)).forEach(r => {
+  baris.slice().sort((a, b) => mutu(a) - mutu(b) || (b.waktu || 0) - (a.waktu || 0))   /* ketikan TERBARU menang */.forEach(r => {
     if ((!r.em || pakai[r.em]) && kembar(r)) return;   /* baris sama dari gambar bertumpuk, kodenya terbaca lain */
     if (r.em && pakai[r.em]) {
       if (sama(pakai[r.em], r)) return;   /* duplikat */
@@ -1384,7 +1384,7 @@ function mfKotak(tglMF, tglSinyal, harga, isi, simpanIsi, ringkas, saatTanggalLa
     ta.value.split(/\n|;/).forEach(br => {
       const tk = br.trim().split(/\s+/); if (tk.length < 2) return;
       const em = mfKode(tk[0]), a = mfAngka(tk.slice(1).join(""), true);
-      if (em && a) baru.push({ocr: em, em: harga[em] ? em : "", nf: a.v, lot: null, tersirat: null, st: harga[em] ? "manual" : "periksa"});
+      if (em && a) baru.push({ocr: em, em: harga[em] ? em : "", nf: a.v, lot: null, tersirat: null, st: harga[em] ? "manual" : "periksa", waktu: Date.now()});
     });
     isi.baris = mfGabung(isi.baris.concat(baru)); simpanIsi();
     mfPesan = baru.length + " baris ditambahkan secara manual."; mfPesanTgl = tglMF; halScreener();
@@ -1430,7 +1430,7 @@ function mfKoreksi(tglMF, tglSinyal, harga, isi, simpanIsi) {
         if (!r) throw new Error("baris tidak ditemukan - muat ulang halaman");
         if (k === (r.em || "") && r.st === "manual") { sudah = false; return; }
         const lama = isi.baris.find((b, j) => j !== x.i && b.em === k);
-        r.em = k; r.st = "manual"; r.alt = [];
+        r.em = k; r.st = "manual"; r.alt = []; r.waktu = Date.now();
         isi.baris = mfGabung(isi.baris); simpanIsi();
         mfPesan = !k ? "Kode dikosongkan." : (!harga[k] ? "Kode " + k + " disimpan, tetapi tidak ada di data harga " + tglID(tglSinyal) + " - periksa ejaannya. " : "Kode " + k + " disimpan. ") +
           (lama ? "Baris lain yang tadinya ditebak " + k + " (" + mfSB(lama.nf) + ") dipindah ke tebakan lain / ditandai merah." : "");
@@ -1450,7 +1450,7 @@ function mfKoreksi(tglMF, tglSinyal, harga, isi, simpanIsi) {
     const cn = el("td", "num"); const inf = el("input", "mf-in"); inf.value = mfSB(x.nf);
     inf.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); inf.blur(); } };
     inf.onchange = () => { const a = mfAngka(inf.value.replace(/\s/g, ""), true); const r = isi.baris[x.i];
-      if (a) { r.nf = a.v; r.st = r.em && harga[r.em] ? "manual" : "periksa"; simpanIsi(); } halScreener(); };
+      if (a) { r.nf = a.v; r.st = r.em && harga[r.em] ? "manual" : "periksa"; r.waktu = Date.now(); simpanIsi(); } halScreener(); };
     cn.appendChild(inf); tr.appendChild(cn);
     tr.appendChild(el("td", "num", x.lot ? lotSingkat(Math.round(x.lot)) : "–"));
     tr.appendChild(el("td", "num", x.tersirat ? rp(Math.round(x.tersirat)) : "–"));
@@ -6403,7 +6403,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-07-4";
+const VERSI_APP = "2026-10-07-5";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
