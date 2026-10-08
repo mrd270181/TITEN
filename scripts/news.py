@@ -255,7 +255,45 @@ UA_BROWSER = ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
               '(KHTML, like Gecko) Chrome/124.0 Safari/537.36')
 
 
+_cffi = False
+
+
+def _sesi_cffi():
+    """IDX (Cloudflare) menolak sidik jari TLS urllib/curl biasa dengan 403. curl_cffi
+    meniru Chrome asli dan lolos - cara yang sama dengan unduh_ringkasan.py di laptop.
+    Kalau belum terpasang (GitHub Actions), dipasang sekali di sini."""
+    global _cffi
+    if _cffi is False:
+        _cffi = None
+        try:
+            from curl_cffi import requests as creq
+        except ImportError:
+            import subprocess, sys
+            subprocess.run([sys.executable, '-m', 'pip', 'install', '-q', 'curl_cffi'], timeout=180)
+            try:
+                from curl_cffi import requests as creq
+            except ImportError:
+                creq = None
+        if creq is not None:
+            _cffi = creq.Session(impersonate='chrome')
+            try:   # buka halaman dulu supaya cookie Cloudflare terbawa
+                _cffi.get('https://www.idx.co.id/id/perusahaan-tercatat/keterbukaan-informasi/', timeout=60)
+            except Exception:
+                pass
+    return _cffi
+
+
 def _ki_ambil(url):
+    s = _sesi_cffi()
+    if s is not None:
+        r = s.get(url, timeout=60, headers={'Referer': 'https://www.idx.co.id/id/perusahaan-tercatat/keterbukaan-informasi/',
+                                             'Accept': 'application/json, text/plain, */*'})
+        if r.status_code != 200:
+            raise ValueError('HTTP %s (curl_cffi)' % r.status_code)
+        teks = r.text
+        if teks.lstrip()[:1] not in '{[':
+            raise ValueError('bukan JSON (kemungkinan tantangan Cloudflare)')
+        return json.loads(teks)
     req = urllib.request.Request(url, headers={
         'User-Agent': UA_BROWSER, 'Accept': 'application/json, text/plain, */*',
         'Accept-Language': 'id-ID,id;q=0.9,en;q=0.8',
