@@ -269,11 +269,26 @@ def _sesi_cffi():
             from curl_cffi import requests as creq
         except ImportError:
             import subprocess, sys
-            subprocess.run([sys.executable, '-m', 'pip', 'install', '-q', 'curl_cffi'], timeout=180)
-            try:
-                from curl_cffi import requests as creq
-            except ImportError:
-                creq = None
+            creq = None
+            # Ubuntu baru menolak pip biasa (externally-managed) - coba beberapa cara
+            for extra in ([], ['--user'], ['--user', '--break-system-packages'], ['--break-system-packages']):
+                p = subprocess.run([sys.executable, '-m', 'pip', 'install', '-q'] + extra + ['curl_cffi'],
+                                   capture_output=True, text=True, timeout=240)
+                if p.returncode == 0:
+                    import site, importlib
+                    try:
+                        sys.path.append(site.getusersitepackages())
+                    except Exception:
+                        pass
+                    importlib.invalidate_caches()
+                    try:
+                        from curl_cffi import requests as creq
+                        break
+                    except ImportError:
+                        creq = None
+                else:
+                    print('  pip curl_cffi %s gagal: %s' % (' '.join(extra) or '(biasa)', (p.stderr or '').strip().splitlines()[-1:] ))
+        print('  curl_cffi:', 'siap' if creq is not None else 'TIDAK ADA - pakai urllib biasa')
         if creq is not None:
             _cffi = creq.Session(impersonate='chrome')
             try:   # buka halaman dulu supaya cookie Cloudflare terbawa
