@@ -420,6 +420,8 @@ input.nw-kode{width:110px;flex:0 0 auto;text-transform:uppercase}
 .nw-tgl{font-size:11px;font-weight:700;color:var(--ink-3);letter-spacing:.5px;margin:14px 0 6px;text-transform:uppercase}
 .nw-item{display:flex;gap:10px;padding:10px;border-radius:10px;background:var(--surface-2);
   margin-bottom:7px;border-left:4px solid var(--garis)}
+.nw-item.ki{border-left-color:#4f8ef7}
+.nw-sen.ki{background:#4f8ef733;color:#4f8ef7}
 .nw-item.pos{border-left-color:var(--naik)} .nw-item.neg{border-left-color:var(--turun)}
 .nw-jam{font-size:11px;color:var(--ink-3);min-width:40px;padding-top:2px}
 .nw-isi{flex:1;min-width:0}
@@ -1184,6 +1186,8 @@ function mfAngka(tok, bolehTanpaAkhiran) {
   let s = String(tok).replace(/[Oo]/g, "0").replace(/,/g, ".").replace(/[^0-9.\-+BMKTb]/g, "");
   if (!s) return null;
   const neg = /^-/.test(s); s = s.replace(/[-+]/g, "");
+  /* huruf nyasar sebelum akhiran: "-222.87TM" = -222.87M */
+  { const m = s.match(/^(\d[\d.]*)[BMKTb]+([BMKTb])$/); if (m) s = m[1] + m[2]; }
   let akh = (s.match(/[BMKTb]$/) || [""])[0].toUpperCase(); if (akh) s = s.slice(0, -1);
   /* "1.098" = 1.09B: Stockbit selalu 2 desimal, jadi digit ke-3 sesudah titik = huruf B */
   if (!akh && /^\d+\.\d\d8$/.test(s)) { akh = "B"; s = s.slice(0, -1); }
@@ -1201,7 +1205,10 @@ function mfKode(tok) {
 function mfBacaTeks(teks, sisi) {
   const hasil = [];
   String(teks).split(/\n/).forEach(br => {
-    const tok = br.trim().split(/\s+/).filter(Boolean);
+    let tok = br.trim().split(/\s+/).filter(Boolean);
+    /* angka terbelah spasi: "-244 25M" = -244.25M (titiknya terbaca sebagai spasi) */
+    tok = tok.reduce((o, x) => { const p = o[o.length - 1];
+      if (p && /^[-+]?\d{1,3}$/.test(p) && /^\d{2}[BMK]$/.test(x)) o[o.length - 1] = p + "." + x; else o.push(x); return o; }, []);
     /* cari pasangan angka berurutan: N.Foreign (berakhiran B/M/K) lalu N.Lot (K/M) */
     for (let i = 0; i < tok.length - 1; i++) {
       /* N.Lot boleh gagal terbaca (mis. "JPR:") - baris tetap diambil, tanpa cek harga */
@@ -1231,11 +1238,31 @@ const mfRingkas = k => k.replace(/(.)\1+/g, "$1");   /* "BSSSSR" -> "BSR" */
 function mfCocokkan(baris, harga) {
   const kodeSemua = Object.keys(harga);
   const jarak = (o, k) => Math.min(mfJarak(o, k), mfJarak(mfRingkas(o), mfRingkas(k)));
-  return baris.map(r => {
+  return baris.map(r0 => {
+    /* dua lintasan bisa memberi N.Foreign / N.Lot berbeda (TINS -7.22K terbaca "-1.22K"
+       di lintasan 2): pilih pasangan yang harga tersiratnya paling dekat dengan kode terbaca */
+    let r = r0;
+    const kk = [r0.ocr, r0.ocr1].filter(k => k && harga[k]);
+    if (kk.length && (r0.nf1 !== undefined)) {
+      let best = null;
+      for (const nf of [r0.nf, r0.nf1]) for (const lot of [r0.lot, r0.lot1]) for (const k of kk) {
+        if (!nf || !lot) continue;
+        const e = Math.abs(Math.log(Math.abs(nf) / (lot * 100) / harga[k]));
+        if (!best || e < best.e - 1e-9) best = {e, nf, lot};
+      }
+      if (best) r = Object.assign({}, r0, {nf: best.nf, lot: best.lot});
+    }
     const tersirat = r.lot ? Math.abs(r.nf) / (r.lot * 100) : null;
     const dekat = k => tersirat && harga[k] ? Math.abs(Math.log(tersirat / harga[k])) : 9;
     const o = Object.assign({}, r, {tersirat});
     if (harga[r.ocr] && dekat(r.ocr) < 0.3) return Object.assign(o, {em: r.ocr, st: "ok"});
+    /* lintasan 1 membaca kode lain yang juga cocok harganya */
+    if (r.ocr1 && harga[r.ocr1] && dekat(r.ocr1) < 0.3) return Object.assign(o, {em: r.ocr1, st: "ok"});
+    /* kode terbaca utuh dan memang ada di bursa, tapi harga tersiratnya meleset: hampir selalu
+       N.Lot atau N.Foreign yang salah baca (AALI -1.70K terbaca "470K"), BUKAN kodenya.
+       Jangan dipindah ke kode lain yang kebetulan harganya cocok (AALI dulu jadi AGII) -
+       pakai kodenya, tandai merah supaya angkanya dicek. */
+    if (harga[r.ocr] && r.ocr.length >= 3) return Object.assign(o, {em: r.ocr, st: "periksa", alasan: "harga tersirat tidak cocok - cek N.Foreign / N.Lot"});
     /* calon: jarak edit <= 2 dan harga tersirat dalam ±30% (sesi I bisa bergerak jauh) */
     /* dua huruf saja ("UT" = ULTJ): hanya kalau hurufnya berurutan ada di kode DAN harganya sangat dekat */
     const urut = (o, k) => { let n = 0; for (const c of k) if (c === o[n]) n++; return n === o.length; };
@@ -1277,6 +1304,27 @@ function mfGabung(baris) {
     out.push(r);
   });
   return out;
+}
+
+/* ---- BACA PER SEL (8 Okt 2026) ----
+   Lintasan 1 (seluruh gambar, psm 6) sering salah di kode yang menempel logo
+   (VICI->"VIA", KIJA->"KIA", ULTJ->"UO") dan di N.Lot (-1.70K -> "470K").
+   Lintasan 2 membaca ulang TIAP SEL baris itu sendiri-sendiri dengan daftar huruf
+   terbatas: kolom kode hanya A-Z, kolom angka hanya 0-9 . , - K M B T.
+   Diuji 15 gambar 8 Okt: lihat catatan di mfCocokkan. Fungsi ini murni (tanpa OCR)
+   supaya bisa diuji: b = {teks: baris lintasan 1, k2, n2, l2: teks sel lintasan 2}. */
+function mfDariSel(b, sisi) {
+  const p1 = mfBacaTeks(b.teks, sisi);
+  if (!p1.length) return null;                     /* bukan baris data (judul, kepala tabel) */
+  const r = Object.assign({}, p1[0]);
+  const k2 = mfKode(b.k2);
+  r.nf1 = r.nf; r.lot1 = r.lot;   /* angka lintasan 1 disimpan: dipakai kalau angka lintasan 2 yang meleset */
+  if (k2.length >= 2 && k2.length <= 5) { r.ocr1 = r.ocr; r.ocr = k2; }
+  const n2 = mfAngka(String(b.n2 || "").replace(/\s/g, ""));
+  if (n2 && n2.akh && n2.akh !== "T") r.nf = (sisi || (n2.neg ? -1 : 1)) * Math.abs(n2.v);
+  const l2 = mfAngka(String(b.l2 || "").replace(/\s/g, ""), true);
+  if (l2 && l2.akh !== "T" && l2.akh !== "B") r.lot = Math.abs(l2.v);
+  return r;
 }
 
 /* ---------- MF (MIDDAY FOREIGN) ----------
@@ -1348,22 +1396,68 @@ async function mfPotong(file) {
 }
 async function mfBacaGambar(files, harga, lapor) {
   const w = await mfSiapOCR(lapor);
-  const semua = []; let tgl = "", halfTime = false, pasarNF = null;
+  const semua = []; let tgl = "", halfTime = false, pasarNF = null, nUlang = 0;
+  const med = a => { a = a.slice().sort((x, y) => x - y); return a.length ? a[a.length >> 1] : null; };
+  const angka = s => /\d/.test(s) && /^[-+]?[\dOo][\dOo.,]*[BMKTb8]?$/.test(s.replace(/[^\w.,+-]/g, ""));
   for (let i = 0; i < files.length; i++) {
     const pot = await mfPotong(files[i]);
     for (let j = 0; j < pot.length; j++) {
       lapor("Membaca gambar " + (i + 1) + " dari " + files.length + (pot.length > 1 ? (j ? " (kolom Sell)" : " (kolom Buy)") : "") + "…");
-      const r = await w.recognize(pot[j].cv);
+      const cv = pot[j].cv, sisi = pot[j].sisi;
+      /* lintasan 1: seluruh potongan sekaligus */
+      await w.setParameters({tessedit_pageseg_mode: "6", tessedit_char_whitelist: ""});
+      const r = await w.recognize(cv);
       const t = r.data.text || "";
       tgl = tgl || mfTanggal(t);
       /* "Net Foreign -663.34B" di kepala layar = net foreign SELURUH pasar sesi I */
       if (pasarNF === null) { const m = t.match(/Net\s*Fore[il1]gn\s*[:|]?\s*([-\u2013\u2212]?\s*[\dOo][\dOo.,]*\s?[TBM8])/i);
         if (m) { const a = mfAngka(m[1].replace(/[\u2013\u2212]/, "-").replace(/\s/g, "")); if (a) pasarNF = a.v; } }
       if (/half\s*ti|sesi\s*[1il|]/i.test(t)) halfTime = true;
-      semua.push(...mfCocokkan(mfBacaTeks(t, pot[j].sisi), harga));
+      /* letak kolom dari kotak kata lintasan 1 */
+      const baris = [];
+      (r.data.lines || []).forEach(l => {
+        const ws = l.words || []; if (!ws.length) return;
+        const num = ws.filter(x => angka(x.text) && x.bbox.x0 > ws[0].bbox.x0 + cv.width * 0.12);
+        if (!num.length) return;
+        const kd = ws.filter(x => /[A-Za-z].*[A-Za-z]/.test(x.text) && x.bbox.x1 < num[0].bbox.x0);
+        baris.push({teks: l.text, y0: l.bbox.y0, y1: l.bbox.y1, kd: kd.length ? kd[kd.length - 1].bbox : null,
+          nf: num[0].bbox, lot: num.length > 1 ? num[num.length - 1].bbox : null});
+      });
+      if (!(r.data.lines || []).length) { semua.push(...mfCocokkan(mfBacaTeks(t, sisi), harga)); continue; }   /* cadangan */
+      const kx = med(baris.filter(b => b.kd).map(b => b.kd.x0)), nfR = med(baris.map(b => b.nf.x1)),
+            nfL = med(baris.map(b => b.nf.x0)), lotR = med(baris.filter(b => b.lot).map(b => b.lot.x1));
+      const awal = semua.length;
+      for (const b of baris) {
+        const p = mfCocokkan(mfBacaTeks(b.teks, sisi), harga);
+        if (!p.length) continue;                                  /* judul / kepala tabel */
+        if (p[0].st === "ok" && p[0].lot) { semua.push(...p); continue; }   /* sudah yakin */
+        /* lintasan 2: baca ulang tiap sel baris ini dengan huruf terbatas (lihat mfDariSel) */
+        nUlang++;
+        const y = Math.max(0, b.y0 - 8), hh = Math.min(cv.height - y, b.y1 - b.y0 + 16);
+        const sel = async (x0, x1, wl) => {
+          x0 = Math.max(0, Math.round(x0)); x1 = Math.min(cv.width, Math.round(x1));
+          if (x1 - x0 < 10) return "";
+          await w.setParameters({tessedit_pageseg_mode: "7", tessedit_char_whitelist: wl});
+          const q = await w.recognize(cv, {rectangle: {left: x0, top: y, width: x1 - x0, height: hh}});
+          return (q.data.text || "").trim(); };
+        try {
+          b.k2 = kx === null ? "" : await sel(kx - 14, Math.min(nfL - 30, kx + 330), "ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+          b.n2 = await sel(nfR - 420, nfR + 14, "0123456789.,-KMBT");
+          b.l2 = lotR === null ? "" : await sel(Math.max(nfR + 30, lotR - 340), lotR + 14, "0123456789.,-KMBT");
+          const r2 = mfDariSel(b, sisi);
+          semua.push(...mfCocokkan(r2 ? [r2] : p, harga));
+        } catch (e) { semua.push(...p); }
+      }
+      /* jaring pengaman: baris yang terbaca cara lama (seluruh teks) tapi tidak muncul di atas
+         - mis. baris yang menempel garis gulir sehingga kotak katanya rusak - tetap diambil, tapi HANYA yang sudah yakin (kode + harga cocok) supaya sampah tidak ikut */
+      const kini = semua.slice(awal);
+      mfCocokkan(mfBacaTeks(t, sisi), harga).forEach(q => {
+        if (q.st === "ok" && !kini.some(x => x.em === q.em || Math.abs(x.nf - q.nf) <= Math.abs(q.nf) * 0.006 + 1)) semua.push(q); });
     }
   }
-  return {baris: semua, tgl, halfTime, pasarNF};
+  /* kembalikan setelan lintasan 1 untuk unggahan berikutnya */
+  try { await w.setParameters({tessedit_pageseg_mode: "6", tessedit_char_whitelist: ""}); } catch (e) {}
+  return {baris: semua, tgl, halfTime, pasarNF, nUlang};
 }
 /* tabel bersama: judul beku + ketuk judul untuk mengurutkan */
 function mfTabel(kol, data, urut, isiBaris, kelas) {
@@ -5096,7 +5190,7 @@ function halNews() {
   /* tab PASAR/EMITEN/SEMUA menempel tepat di bawah kepala aplikasi saat digulir */
   const kepala = document.querySelector("header");
   tab.style.top = (kepala ? kepala.offsetHeight : 0) + "px";
-  [["p", "PASAR"], ["e", "EMITEN"], ["s", "SEMUA"]].forEach(([k, j]) => {
+  [["p", "PASAR"], ["e", "EMITEN"], ["k", "IDX"], ["s", "SEMUA"]].forEach(([k, j]) => {
     const b = el("button", nwTab === k ? "aktif" : null, j);
     b.onclick = () => { nwTab = k; halNews(); };
     tab.appendChild(b);
@@ -5123,6 +5217,12 @@ function halNews() {
   for (let i = 0; i < nwHari; i++) hariKe.push(nwHariIni(sekarang - i * 86400));
   let L = (NEWS.item || []).filter(x => hariKe.indexOf(nwHariIni(x.w)) >= 0);
   if (nwTab === "p") L = L.filter(x => (x.k || "").indexOf("p") >= 0);
+  /* IDX = keterbukaan informasi resmi (news.py, hanya yang terbit sebelum 16:00 WIB) */
+  if (nwTab === "k") {
+    L = L.filter(x => x.x);
+    if (nwKode) L = L.filter(x => (x.e || []).indexOf(nwKode) >= 0 || x.t.indexOf(nwKode + " ") === 0);
+    else if (nwLingkup === "fav") L = L.filter(x => (x.e || []).some(k => FAVORIT.has(k)));
+  }
   if (nwTab === "e") {
     L = L.filter(x => x.e && x.e.length);
     if (nwKode) L = L.filter(x => x.e.indexOf(nwKode) >= 0);
@@ -5147,7 +5247,7 @@ function halNews() {
   if (nwPilih === "IDR" && NEWS.kurs) p.appendChild(nwGrafikKurs(NEWS.kurs));
   if (NEWS.pasar && NEWS.pasar.length) p.appendChild(nwKomoditas(NEWS.pasar));
 
-  if (nwTab === "e") {
+  if (nwTab === "e" || nwTab === "k") {
     const a = el("div", "nw-alat");
     const ik = el("input", "cari nw-kode");
     ik.placeholder = "KODE"; ik.value = nwKode; ik.maxLength = 4;
@@ -5187,6 +5287,7 @@ function halNews() {
   p.appendChild(el("div", "bantu", "Diperbarui " + (NEWS.dibuat ? nwFmt(NEWS.dibuat,
     {day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"}) + " WIB" : "–") +
     " · otomatis tiap 30 menit di jam bursa · sumber: Google Berita (judul + tautan)" +
+    (nwTab === "k" ? " · tab IDX: keterbukaan informasi resmi idx.co.id yang terbit sebelum 16:00 WIB, ketuk judul untuk membuka PDF-nya" : "") +
     (NEWS.kurs ? " · kurs: " + NEWS.kurs.sumber + ", tertunda" : "")));
 
   if (nwSen === "pos") L = L.filter(x => x.n > 0);
@@ -5194,7 +5295,10 @@ function halNews() {
   if (nwSen === "net") L = L.filter(x => !x.n);
   if (nwKom) L = L.filter(x => NW_KOM.test(x.t));
   if (!L.length) {
-    p.appendChild(el("div", "kosong", nwTab === "e" && !nwKode && nwLingkup === "fav"
+    p.appendChild(el("div", "kosong", nwTab === "k" ? ((NEWS.item || []).some(x => x.x)
+      ? "Tidak ada keterbukaan informasi " + (nwKode || (nwLingkup === "fav" ? "emiten watchlist Anda" : "")) + " di rentang ini (hanya yang terbit sebelum 16:00 WIB). Coba 'Semua emiten' atau 3/7 hari."
+      : "Keterbukaan informasi IDX belum masuk. Datanya diambil scripts/news.py di GitHub; kalau idx.co.id menolak server GitHub, bagian ini kosong.")
+      : nwTab === "e" && !nwKode && nwLingkup === "fav"
       ? "Tidak ada berita emiten watchlist Anda di rentang ini. Coba 'Semua emiten' atau 7 hari."
       : "Tidak ada berita di rentang ini."));
   }
@@ -5205,8 +5309,8 @@ function halNews() {
       hariTerakhir = h;
       p.appendChild(el("div", "nw-tgl", nwFmt(x.w, {weekday: "long", day: "numeric", month: "long", year: "numeric"})));
     }
-    const kelas = x.n > 0 ? "pos" : x.n < 0 ? "neg" : "net";
-    const it = el("div", "nw-item " + kelas);
+    const kelas = x.x ? "net" : x.n > 0 ? "pos" : x.n < 0 ? "neg" : "net";
+    const it = el("div", "nw-item " + kelas + (x.x ? " ki" : ""));
     it.appendChild(el("div", "nw-jam", nwFmt(x.w, {hour: "2-digit", minute: "2-digit"})));
     const isi = el("div", "nw-isi");
     const aT = el("a", null, x.t); aT.href = x.u; aT.target = "_blank"; aT.rel = "noopener noreferrer";
@@ -5220,7 +5324,8 @@ function halNews() {
       m.appendChild(c);
     });
     if (x.s) m.appendChild(el("span", null, x.s));
-    m.appendChild(el("span", "nw-sen " + kelas, kelas === "pos" ? "POSITIF" : kelas === "neg" ? "NEGATIF" : "NETRAL"));
+    if (x.x) m.appendChild(el("span", "nw-sen ki", "\ud83d\udcc4 PDF"));   /* keterbukaan: label sentimen judul tidak berarti */
+    else m.appendChild(el("span", "nw-sen " + kelas, kelas === "pos" ? "POSITIF" : kelas === "neg" ? "NEGATIF" : "NETRAL"));
     isi.appendChild(m);
     it.appendChild(isi);
     p.appendChild(it);
@@ -6783,7 +6888,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-07-19";
+const VERSI_APP = "2026-10-07-21";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
