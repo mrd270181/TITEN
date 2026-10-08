@@ -6488,7 +6488,7 @@ function kfTabelPeringkat(baris, judul, arahKelas) {
 function kfPanelPeringkat(w) {
   const p = el("div", "panel");
   p.appendChild(el("h2", null, "Emiten mana yang diincar asing — " +
-    bulanID(kfBulan + "-01") + " " + kfBulan.slice(0, 4)));
+    bulanID(kfBulan + "-01")));
   const semua = kfPeringkat(kfBulan);
   if (!semua.length) {
     p.appendChild(el("div", "kosong", "Belum ada data foreign pada bulan ini."));
@@ -6552,7 +6552,7 @@ function panelKalenderForeign(w) {
   alat.appendChild(inp);
   const sel = el("select", "cari");
   bulanAda.slice().reverse().forEach(b => {
-    const o = el("option", null, bulanID(b + "-01") + " " + b.slice(0, 4));
+    const o = el("option", null, bulanID(b + "-01"));
     o.value = b;
     if (b === kfBulan) o.selected = true;
     sel.appendChild(o);
@@ -6566,7 +6566,7 @@ function panelKalenderForeign(w) {
   const kunci = Object.keys(hari).sort();
   if (!kunci.length) {
     p.appendChild(el("div", "kosong", kfEm + " tidak punya data foreign pada " +
-      bulanID(kfBulan + "-01") + " " + kfBulan.slice(0, 4) + "."));
+      bulanID(kfBulan + "-01") + "."));
     w.appendChild(p); kfPanelPeringkat(w); return;
   }
 
@@ -6899,7 +6899,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-07-24";
+const VERSI_APP = "2026-10-07-25";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -8840,6 +8840,9 @@ function kotakKontrol(opsi) {
   baris1.appendChild(inpEm);
   }
 
+  /* opsi.pasar === false: halaman itu menghitung semua papan sendiri (BROKER HARIAN),
+     pilihan pasar disembunyikan - nilainya tetap tersimpan untuk tab lain */
+  if (opsi.pasar !== false) {
   const selPasar = el("select", "cari");
   ["ALL MARKET", "REGULER", "NEGO", "TUNAI"].forEach(x => {
     const o = el("option", null, x); o.value = x;
@@ -8848,6 +8851,7 @@ function kotakKontrol(opsi) {
   });
   selPasar.onchange = () => { pilih.pasar = selPasar.value; halBroker(); };
   baris1.appendChild(selPasar);
+  }
   p.appendChild(baris1);
 
   if (opsi.tanggal) {
@@ -9106,7 +9110,8 @@ function panelSaldo(w) {
   const baris = Object.keys(saldo).map(k => {
     const r = {broker: k, nama: namaBroker(k),
                buy: saldo[k].buy, sell: saldo[k].sell, net: saldo[k].net,
-               avg: saldo[k].net ? saldo[k].a : null};
+               avg: saldo[k].net ? saldo[k].a : null,
+               nilai: saldo[k].net && saldo[k].a ? Math.round(saldo[k].net * saldo[k].a * 100) : null};
     bulan.forEach((b, j) => r["m" + j] = saldo[k].m[j]);
     return r;
   });
@@ -9117,8 +9122,9 @@ function panelSaldo(w) {
     kunci: "m" + j, angka: true, warna: true}));
   kolom.push({judul: "Buy TOTAL", kunci: "buy", angka: true});
   kolom.push({judul: "Sell TOTAL", kunci: "sell", angka: true});
-  kolom.push({judul: "Saldo Awal", kunci: "net", angka: true, warna: true});
-  kolom.push({judul: "Avg", kunci: "avg", angka: true, avg: true});
+  kolom.push({judul: "Harga", kunci: "avg", angka: true, fmt: fmtHarga});
+  kolom.push({judul: "Net Lot", kunci: "net", angka: true, warna: true});
+  kolom.push({judul: "Value", kunci: "nilai", angka: true, warna: true, fmt: fmtValue});
   const p = el("div", "panel");
   p.appendChild(el("h2", null, "Detail saldo awal per periode"));
   /* Ringkasannya sengaja BEDA dengan panel lain: di sini tidak ada rentang
@@ -9141,7 +9147,8 @@ function panelSaldo(w) {
     baris.length + " broker"));
   p.appendChild(rk);
   p.appendChild(el("div", "bantu", "Saldo awal per " + tglCutoff() +
-    ", dari data/kamus.json di server."));
+    ", dari data/kamus.json di server. Net Lot = saldo awal broker; Harga = harga rata-rata " +
+    "saldo itu; Value = Net Lot \u00d7 Harga (M = miliar, Jt = juta, rb = ribu)."));
   p.appendChild(tabelUrut(kolom, baris, "net", true));
   w.appendChild(p);
 }
@@ -9330,7 +9337,7 @@ function panelBrokerHarian(w) {
   const alat = el("div", "alat");
   const selBl = el("select", "cari");
   bulanAda.slice().reverse().forEach(b => {
-    const o = el("option", null, bulanID(b + "-01") + " " + b.slice(0, 4));
+    const o = el("option", null, bulanID(b + "-01"));
     o.value = b;
     if (b === pilih.hrBulan) o.selected = true;
     selBl.appendChild(o);
@@ -9365,11 +9372,13 @@ function panelBrokerHarian(w) {
   PAPAN.forEach(pp => (trx[pp] || []).forEach(r => {
     if (r.em !== pilih.emiten || r.br !== pilih.hrBroker) return;
     if (r.tgl.slice(0, 7) !== pilih.hrBulan) return;
-    const a = per[r.tgl] || (per[r.tgl] = {REG: 0, NEGO: 0, TUNAI: 0, lot: 0, nilai: 0});
+    const a = per[r.tgl] || (per[r.tgl] = {REG: 0, NEGO: 0, TUNAI: 0, beli: 0, jual: 0, nilaiB: 0, nilaiJ: 0, lotB: 0, lotJ: 0});
     a[pp] += r.beli - r.jual;
     if (pp === "REG") {
-      a.lot += r.beli + r.jual;
-      a.nilai += r.beli * r.avgB * 100 + r.jual * r.avgJ * 100;
+      a.beli += r.beli; a.jual += r.jual;
+      a.nilaiB += r.beli * r.avgB * 100; a.nilaiJ += r.jual * r.avgJ * 100;
+      if (r.avgB > 0) a.lotB += r.beli;
+      if (r.avgJ > 0) a.lotJ += r.jual;
     }
   }));
 
@@ -9393,7 +9402,7 @@ function panelBrokerHarian(w) {
   const baris = Object.keys(per).sort().reverse().map(t => {
     const a = per[t];
     return {tanggal: tglID(t) + " " + t.slice(0, 4),
-            reg: a.REG, avg: a.lot ? Math.round(a.nilai / a.lot / 100) : null,
+            reg: a.REG, harga: hargaNet(a), nilai: Math.round(a.nilaiB - a.nilaiJ),
             nego: a.NEGO, lwNego: a.NEGO ? lawan(t, "NEGO", a.NEGO) : "",
             tunai: a.TUNAI, lwTunai: a.TUNAI ? lawan(t, "TUNAI", a.TUNAI) : "",
             total: a.REG + a.NEGO + a.TUNAI};
@@ -9401,7 +9410,7 @@ function panelBrokerHarian(w) {
 
   p.appendChild(el("div", "bantu",
     pilih.hrBroker + " — " + namaBroker(pilih.hrBroker) + " · " +
-    bulanID(pilih.hrBulan + "-01") + " " + pilih.hrBulan.slice(0, 4) + " · " +
+    bulanID(pilih.hrBulan + "-01") + " · " +
     baris.length + " hari bertransaksi"));
 
   if (!baris.length) {
@@ -9411,13 +9420,14 @@ function panelBrokerHarian(w) {
 
   p.appendChild(tabelUrut([
     {judul: "Tanggal", kunci: "tanggal"},
-    {judul: "Net REG", kunci: "reg", angka: true, warna: true},
-    {judul: "Avg REG", kunci: "avg", angka: true},
-    {judul: "Net NEGO", kunci: "nego", angka: true, warna: true},
+    {judul: "Harga REG", kunci: "harga", angka: true, fmt: fmtHarga},
+    {judul: "Net Lot REG", kunci: "reg", angka: true, warna: true},
+    {judul: "Value REG", kunci: "nilai", angka: true, warna: true, fmt: fmtValue},
+    {judul: "Net Lot NEGO", kunci: "nego", angka: true, warna: true},
     {judul: "Lawan NEGO", kunci: "lwNego"},
-    {judul: "Net TUNAI", kunci: "tunai", angka: true, warna: true},
+    {judul: "Net Lot TUNAI", kunci: "tunai", angka: true, warna: true},
     {judul: "Lawan TUNAI", kunci: "lwTunai"},
-    {judul: "Net TOTAL", kunci: "total", angka: true, warna: true},
+    {judul: "Net Lot TOTAL", kunci: "total", angka: true, warna: true},
   ], baris, "tanggal", true));
 
   let tReg = 0, tNego = 0, tTunai = 0;
@@ -9430,9 +9440,9 @@ function panelBrokerHarian(w) {
     " lot — total " + (tot >= 0 ? "+" : "−") + rp(Math.abs(tot)) + " lot, " +
     (tot > 0 ? "mengumpulkan." : tot < 0 ? "melepas." : "seimbang.")));
   p.appendChild(el("div", "bantu",
-    "Avg REG adalah harga rata-rata seluruh lot broker itu di pasar reguler hari " +
-    "tersebut, beli dan jual digabung — jadi bisa dibandingkan dengan harga penutupan " +
-    "untuk melihat dia bergerak di harga atas atau bawah. Kolom Lawan menyebut broker " +
+    "Harga REG = harga rata-rata sisi net broker itu di pasar reguler hari tersebut " +
+    "(net beli: avg beli, net jual: avg jual). Value REG = nilai beli dikurangi nilai jual " +
+    "(M = miliar, Jt = juta, rb = ribu). Kolom Lawan menyebut broker " +
     "di sisi seberang pada hari itu: kalau " + pilih.hrBroker + " membeli di nego, yang " +
     "tercantum adalah yang menjual. Hanya untuk nego dan tunai, karena di pasar reguler " +
     "pesertanya puluhan dan tidak ada pasangan yang bisa ditunjuk."));
@@ -10991,7 +11001,8 @@ function halBroker() {
       tanggal: pilih.sub !== "kalender" &&
         !(pilih.sub === "posisi" && pilih.subPos === "harian") &&
         !(pilih.sub === "dashboard" && pilih.subNet === "tier"),
-      emiten: !(pilih.sub === "posisi" && pilih.subPos === "activity")}));
+      emiten: !(pilih.sub === "posisi" && pilih.subPos === "activity"),
+      pasar: !(pilih.sub === "posisi" && pilih.subPos === "harian")}));
 
   if (pilih.sub === "posisi") {
     /* tiga panel posisi dulu ditumpuk ke bawah dan halamannya jadi panjang sekali;
