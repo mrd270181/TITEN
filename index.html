@@ -6888,7 +6888,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-07-21";
+const VERSI_APP = "2026-10-07-22";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -8898,6 +8898,8 @@ function tabelUrut(kepala, baris, kunciAwal, bekukan) {
         td.appendChild(el("span", "av-sub", "(" + hargaAvg(r[k.sub]) + ")"));
       /* k.avg: kolom harga avg - bulat, "–" kalau belum ada */
       if (k.avg) { td.textContent = hargaAvg(nilai); td.className = "num kol-avg"; }
+      /* k.fmt: format tampilan sendiri (mis. rupiah singkat Jt / M), urutan tetap memakai angkanya */
+      if (k.fmt && !kosong) td.textContent = k.fmt(nilai);
       /* Kolom %Net punya dua hal untuk disampaikan sekaligus: ARAH (bersih membeli
          atau bersih menjual) dan BESARNYA (kecil berarti beli dan jual hampir
          seimbang - ciri transaksi bolak-balik, bukan akumulasi sungguhan).
@@ -9170,6 +9172,18 @@ function periksaGross(emiten, pasar, dari, sampai) {
           campur: gross > 0 && net > 0};
 }
 
+/* Harga = harga rata-rata SISI NET broker: net beli -> avg beli, net jual -> avg jual,
+   seimbang -> rata-rata keduanya. Value = nilai beli - nilai jual (rupiah). */
+/* Value selalu bersatuan: di bawah 1 juta tetap ditulis dalam Jt (0,25 Jt), sisanya Jt / M / T */
+const fmtValue = v => Math.abs(v) < 1e6 ? (v / 1e6).toLocaleString("id-ID", {maximumFractionDigits: 2}) + " Jt" : rpSingkat(v);
+function hargaNet(a) {
+  const d = a.beli - a.jual;
+  const ab = a.lotB ? a.nilaiB / a.lotB / 100 : 0, aj = a.lotJ ? a.nilaiJ / a.lotJ / 100 : 0;
+  if (d > 0) return ab || null;
+  if (d < 0) return aj || null;
+  return (a.lotB + a.lotJ) ? (a.nilaiB + a.nilaiJ) / (a.lotB + a.lotJ) / 100 : null;
+}
+
 function panelTransaksi(w) {
   const agg = kumpulkan(pilih.emiten, pilih.pasar, pilih.dari, pilih.sampai);
   const cekG = periksaGross(pilih.emiten, pilih.pasar, pilih.dari, pilih.sampai);
@@ -9197,7 +9211,7 @@ function panelTransaksi(w) {
             avgB: a.beli ? Math.round(a.nilaiB / a.beli / 100) : 0,
             jual: a.jual,
             avgJ: a.jual ? Math.round(a.nilaiJ / a.jual / 100) : 0,
-            net: a.beli - a.jual,
+            net: a.beli - a.jual, harga: hargaNet(a),
             /* Dibulatkan ke satu angka di belakang koma SEBELUM disimpan:
                tabelUrut memformat apa adanya, dan 16,755930% tidak terbaca. */
             part: totalNet
@@ -9237,11 +9251,12 @@ function panelTransaksi(w) {
     {judul: "Avg Beli", kunci: "avgB", angka: true},
     {judul: "Vol Jual", kunci: "jual", angka: true},
     {judul: "Avg Jual", kunci: "avgJ", angka: true},
+    {judul: "Harga", kunci: "harga", angka: true, avg: true},
     {judul: "Net Lot", kunci: "net", angka: true, warna: true},
+    {judul: "Value", kunci: "nilai", angka: true, warna: true, fmt: fmtValue},
     {judul: "%Partisipasi", kunci: "part", angka: true, persen: true, warna: true},
     {judul: "%Net", kunci: "pnet", angka: true, persen: true, silang: true},
     {judul: "%Crossing", kunci: "pputar", angka: true, persen: true},
-    {judul: "Net Value", kunci: "nilai", angka: true, warna: true},
   ], baris, "net", true));
   p.appendChild(el("div", "bantu",
     "%Partisipasi = Net Lot broker ini dibagi TOTAL net lot seluruh broker " +
@@ -9250,7 +9265,9 @@ function panelTransaksi(w) {
     "yang benar-benar berpindah tangan, berapa bagian yang diambil broker ini. " +
     "Karena sisi beli dan sisi jual selalu sama besar, broker yang net beli " +
     "menjumlah tepat 100% dan yang net jual \u2212100%. Angka minus berarti " +
-    "porsinya di sisi jual, bukan partisipasi yang kecil."));
+    "porsinya di sisi jual, bukan partisipasi yang kecil. " +
+    "Harga = harga rata-rata sisi net broker itu (net beli: avg beli, net jual: avg jual). " +
+    "Value = nilai beli dikurangi nilai jual, Jt = juta, M = miliar."));
   p.appendChild(el("div", "bantu", catatanGross));
   w.appendChild(p);
 }
@@ -10174,6 +10191,7 @@ function panelDashboard(w) {
     const pnet = besar ? Math.round((a.beli - a.jual) / besar * 100) : null;
     return {broker: k, nama: namaBroker(k), beli: a.beli, jual: a.jual,
             net: a.beli - a.jual, pnet: pnet, putar: putar,
+            harga: hargaNet(a), nilai: Math.round(a.nilaiB - a.nilaiJ),
             pputar: pnet === null ? null : 100 - Math.abs(pnet),
             /* %Net/V. Tot = Net Lot dibagi VOLUME EMITEN (gross di panel atas) -
                satuan yang sama dengan label AKUM besar (>= 2%) di POTENSI 3 HARI. */
@@ -10189,7 +10207,9 @@ function panelDashboard(w) {
     {judul: "Nama", kunci: "nama"},
     {judul: "Beli", kunci: "beli", angka: true},
     {judul: "Jual", kunci: "jual", angka: true},
+    {judul: "Harga", kunci: "harga", angka: true, avg: true},
     {judul: "Net Lot", kunci: "net", angka: true, warna: true},
+    {judul: "Value", kunci: "nilai", angka: true, warna: true, fmt: fmtValue},
     {judul: "%Net", kunci: "pnet", angka: true, persen: true, silang: true},
     {judul: "%Crossing", kunci: "pputar", angka: true, persen: true},
     {judul: "%Net/V. Tot", kunci: "pvol", angka: true, persen: true, warna: true},
@@ -10205,7 +10225,8 @@ function panelDashboard(w) {
     "di POTENSI 3 HARI; semua broker net beli dijumlah = % berpindah di panel atas, bukan 100%. " +
     "%Partisipasi (Net/Net V. Tot) = Net Lot dibagi TOTAL lot yang benar-benar berpindah (net seluruh broker): " +
     "net 19.000 dari 632.052 = 3,0%. Broker net beli dijumlah tepat +100%, net jual \u2212100%. " +
-    "Untuk sinyal pakai %Net/V. Tot; %Partisipasi hanya keterangan siapa yang menguasai barang yang berpindah."));
+    "Untuk sinyal pakai %Net/V. Tot; %Partisipasi hanya keterangan siapa yang menguasai barang yang berpindah. " +
+    "Harga = harga rata-rata sisi net broker itu (net beli: avg beli, net jual: avg jual). Value = nilai beli dikurangi nilai jual, Jt = juta, M = miliar."));
   w.appendChild(p2);
 
   /* ---------- 3. satu broker, hari per hari ---------- */
