@@ -4978,6 +4978,15 @@ async function muatNews(paksa) {
   nwSedang = true;
   try {
     NEWS = await ambilGudang("news.json"); nwAmbil = Date.now(); nwGagal = "";
+    /* keterbukaan informasi IDX: dikirim dari laptop (ki_idx.py) ke data/ki.json, karena
+       idx.co.id memblokir server GitHub. Boleh tidak ada - berita lain tetap tampil. */
+    try {
+      const ki = await ambilGudang("ki.json");
+      const ada = new Set((NEWS.item || []).filter(x => x.x).map(x => x.u + "|" + x.w));
+      NEWS.item = (NEWS.item || []).concat((ki.item || []).filter(x => !ada.has(x.u + "|" + x.w)))
+        .sort((a, b) => b.w - a.w);
+      NEWS.kiDibuat = ki.dibuat || 0;
+    } catch (e) {}
   } catch (e) { nwGagal = String(e.message || e); }
   nwSedang = false;
 }
@@ -5287,7 +5296,9 @@ function halNews() {
   p.appendChild(el("div", "bantu", "Diperbarui " + (NEWS.dibuat ? nwFmt(NEWS.dibuat,
     {day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"}) + " WIB" : "–") +
     " · otomatis tiap 30 menit di jam bursa · sumber: Google Berita (judul + tautan)" +
-    (nwTab === "k" ? " · tab IDX: keterbukaan informasi resmi idx.co.id yang terbit sebelum 16:00 WIB, ketuk judul untuk membuka PDF-nya" : "") +
+    (nwTab === "k" ? " · tab IDX: keterbukaan informasi resmi idx.co.id yang terbit sebelum 16:00 WIB" +
+      (NEWS.kiDibuat ? " (dari laptop, terakhir " + nwFmt(NEWS.kiDibuat, {day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"}) + " WIB)" : "") +
+      ", ketuk judul untuk membuka PDF-nya" : "") +
     (NEWS.kurs ? " · kurs: " + NEWS.kurs.sumber + ", tertunda" : "")));
 
   if (nwSen === "pos") L = L.filter(x => x.n > 0);
@@ -5297,7 +5308,7 @@ function halNews() {
   if (!L.length) {
     p.appendChild(el("div", "kosong", nwTab === "k" ? ((NEWS.item || []).some(x => x.x)
       ? "Tidak ada keterbukaan informasi " + (nwKode || (nwLingkup === "fav" ? "emiten watchlist Anda" : "")) + " di rentang ini (hanya yang terbit sebelum 16:00 WIB). Coba 'Semua emiten' atau 3/7 hari."
-      : "Keterbukaan informasi IDX belum masuk. Datanya diambil scripts/news.py di GitHub; kalau idx.co.id menolak server GitHub, bagian ini kosong.")
+      : "Keterbukaan informasi IDX belum masuk. Datanya dikirim dari laptop (D:\\TITEN\\ki_idx.py, jadwal tiap 30 menit di jam bursa) - pastikan laptop menyala dan lihat ki_log.txt.")
       : nwTab === "e" && !nwKode && nwLingkup === "fav"
       ? "Tidak ada berita emiten watchlist Anda di rentang ini. Coba 'Semua emiten' atau 7 hari."
       : "Tidak ada berita di rentang ini."));
@@ -6888,7 +6899,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-07-22";
+const VERSI_APP = "2026-10-07-24";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -9175,7 +9186,14 @@ function periksaGross(emiten, pasar, dari, sampai) {
 /* Harga = harga rata-rata SISI NET broker: net beli -> avg beli, net jual -> avg jual,
    seimbang -> rata-rata keduanya. Value = nilai beli - nilai jual (rupiah). */
 /* Value selalu bersatuan: di bawah 1 juta tetap ditulis dalam Jt (0,25 Jt), sisanya Jt / M / T */
-const fmtValue = v => Math.abs(v) < 1e6 ? (v / 1e6).toLocaleString("id-ID", {maximumFractionDigits: 2}) + " Jt" : rpSingkat(v);
+const fmtValue = v => {
+  /* gaya tabel Net Beli/Net Jual: 42,3 M · 731 Jt · 970 rb (M = miliar, satu angka desimal) */
+  const a = Math.abs(v), f = (x, d) => x.toLocaleString("id-ID", {minimumFractionDigits: d, maximumFractionDigits: d});
+  return a >= 1e12 ? f(v / 1e12, 1) + " T" : a >= 1e9 ? f(v / 1e9, 1) + " M" : a >= 1e6 ? f(v / 1e6, 0) + " Jt"
+       : a >= 1e3 ? f(v / 1e3, 0) + " rb" : f(v, 0);
+};
+/* harga di kolom Harga: bulat tanpa koma */
+const fmtHarga = v => v > 0 ? Math.round(v).toLocaleString("id-ID") : "\u2013";
 function hargaNet(a) {
   const d = a.beli - a.jual;
   const ab = a.lotB ? a.nilaiB / a.lotB / 100 : 0, aj = a.lotJ ? a.nilaiJ / a.lotJ / 100 : 0;
@@ -9251,7 +9269,7 @@ function panelTransaksi(w) {
     {judul: "Avg Beli", kunci: "avgB", angka: true},
     {judul: "Vol Jual", kunci: "jual", angka: true},
     {judul: "Avg Jual", kunci: "avgJ", angka: true},
-    {judul: "Harga", kunci: "harga", angka: true, avg: true},
+    {judul: "Harga", kunci: "harga", angka: true, fmt: fmtHarga},
     {judul: "Net Lot", kunci: "net", angka: true, warna: true},
     {judul: "Value", kunci: "nilai", angka: true, warna: true, fmt: fmtValue},
     {judul: "%Partisipasi", kunci: "part", angka: true, persen: true, warna: true},
@@ -9267,7 +9285,7 @@ function panelTransaksi(w) {
     "menjumlah tepat 100% dan yang net jual \u2212100%. Angka minus berarti " +
     "porsinya di sisi jual, bukan partisipasi yang kecil. " +
     "Harga = harga rata-rata sisi net broker itu (net beli: avg beli, net jual: avg jual). " +
-    "Value = nilai beli dikurangi nilai jual, Jt = juta, M = miliar."));
+    "Value = nilai beli dikurangi nilai jual: M = miliar, Jt = juta, rb = ribu."));
   p.appendChild(el("div", "bantu", catatanGross));
   w.appendChild(p);
 }
@@ -10207,7 +10225,7 @@ function panelDashboard(w) {
     {judul: "Nama", kunci: "nama"},
     {judul: "Beli", kunci: "beli", angka: true},
     {judul: "Jual", kunci: "jual", angka: true},
-    {judul: "Harga", kunci: "harga", angka: true, avg: true},
+    {judul: "Harga", kunci: "harga", angka: true, fmt: fmtHarga},
     {judul: "Net Lot", kunci: "net", angka: true, warna: true},
     {judul: "Value", kunci: "nilai", angka: true, warna: true, fmt: fmtValue},
     {judul: "%Net", kunci: "pnet", angka: true, persen: true, silang: true},
@@ -10226,7 +10244,7 @@ function panelDashboard(w) {
     "%Partisipasi (Net/Net V. Tot) = Net Lot dibagi TOTAL lot yang benar-benar berpindah (net seluruh broker): " +
     "net 19.000 dari 632.052 = 3,0%. Broker net beli dijumlah tepat +100%, net jual \u2212100%. " +
     "Untuk sinyal pakai %Net/V. Tot; %Partisipasi hanya keterangan siapa yang menguasai barang yang berpindah. " +
-    "Harga = harga rata-rata sisi net broker itu (net beli: avg beli, net jual: avg jual). Value = nilai beli dikurangi nilai jual, Jt = juta, M = miliar."));
+    "Harga = harga rata-rata sisi net broker itu (net beli: avg beli, net jual: avg jual). Value = nilai beli dikurangi nilai jual: M = miliar, Jt = juta, rb = ribu."));
   w.appendChild(p2);
 
   /* ---------- 3. satu broker, hari per hari ---------- */
