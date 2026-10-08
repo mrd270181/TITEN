@@ -8,6 +8,7 @@ Hasil: data/news.json  (berita 7 hari terakhir + kurs terbaru & 30 hari)
 
 Sumber berita : Google Berita RSS (judul + tautan saja, isi tetap di situs asli).
 Sumber kurs   : Yahoo Finance (IDR=X), cadangan open.er-api.com.
+Keterbukaan informasi IDX (pagi/siang saja) - 8 Okt 2026; dilewati kalau idx.co.id menolak.
 Hanya pustaka bawaan Python - tidak perlu pip install.
 """
 import json, os, re, time, html, datetime, email.utils
@@ -241,13 +242,87 @@ def pasar_global(lama):
     return hasil
 
 
+# ---------------- KETERBUKAAN INFORMASI IDX ----------------
+# Pengumuman resmi emiten di idx.co.id. Hanya yang terbit PAGI/SIANG (sebelum
+# KI_JAM_AKHIR WIB) yang disimpan - yang terbit sore/malam baru berpengaruh besok.
+# idx.co.id dipagari Cloudflare: kalau ditolak (403 / halaman "Just a moment"),
+# bagian ini dilewati diam-diam dan berita lain tetap jalan.
+KI_URL = ('https://www.idx.co.id/primary/ListedCompany/GetAnnouncement?kodeEmiten=&emitenType=*'
+          '&indexFrom={dari}&pageSize=100&dateFrom={tgl}&dateTo={tgl}&lang=id&keyword=')
+KI_JAM_AWAL, KI_JAM_AKHIR = 0, 16          # 00:00 - 15:59 WIB
+WIB = datetime.timezone(datetime.timedelta(hours=7))
+UA_BROWSER = ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+              '(KHTML, like Gecko) Chrome/124.0 Safari/537.36')
+
+
+def _ki_ambil(url):
+    req = urllib.request.Request(url, headers={
+        'User-Agent': UA_BROWSER, 'Accept': 'application/json, text/plain, */*',
+        'Accept-Language': 'id-ID,id;q=0.9,en;q=0.8',
+        'Referer': 'https://www.idx.co.id/id/perusahaan-tercatat/keterbukaan-informasi/'})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        teks = r.read().decode('utf-8', 'replace')
+    if teks.lstrip()[:1] not in '{[':
+        raise ValueError('bukan JSON (kemungkinan tantangan Cloudflare)')
+    return json.loads(teks)
+
+
+def _ki_waktu(p):
+    for kunci_w in ('TglPengumuman', 'CreatedDate', 'tglPengumuman'):
+        v = p.get(kunci_w)
+        if v:
+            try:
+                d = datetime.datetime.fromisoformat(str(v).split('.')[0].replace('Z', ''))
+                return d.replace(tzinfo=WIB)        # jam dari IDX = WIB
+            except Exception:
+                pass
+    return None
+
+
+def keterbukaan(emiten, hari=2):
+    """daftar item berita dari keterbukaan informasi IDX, `hari` hari terakhir."""
+    hasil = []
+    for i in range(hari):
+        tgl = (datetime.datetime.now(WIB) - datetime.timedelta(days=i)).strftime('%Y%m%d')
+        dari = 0
+        while dari < 1000:
+            d = _ki_ambil(KI_URL.format(dari=dari, tgl=tgl))
+            rep = d.get('Replies') or d.get('replies') or []
+            for x in rep:
+                p = x.get('pengumuman') or x.get('Pengumuman') or {}
+                w = _ki_waktu(p)
+                if not w or not (KI_JAM_AWAL <= w.hour < KI_JAM_AKHIR):
+                    continue
+                kode = (p.get('Kode_Emiten') or p.get('KodeEmiten') or '').strip().upper()
+                judul = html.unescape((p.get('JudulPengumuman') or p.get('PerihalPengumuman') or '').strip())
+                if not judul:
+                    continue
+                lamp = x.get('attachments') or x.get('Attachments') or []
+                pdf = ''
+                for a in lamp:
+                    u = a.get('FullSavePath') or a.get('fullSavePath') or ''
+                    if u:
+                        pdf = u if u.startswith('http') else 'https://www.idx.co.id' + u
+                        if not a.get('IsAttachment'):
+                            break                   # dokumen utama didahulukan
+                e = [kode] if kode in emiten else []
+                hasil.append({'t': (kode + ' - ' if kode else '') + judul, 's': 'Keterbukaan Informasi IDX',
+                              'u': pdf, 'w': int(w.timestamp()), 'e': e, 'x': 1})
+            n = d.get('ResultCount') or d.get('resultCount') or 0
+            dari += 100
+            if dari >= n or not rep:
+                break
+            time.sleep(0.8)
+    return hasil
+
+
 def main():
     lama = baca_json('news.json', {}) or {}
     emiten = daftar_emiten()
     batas = int(time.time()) - SIMPAN_HARI * 86400
     # berita lama ikut disaring ulang, supaya yang terlanjur masuk ikut hilang
     item = {kunci(x['t']): x for x in (lama.get('item') or [])
-            if x.get('w', 0) >= batas and relevan(x['t'], 'e' not in x.get('k', ''))}
+            if x.get('w', 0) >= batas and (x.get('x') or relevan(x['t'], 'e' not in x.get('k', '')))}
     baru = 0
 
     def masukkan(x, pasar):
@@ -287,6 +362,19 @@ def main():
             gagal += 1
             print('  gagal', kode[i:i + 8], ex)
         time.sleep(1.2)
+
+    nki = 0
+    try:
+        for x in keterbukaan(emiten):
+            k = 'ki' + kunci(x['t']) + str(x['w'])
+            if k not in item and x['w'] >= batas:
+                x['k'] = 'e' if x['e'] else ''
+                x['n'] = skor(x['t'])
+                item[k] = x
+                nki += 1
+    except Exception as ex:
+        print('  keterbukaan informasi IDX dilewati:', ex)
+    print('keterbukaan informasi IDX baru:', nki)
 
     daftar = sorted(item.values(), key=lambda x: -x['w'])[:MAKS_ITEM]
     k = kurs() or lama.get('kurs')
