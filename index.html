@@ -1626,9 +1626,10 @@ function mfKotak(tglMF, tglSinyal, harga, isi, simpanIsi, ringkas, saatTanggalLa
     const pt = el("div", "pt-mf-pasar-t"), tut = mfPasarTutup(tglMF);
     if (tut === null) pt.textContent = "Penutupan " + tglID(tglMF) + ": belum ada \u2014 muncul sesudah data harian diimpor.";
     else {
+      /* 9 Okt: sesi I + sesi II = total sehari (penutupan) */
       const tulis = (j, v) => { pt.appendChild(document.createTextNode(j)); pt.appendChild(el("b", v < 0 ? "turun" : "naik", (v < 0 ? "JUAL " : "BELI ") + rpSingkat(Math.abs(v)))); };
-      tulis("Penutupan " + tglID(tglMF) + ": ", tut);
-      if (nf !== null) tulis(" \u00b7 sesi II: ", tut - nf);
+      if (nf !== null) { tulis("Sesi I: ", nf); tulis(" + Sesi II: ", tut - nf); tulis(" = Total " + tglID(tglMF) + ": ", tut); }
+      else tulis("Total " + tglID(tglMF) + " (penutupan): ", tut);
     }
     ps.appendChild(pt);
     box.appendChild(ps);
@@ -1805,14 +1806,20 @@ function panelPotensi(w) {
   p.appendChild(el("h2", null, "Potensi 3 hari — asing net beli + lonjakan volume"));
   const tgl = [...new Set(daftarHari.map(r => r.tgl))].filter(Boolean).sort();
   const akhir = tgl[tgl.length - 1];
-  if (akhir !== ptAkhir) { ptAkhir = akhir; ptTgl = akhir; }
+  /* 9 Okt 2026: bawaan mengikuti HARI MF. Kalau penutupan hari ini sudah masuk, sinyal bawaan =
+     hari bursa sebelumnya, supaya sepanjang hari (sampai malam) yang tampil MF hari ini.
+     Sabtu/Minggu atau sebelum penutupan masuk: sinyal = data terbaru (MF hari bursa berikutnya). */
+  const hIni = mfHariIni(), sblm = tgl.filter(t => t < hIni);
+  const bawaan = tgl.indexOf(hIni) >= 0 && sblm.length ? sblm[sblm.length - 1] : akhir;
+  if (akhir !== ptAkhir) { ptAkhir = akhir; ptTgl = bawaan; }
   if (tgl.indexOf(ptTgl) < 0) ptTgl = akhir;
   const rt = el("div", "alat");
   const lb = el("label", "bantu", "Sinyal tanggal: ");
   lb.appendChild(kotakTanggal(ptTgl, tgl.slice(60), t => { ptTgl = t; halScreener(); }));
   rt.appendChild(lb);
   const bT = el("button", "kecil", "Terbaru");
-  bT.onclick = () => { ptTgl = akhir; halScreener(); };
+  bT.onclick = () => { ptTgl = bawaan; halScreener(); };
+  bT.title = "Sinyal untuk MF hari ini (atau hari bursa berikutnya kalau hari ini libur)";
   rt.appendChild(bT);
   p.appendChild(rt);
   const H = hitungPotensi(ptTgl);
@@ -1852,7 +1859,13 @@ function panelPotensi(w) {
   /* ---- MF sesi I: hari bursa SESUDAH tanggal sinyal (H+1). Kalau sinyal = data
      terbaru, H+1 = hari ini. Data per tanggal di localStorage "titenMF". ---- */
   const hariIni = mfHariIni();
-  const mfT = H.tglNanti[0] || (hariIni > ptTgl ? hariIni : "");
+  /* 9 Okt 2026: sesudah data penutupan hari ini masuk, sinyal terbaru = hari ini dan H+1 belum
+     terjadi - dulu kotak MF lalu hilang. Sekarang tetap tampil untuk hari bursa berikutnya
+     (Senin-Jumat; kalau ternyata libur, gambar bertanggal lain dipindah sendiri oleh mfKotak).
+     MF hari ini tetap bisa dilihat dengan memilih sinyal tanggal sebelumnya. */
+  const hariBerikut = t => { const d = new Date(t + "T12:00:00Z"); do { d.setUTCDate(d.getUTCDate() + 1); } while (d.getUTCDay() === 0 || d.getUTCDay() === 6); return d.toISOString().slice(0, 10); };
+  const hariKerja = t => { const w = new Date(t + "T12:00:00Z").getUTCDay(); return w > 0 && w < 6; };
+  const mfT = H.tglNanti[0] || (hariIni > ptTgl && hariKerja(hariIni) ? hariIni : hariBerikut(hariIni > ptTgl ? hariIni : ptTgl));
   const isi = (mfT && mfMuat()[mfT]) || {baris: [], beli: {}};
   if (!isi.beli) isi.beli = {};
   const simpanIsi = () => { const s = mfMuat(); if (isi.baris.length || Object.keys(isi.beli).length) s[mfT] = isi; else delete s[mfT]; mfSimpan(s); };
@@ -7000,7 +7013,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-07-28";
+const VERSI_APP = "2026-10-07-30";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
