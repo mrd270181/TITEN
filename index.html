@@ -584,6 +584,24 @@ tr.pt-dicoret td{opacity:.6} tr.pt-dicoret .kode{text-decoration:line-through}
 .pt-ket.ganda{background:#2f7d4f;color:#fff}.pt-ket.beli{background:rgba(47,125,79,.16);color:var(--naik)}
 .pt-ket.pantau{background:var(--surface-2);color:var(--ink-2)}.pt-ket.tunggu{background:rgba(230,180,0,.18);color:#8a6500}
 .pt-ket.jual{background:var(--turun-bg);color:var(--turun)}
+.lk-bd{display:inline-block;font-size:11px;font-weight:800;border-radius:5px;padding:2px 7px;white-space:nowrap}
+.lk-bd.Bagus{background:var(--naik-bg);color:var(--naik)}.lk-bd.Sedang{background:rgba(230,170,0,.16);color:#a87400}
+.lk-bd.Jelek{background:var(--turun-bg);color:var(--turun)}.lk-bd.kosong{color:var(--ink-3)}
+.lk-bd.on{outline:2px solid currentColor}
+.pt-lk{text-align:left}
+.pt-hpc{font-size:.85em;font-weight:600}
+.rek-kn.lk-kn.Bagus{color:var(--naik)}.rek-kn.lk-kn.Sedang{color:#a87400}.rek-kn.lk-kn.Jelek{color:var(--turun)}
+.lk-kepala{display:flex;align-items:center;gap:12px}
+.lk-angka{font-size:30px;font-weight:800;min-width:56px;text-align:center;border-radius:10px;padding:4px 6px}
+.lk-angka.Bagus{color:var(--naik);background:var(--naik-bg)}.lk-angka.Sedang{color:#a87400;background:rgba(230,170,0,.16)}.lk-angka.Jelek{color:var(--turun);background:var(--turun-bg)}
+.lk-sub{color:var(--ink-3);font-size:11px}.lk-kal{font-size:12.5px}
+.lk-leg{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.lk-leg .lk-bd{font-size:10.5px;font-weight:600}.lk-leg .lk-bd.on{font-weight:800}
+.lk-kr{max-width:640px;display:grid;grid-template-columns:118px 1fr 44px;gap:3px 8px;align-items:center;margin-top:10px;font-size:11.5px}
+.lk-bar{height:7px;background:var(--surface-2);border-radius:4px;overflow:hidden}.lk-bar i{display:block;height:100%;background:var(--merek)}
+.lk-poin{text-align:right}
+.lk-t{grid-column:2/4;color:var(--ink-3);font-size:10.5px;margin:-2px 0 3px}.lk-acu{color:var(--merek);font-size:10px}
+.lk-flag{margin-top:8px;padding:6px 8px;border-radius:6px;background:var(--turun-bg);color:var(--turun);font-size:11.5px}
+.lk-fx{color:var(--ink-2);margin-top:3px;font-size:11px}
 .pt-tgl-h{display:block;font-size:9.5px;font-weight:400;opacity:.85}
 .ph-tag{font-size:10px;font-weight:700;color:#d9a441;border:1px solid #d9a441;border-radius:5px;padding:0 5px}
 .ph-kol td:nth-child(2),.ph-kol th:nth-child(2){text-align:left}
@@ -1943,11 +1961,10 @@ function panelPotensi(w) {
   const t = el("table", "pt-tbl"), th = el("tr");
   /* kolom: [judul, kunci urut]; ketuk judul = urutkan, ketuk lagi = balik.
      Bawaan (ptUrut.k kosong): tingkat A dulu lalu B, masing-masing %NF terbesar. */
-  const kol = (adaMF ? [["Tr POTENSI", "tk"], ["Tr MF", "tmU"], ["Emiten", "em"], ["Searah asing", "sa"], ["VALUE MF", "mf"], ["VOL MF1", "mfLot"], ["MF \u00f7 Value 20h", "r"]] : [["Tr", "tk"], ["Emiten", "em"], ["Searah asing", "sa"]])
-    .concat([["%NF " + tglID(ptTgl), "nf1"], ["VMA5/VMA20", "v520"], ["VMA10/VMA50 \u2605", "lonjak"], ["Harga " + tglID(ptTgl), "c"], ["Batas beli (+" + PT_GAP_MAX + "%)", "batas"]])
+  const kol = (adaMF ? [["Tr POTENSI", "tk"], ["Tr MF", "tmU"], ["Emiten", "em"], ["LK", "lks"], ["Searah asing", "sa"], ["VALUE MF", "mf"], ["VOL MF1", "mfLot"], ["MF \u00f7 Value 20h", "r"]] : [["Tr", "tk"], ["Emiten", "em"], ["LK", "lks"], ["Searah asing", "sa"]])
+    .concat([["%NF " + tglID(ptTgl), "nf1"], ["VMA10/VMA50 \u2605", "lonjak"], ["Harga " + tglID(ptTgl), "c"], ["Batas beli (+" + PT_GAP_MAX + "%)", "batas"]])
     .concat(adaMF ? [["Harga beli", "beli"]] : [])
-    .concat(lalu ? [["Gap buka H+1", "gap"], ["H+1 \u00b7 " + tPendek(H.tglNanti[0]), "c1"], ["H+2 \u00b7 " + tPendek(H.tglNanti[1]), "c2"], ["H+3 \u00b7 " + tPendek(H.tglNanti[2]), "c3"],
-      ["Hasil buka\u2192" + (H.sesudah >= 3 ? "H+3" : "H+" + H.sesudah), "hT"]] : [])
+    .concat(lalu ? [["H+1 \u00b7 " + tPendek(H.tglNanti[0]), "c1"], ["H+2 \u00b7 " + tPendek(H.tglNanti[1]), "c2"], ["H+3 \u00b7 " + tPendek(H.tglNanti[2]), "c3"]] : [])
     .concat(adaMF && lalu ? [["Hasil harga beli\u2192" + (H.sesudah >= 3 ? "H+3" : "H+" + H.sesudah), "hb"]] : [])
     .concat([["%NF 2 mg", "nf10"], ["%Harga 2 mg", "r10"], ["Volume " + tPendek(H.tglLalu), "lotm1"], ["Volume " + tglID(ptTgl), "lot0"], ["Value " + tglID(ptTgl), "val0"]])
     .concat(adaMF ? [["Keputusan sesi II", "grup"]] : []);
@@ -1955,9 +1972,9 @@ function panelPotensi(w) {
   kol.forEach(([j, k], n) => {
     const tanda = ptUrut.k === k ? (ptUrut.a < 0 ? " \u25bc" : " \u25b2") : "";
     const h = el("th", n > (adaMF ? 2 : 1) ? "num" : null, j + tanda);
-    if (k === "em" || k === "sa") h.style.textAlign = "left";
+    if (k === "em" || k === "sa" || k === "lks") h.style.textAlign = "left";
     if (k === "sa") h.title = "Searah asing: seberapa kuat harga emiten ini biasanya ikut arah asing DI HARI YANG SAMA (korelasi %NF harian dengan perubahan harga, 120 hari bursa). Tinggi \u2265 0,35 \u00b7 Sedang 0,20\u20130,35 \u00b7 Rendah < 0,20. Ketuk untuk mengurutkan.";
-    h.style.cursor = "pointer"; h.title = "Urutkan menurut " + j;
+    h.style.cursor = "pointer"; h.title = k === "lks" ? "Kesimpulan laporan keuangan terakhir: Bagus (skor 75\u2013100), Sedang (60\u201374), Jelek (< 60); \u26a0 = ada tanda bahaya. Ketuk untuk mengurutkan menurut skor." : "Urutkan menurut " + j;
     h.onclick = () => {
       if (ptUrut.k === k) ptUrut.a = -ptUrut.a;
       else { ptUrut.k = k; ptUrut.a = (k === "em" || k === "tk" || k === "tmU" || k === "grup") ? 1 : -1; }
@@ -1966,6 +1983,8 @@ function panelPotensi(w) {
     th.appendChild(h);
   });
   t.appendChild(th);
+  K.forEach(x => { const q = lkSkor(x.em); x.lks = q ? q.skor : null; });
+  lkPastikan(halScreener);
   if (ptUrut.k) {
     const k = ptUrut.k;
     K.sort((x, y) => {
@@ -1989,6 +2008,7 @@ function panelPotensi(w) {
     const c0 = el("td"); if (x.tk) c0.appendChild(el("span", "pt-tier t" + x.tk, x.tk)); else c0.textContent = "\u2013"; tr.appendChild(c0);
     if (adaMF) { const cm = el("td"); if (x.tm) cm.appendChild(el("span", "pt-tier t" + x.tm, x.tm)); else cm.textContent = "\u2013"; tr.appendChild(cm); }
     const c1 = el("td"); c1.appendChild(el("span", "kode", x.em)); c1.appendChild(el("span", "nm", (DATA.nama && DATA.nama[x.em]) || "")); c1.style.textAlign = "left"; tr.appendChild(c1);
+    { const cl = el("td", "pt-lk"); cl.appendChild(lkLencana(x.em)); tr.appendChild(cl); }
     { const ks = ptKelasSA(x.sa), cs = el("td", "pt-sa " + ks);
       if (x.sa === null || x.sa === undefined) { cs.textContent = "\u2013"; cs.title = "Riwayat kurang dari " + PT_SA_MIN + " hari bursa"; }
       else { const d = el("div", "pt-sa-isi"); d.appendChild(el("span", "pt-sa-n", (Math.abs(x.sa) < 0.005 ? 0 : x.sa).toFixed(2).replace(".", ",").replace("-", "\u2212")));
@@ -2017,7 +2037,6 @@ function panelPotensi(w) {
       tr.appendChild(el("td", "num pt-batas" + kls(x.r), pr(x.r)));
     }
     tr.appendChild(el("td", "num" + kls(x.nf1), pr(x.nf1)));
-    tr.appendChild(el("td", "num", x.v520 === null ? "\u2013" : x.v520.toFixed(2).replace(".", ",") + "\u00d7"));
     tr.appendChild(el("td", "num pt-batas", x.lonjak === null ? "\u2013" : x.lonjak.toFixed(2).replace(".", ",") + "\u00d7"));
     tr.appendChild(el("td", "num", rp(x.c)));
     tr.appendChild(el("td", "num pt-batas", rp(x.batas)));
@@ -2033,13 +2052,10 @@ function panelPotensi(w) {
       tr.appendChild(cb);
     }
     if (lalu) {
-      const g = el("td", "num", pr(x.gap));
-      if (x.gap !== null && x.gap > PT_GAP_MAX) { g.className = "num pt-gap-lewat"; g.title = "Dibuka di atas batas beli - dilewati"; }
-      else if (x.gap !== null) g.className = "num" + kls(x.gap);
-      tr.appendChild(g);
-      /* harga TUTUP H+1..H+3, warna terhadap harga tutup tanggal sinyal */
-      [x.c1, x.c2, x.c3].forEach(v => { const td = hg(v, x.c); if (x.o1) td.title = "Buka H+1: " + rp(x.o1); tr.appendChild(td); });
-      tr.appendChild(el("td", "num" + kls(x.hT) + (x.gap !== null && x.gap > PT_GAP_MAX ? " pt-coret" : ""), pr(x.hT)));
+      /* harga TUTUP H+1..H+3 + (persen terhadap tutup tanggal sinyal), warna ikut naik/turunnya */
+      [x.c1, x.c2, x.c3].forEach(v => { const td = hg(v, x.c);
+        if (v && x.c) td.appendChild(el("span", "pt-hpc", " (" + pr((v / x.c - 1) * 100) + ")"));
+        if (x.o1) td.title = "Buka H+1: " + rp(x.o1) + (x.gap !== null ? " (gap " + pr(x.gap) + ")" : ""); tr.appendChild(td); });
       if (adaMF) tr.appendChild(el("td", "num" + kls(x.hb) + (x.aneh ? " pt-coret" : ""), pr(x.hb)));
     }
     tr.appendChild(el("td", "num" + kls(x.nf10), pr(x.nf10)));
@@ -2067,10 +2083,10 @@ function panelPotensi(w) {
   p.appendChild(el("div", "bantu",
     "Semesta: emiten dengan transaksi rata-rata 20 hari ≥ Rp5 M dan harga ≥ Rp50. %NF = net foreign ÷ volume pada tanggal sinyal. " +
     "A = %NF di 20% teratas DAN VMA10/VMA50 (\u2605, rata-rata volume 10 hari \u00f7 50 hari bursa) di 30% teratas; B = sama, VMA10/VMA50 di 30\u201350% teratas. " +
-    "VMA5/VMA20 (rata-rata volume 5 hari \u00f7 20 hari bursa) hanya keterangan: diuji lebih lemah, tidak menentukan tingkat. " +
+    "LK = kesimpulan laporan keuangan terakhir (sama dengan panel Kesimpulan LK di menu CARI): Bagus skor 75\u2013100, Sedang 60\u201374, Jelek di bawah 60; \u26a0 = ada tanda bahaya. LK menilai kesehatan perusahaan, bukan sinyal harga 3 hari. " +
     "Urutan bawaan: tingkat A lalu B, masing-masing %NF terbesar; ketuk judul kolom untuk mengurutkan, ketuk lagi untuk membalik. Batas beli = tutup sinyal + " + PT_GAP_MAX + "%, dibulatkan ke fraksi harga BEI: " +
-    "pagi hari bandingkan harga pembukaan di aplikasi sekuritas dengan angka ini. Gap buka H+1 merah = dibuka di atas batas (hasilnya dicoret). " +
-    "Volume = jumlah lot yang ditransaksikan pada hari bursa sebelum tanggal sinyal dan pada tanggal sinyal; Value = nilai transaksi (Rp) pada tanggal sinyal. H+1, H+2, H+3 = harga tutup hari-hari sesudah tanggal sinyal, hijau/merah terhadap harga tutup tanggal sinyal (arahkan ke angkanya untuk melihat harga buka H+1). Angka di kartu dari uji luar sampel 1 Jul 2025 – 30 Sep 2026: " +
+    "pagi hari bandingkan harga pembukaan di aplikasi sekuritas dengan angka ini. " +
+    "Volume = jumlah lot yang ditransaksikan pada hari bursa sebelum tanggal sinyal dan pada tanggal sinyal; Value = nilai transaksi (Rp) pada tanggal sinyal. H+1, H+2, H+3 = harga tutup hari-hari sesudah tanggal sinyal, dalam kurung naik/turunnya terhadap harga tutup tanggal sinyal (arahkan ke angkanya untuk melihat harga buka H+1 dan gap-nya). Angka di kartu dari uji luar sampel 1 Jul 2025 – 30 Sep 2026: " +
     "peluang per saham di bawah 50%, keunggulannya pada rata-rata; tingkat B impas sesudah biaya ±0,3%. " +
     "Pilih tanggal lampau untuk melihat hasil nyata. Ketuk baris untuk membuka Rekomendasi. " +
     "VALUE MF (UNGGAH MF1) = nilai net foreign sesi I hari bursa sesudah tanggal sinyal, dari screenshot Stockbit Half Time \u00b7 Sesi 1. VOL MF1 = N.Lot (net lot asing) sesi I dari layar yang sama - keterangan saja. MF \u00f7 Value 20h = MF dibagi rata-rata nilai transaksi 20 hari. " +
@@ -2260,6 +2276,198 @@ function pbPanel(K, tgl, adaMF) {
     "makin panjang riwayat broker yang diunduh, makin tepat. Bukan rekomendasi investasi."));
   p.appendChild(ket);
   return p;
+}
+
+/* ---------- SKOR LK (kesimpulan laporan keuangan) ----------
+   10 Okt 2026. Skor 0-100 dari LK TERAKHIR tiap emiten di lk.json. Laba rugi & arus kas
+   disetahunkan (TTM = kumulatif tahun ini + tahun lalu penuh - kumulatif periode sama tahun lalu),
+   neraca memakai saldo akhir periode.
+   7 ukuran (poin maks): Profitabilitas 20 (bank 35), Pertumbuhan 20, Kualitas laba 20,
+   Utang & likuiditas 15, Konsistensi 15, Arah margin 10, Arus kas bebas 5. Ukuran yang tidak
+   dinilai (bank) dibuang lalu skornya diubah ke skala 0-100.
+   Tanda bahaya -> skor paling tinggi 59. Label: >= 75 Bagus, 60-74 Sedang, < 60 Jelek.
+   Batas angka = patokan umum analis, BUKAN hasil uji daya ramal harga. */
+const LKS_ACU = {"Profitabilitas": "bagus jika ROE ≥ 15%", "Pertumbuhan": "bagus jika pendapatan & laba naik ≥ 10%",
+  "Kualitas laba": "bagus jika arus kas operasi ≥ laba bersih", "Utang & likuiditas": "bagus jika DER ≤ 1× dan rasio lancar ≥ 1,5×",
+  "Konsistensi": "bagus jika untung 4 tahun berturut-turut", "Arah margin": "bagus jika margin naik atau tetap", "Arus kas bebas": "bagus jika positif"};
+const LKS_ALUR = ["pendapatan", "laba_bersih", "laba_induk", "ak_operasi", "ak_investasi"];
+let lksCache = {}, lksSumber = null;
+
+function lksLabel(s) { return s === null || s === undefined ? "" : s >= 75 ? "Bagus" : s >= 60 ? "Sedang" : "Jelek"; }
+
+function lksGabung(L) {
+  const m = {};
+  (L || []).forEach(p => {
+    const x = m[p.akhir] || (m[p.akhir] = {akhir: p.akhir, jenis: null, flow: {}, bal: {}, mu: p.mata_uang});
+    if (p.awal === p.akhir) Object.assign(x.bal, p.pos);
+    else { Object.assign(x.flow, p.pos); x.jenis = p.jenis; }
+  });
+  return m;
+}
+function lksMundur(akhir, n) { return (parseInt(akhir.slice(0, 4), 10) - (n === undefined ? 1 : n)) + akhir.slice(4); }
+function lksTTM(m, akhir, pos) {
+  const x = m[akhir];
+  if (!x || x.flow[pos] === undefined || x.flow[pos] === null) return null;
+  if (x.jenis === "FY") return x.flow[pos];
+  const y = parseInt(akhir.slice(0, 4), 10), fy = m[(y - 1) + "-12-31"], lalu = m[(y - 1) + akhir.slice(4)];
+  if (!fy || !lalu || fy.flow[pos] === undefined || lalu.flow[pos] === undefined) return null;
+  return x.flow[pos] + fy.flow[pos] - lalu.flow[pos];
+}
+
+/* angka dasar satu emiten (null kalau LK-nya tidak cukup) */
+function lksNilai(kode) {
+  const m = lksGabung(LK && LK.data && LK.data[kode]);
+  const tg = Object.keys(m).filter(k => Object.keys(m[k].flow).length && Object.keys(m[k].bal).length).sort();
+  if (!tg.length) return null;
+  const a = tg[tg.length - 1], b = m[a].bal, a1 = lksMundur(a), b1 = (m[a1] && m[a1].bal) || {};
+  const T = {}, T1 = {};
+  LKS_ALUR.forEach(p => { T[p] = lksTTM(m, a, p); T1[p] = lksTTM(m, a1, p); });
+  const g = (n, o) => (n !== null && n !== undefined && o) ? (n - o) / Math.abs(o) * 100 : null;
+  const r = {akhir: a, jenis: m[a].jenis, mu: m[a].mu, bank: b.aset_lancar === undefined || b.aset_lancar === null};
+  const eq = b.ekuitas_induk || b.ekuitas, eq1 = b1.ekuitas_induk;
+  const li = T.laba_induk !== null ? T.laba_induk : T.laba_bersih;
+  const li1 = T1.laba_induk !== null ? T1.laba_induk : T1.laba_bersih;
+  r.li = li;
+  r.roe = (li !== null && eq > 0) ? (eq1 > 0 ? li / ((eq + eq1) / 2) : li / eq) * 100 : null;
+  r.gp = g(T.pendapatan, T1.pendapatan); r.gl = g(li, li1);
+  r.npm = (T.laba_bersih !== null && T.pendapatan) ? T.laba_bersih / T.pendapatan * 100 : null;
+  r.npm1 = (T1.laba_bersih !== null && T1.pendapatan) ? T1.laba_bersih / T1.pendapatan * 100 : null;
+  r.laba = T.laba_bersih;
+  r.cfoNi = (T.ak_operasi !== null && T.laba_bersih > 0) ? T.ak_operasi / T.laba_bersih : null;
+  r.cfo = T.ak_operasi;
+  r.fcf = (T.ak_operasi !== null && T.ak_investasi !== null) ? T.ak_operasi + T.ak_investasi : null;
+  r.der = (b.liabilitas !== undefined && b.ekuitas > 0) ? b.liabilitas / b.ekuitas : null;
+  r.cr = (b.aset_lancar && b.liabilitas_pendek) ? b.aset_lancar / b.liabilitas_pendek : null;
+  r.eq = b.ekuitas; r.eqNeg = b.ekuitas !== undefined && b.ekuitas !== null && b.ekuitas <= 0;
+  let kons = 0, konsN = 0;
+  for (let k = 0; k < 4; k++) { const v = lksTTM(m, lksMundur(a, k), "laba_bersih"); if (v !== null) { konsN++; if (v > 0) kons++; } }
+  r.kons = kons; r.konsN = konsN;
+  r.gPiut = g(b.piutang_usaha, b1.piutang_usaha);
+  r.piutLari = r.gPiut !== null && r.gp !== null && r.gPiut - r.gp > 30 && (b.piutang_usaha || 0) > 0.1 * (T.pendapatan || 1e30);
+  const sub = (LK.profil && LK.profil[kode] && LK.profil[kode].subsektor) || "";
+  r.prop = /Real Estate|Propert/.test(sub);
+  r.sub = sub;
+  return r;
+}
+
+/* skor lengkap + rincian ukuran + tanda bahaya; disimpan sekali per emiten per isi LK */
+function lkSkor(kode) {
+  if (!LK || !LK.data) return null;
+  if (lksSumber !== LK) { lksCache = {}; lksSumber = LK; }
+  if (kode in lksCache) return lksCache[kode];
+  const r = lksNilai(kode);
+  if (!r || r.roe === null) return (lksCache[kode] = null);
+  const f1 = x => x === null || x === undefined ? "-" : x.toFixed(1).replace(".", ",").replace("-", "−");
+  const pc = x => x === null || x === undefined ? "-" : (x > 0 ? "+" : x < 0 ? "−" : "") + Math.abs(Math.round(x)) + "%";
+  const cat = []; let s = 0;
+  const tambah = (n, p, m, t) => { if (p !== null) s += p; cat.push({n, p, m, t, acu: LKS_ACU[n]}); };
+  const roe = r.roe;
+  const pr = roe >= 15 ? 20 : roe >= 8 ? 12 : roe > 0 ? 5 : 0;
+  if (r.bank) tambah("Profitabilitas", Math.round(pr * 1.75), 35, "ROE " + f1(roe) + "%");
+  else tambah("Profitabilitas", pr, 20, "ROE " + f1(roe) + "%");
+  const gp = r.gp, gl = r.gl;
+  tambah("Pertumbuhan", (gp !== null && gp >= 10 ? 10 : gp !== null && gp >= 0 ? 5 : 0) + (gl !== null && gl >= 10 ? 10 : gl !== null && gl >= 0 ? 5 : 0), 20,
+    "pendapatan " + pc(gp) + ", laba " + pc(gl) + " (setahun)");
+  if (r.bank) tambah("Kualitas laba", null, 20, "tidak dinilai untuk bank");
+  else { const c = r.cfoNi; tambah("Kualitas laba", c !== null && c >= 1 ? 20 : c !== null && c >= 0.7 ? 12 : c !== null && c > 0 ? 4 : 0, 20,
+    c !== null ? "arus kas operasi " + f1(c) + "× laba bersih" : "laba atau arus kas operasi negatif"); }
+  if (r.bank) tambah("Utang & likuiditas", null, 15, "tidak dinilai untuk bank");
+  else tambah("Utang & likuiditas", (r.der !== null && r.der <= 1 ? 10 : r.der !== null && r.der <= 2 ? 5 : 0) + (r.cr !== null && r.cr >= 1.5 ? 5 : r.cr !== null && r.cr >= 1 ? 2 : 0), 15,
+    "DER " + f1(r.der) + "×, rasio lancar " + f1(r.cr) + "×");
+  tambah("Konsistensi", [0, 2, 5, 9, 15][r.kons], 15, "untung " + r.kons + " dari " + r.konsN + " tahun terakhir");
+  tambah("Arah margin", r.npm !== null && r.npm1 !== null && r.npm >= r.npm1 && r.npm > 0 ? 10 : r.npm !== null && r.npm > 0 ? 4 : 0, 10,
+    "margin bersih " + f1(r.npm) + "% (tahun lalu " + f1(r.npm1) + "%)");
+  if (r.bank) tambah("Arus kas bebas", null, 5, "tidak dinilai untuk bank");
+  else tambah("Arus kas bebas", r.fcf !== null && r.fcf > 0 ? 5 : 0, 5, r.fcf === null ? "-" : r.fcf > 0 ? "positif" : "negatif");
+  /* tanda bahaya: [judul, angka bukti, arti] */
+  const rpx = x => {
+    let v = x / 1e9 * (r.mu === "USD" ? kursUSD() : 1); const t = v < 0 ? "minus " : ""; v = Math.abs(v);
+    return t + (v >= 1000 ? "Rp " + (v / 1000).toFixed(1).replace(".", ",") + " T" : "Rp " + Math.round(v).toLocaleString("id-ID") + " M");
+  };
+  const F = [];
+  if (r.eqNeg) F.push(["Ekuitas negatif", "ekuitas " + rpx(r.eq),
+    "Utang sudah lebih besar dari seluruh aset — secara buku modal pemegang saham habis. Risiko gagal bayar, rights issue, atau delisting."]);
+  if (!r.bank && r.cfo !== null && r.cfo < 0) F.push(["Arus kas operasi negatif", "arus kas operasi setahun " + rpx(r.cfo) + ", laba bersih " + rpx(r.laba),
+    "Kegiatan usaha justru menghabiskan uang. Kalau laba tetap tercatat positif, laba itu belum jadi uang tunai (misalnya masih berupa piutang atau persediaan); untuk menutupnya perusahaan bisa perlu utang baru." +
+    (r.prop ? " Pada emiten properti ini sering karena membeli tanah untuk persediaan, jadi perlu dilihat apakah sekali-sekali atau terus-menerus." : "")]);
+  if (roe < 0) F.push(["Rugi", "laba milik induk setahun " + rpx(r.li), "Perusahaan merugi dalam 4 kuartal terakhir, sehingga modal tergerus."]);
+  if (r.piutLari) F.push(["Piutang melonjak", "piutang usaha naik " + Math.round(r.gPiut) + "% setahun, sedangkan pendapatan " +
+    (r.gp < 0 ? "turun " + Math.round(-r.gp) + "%" : "hanya naik " + Math.round(r.gp) + "%"),
+    "Penjualan banyak yang belum dibayar pembeli. Bisa karena memberi kredit lebih longgar untuk mendongkrak penjualan, atau pembeli sulit bayar — laba ada di atas kertas tapi uangnya belum masuk."]);
+  if (!r.bank && r.der !== null && r.der > 3) F.push(["Utang besar", "DER " + f1(r.der) + "× (utang " + f1(r.der) + " kali modal)",
+    "Utang lebih dari 3 kali modal sendiri. Beban bunga berat, dan kalau usaha melemah sedikit saja perusahaan bisa kesulitan bayar."]);
+  const maks = cat.reduce((a, c) => a + (c.p === null ? 0 : c.m), 0);
+  let skor = Math.round(s * 100 / maks);
+  if (F.length && skor > 59) skor = 59;
+  const label = lksLabel(skor);
+  const kuat = cat.filter(c => c.p !== null && c.p >= c.m * 0.99).map(c => c.n.toLowerCase());
+  const lemah = cat.filter(c => c.p !== null && c.p <= c.m * 0.3).map(c => c.n.toLowerCase());
+  let kal = "LK " + label.toLowerCase() + " (" + skor + "/100).";
+  if (kuat.length) kal += " Kuat di " + kuat.join(", ") + ".";
+  if (lemah.length) kal += " Lemah di " + lemah.join(", ") + ".";
+  if (F.length) kal += " Waspada: " + F.map(f => f[0].toLowerCase()).join("; ") + ".";
+  return (lksCache[kode] = {skor, label, kal, cat, F, r});
+}
+
+/* lencana kecil Bagus/Sedang/Jelek (dipakai tabel & kartu) */
+function lkLencana(kode) {
+  const k = lkSkor(kode);
+  if (!k) { const s = el("span", "lk-bd kosong", "–"); s.title = LK ? "LK belum cukup untuk dinilai" : "lk.json belum termuat"; return s; }
+  const s = el("span", "lk-bd " + k.label, k.label + (k.F.length ? " ⚠" : ""));
+  s.title = "Skor LK " + k.skor + "/100 · " + k.kal;
+  return s;
+}
+/* tabel yang memakai skor LK: kalau lk.json belum termuat, muat lalu gambar ulang sekali */
+let lksTunggu = false;
+function lkPastikan(ulang) {
+  if (LK || lkGagal || lksTunggu) return;
+  lksTunggu = true;
+  muatLK().then(() => { lksTunggu = false; if (LK) ulang(); });
+}
+
+/* panel di menu CARI */
+function panelKesimpulanLK(kode) {
+  const p = el("div", "panel");
+  p.appendChild(el("h2", null, "Kesimpulan LK · " + kode));
+  const k = lkSkor(kode);
+  if (!k) { p.appendChild(el("div", "bantu", LK ? "Laporan keuangan " + kode + " belum cukup untuk dinilai (butuh LK terbaru beserta pembanding tahun lalu)." : "lk.json belum termuat.")); return p; }
+  const r = k.r;
+  const kp = el("div", "lk-kepala");
+  kp.appendChild(el("div", "lk-angka " + k.label, String(k.skor)));
+  const kn = el("div");
+  const j = el("div"); j.appendChild(el("b", null, k.label));
+  j.appendChild(el("span", "lk-sub", " · LK " + r.jenis + " " + r.akhir.slice(0, 4) + (r.bank ? " · bank" : "") + (r.sub ? " · " + r.sub : "")));
+  kn.appendChild(j); kn.appendChild(el("div", "lk-kal", k.kal.replace(/^LK [a-z]+ \(\d+\/100\)\. ?/, "")));
+  kp.appendChild(kn); p.appendChild(kp);
+  const lg = el("div", "lk-leg");
+  [["Bagus", "75–100 Bagus"], ["Sedang", "60–74 Sedang"], ["Jelek", "di bawah 60 Jelek"]].forEach(([c, t]) =>
+    lg.appendChild(el("span", "lk-bd " + c + (k.label === c ? " on" : ""), t)));
+  p.appendChild(lg);
+  const g = el("div", "lk-kr");
+  k.cat.forEach(c => {
+    g.appendChild(el("span", null, c.n));
+    const bar = el("div", "lk-bar"), i = el("i"); i.style.width = (c.p === null ? 0 : Math.round(c.p / c.m * 100)) + "%"; bar.appendChild(i); g.appendChild(bar);
+    g.appendChild(el("span", "lk-poin", c.p === null ? "–" : c.p + "/" + c.m));
+    g.appendChild(el("span"));
+    const t = el("span", "lk-t", c.t); t.appendChild(el("br")); t.appendChild(el("span", "lk-acu", c.acu)); g.appendChild(t);
+  });
+  p.appendChild(g);
+  k.F.forEach(f => {
+    const d = el("div", "lk-flag"); d.appendChild(el("b", null, "⚠ " + f[0])); d.appendChild(document.createTextNode(" — " + f[1]));
+    d.appendChild(el("div", "lk-fx", f[2])); p.appendChild(d);
+  });
+  if (k.F.length) p.appendChild(el("div", "bantu", "Karena ada tanda bahaya, skor dibatasi paling tinggi 59 (Jelek) walaupun ukuran lain bagus."));
+  p.appendChild(el("div", "bantu", "Dihitung dari LK terakhir (laba rugi & arus kas = 4 kuartal terakhir, neraca = saldo akhir). " +
+    "Skor bank memakai ROE, pertumbuhan, konsistensi, dan margin saja. Skor menilai kesehatan perusahaan, bukan murah/mahalnya saham dan bukan sinyal harga." +
+    (r.mu === "USD" ? " Emiten melapor dalam dolar; rupiah di atas memakai kurs " + kursUSD().toLocaleString("id-ID") + "." : "")));
+  return p;
+}
+
+/* dari kartu LK di Rekomendasi: buka menu CARI > KEYSTATS emiten itu (panel Kesimpulan LK paling atas) */
+function bukaCariLK(kode) {
+  cariKode = kode; cariSub = "keystats"; try { cariTutup = true; } catch (e) {}
+  document.querySelector('nav button[data-hal="cari"]').click();
+  halCari();
 }
 /* ---------- HARGA & VOL ----------
    Rentang tanggalnya SENDIRI, tidak ikut ANALISA FAVORIT: di sana bawaannya
@@ -3814,6 +4022,12 @@ function panelRekomendasi(w) {
   kartu.appendChild(rekKartu("VOLUME LOT",
     lotSingkat(Math.round(akhir.v / LOT)) + " lot", "",
     tglID(akhir.tgl) + " · reguler"));
+  { const q = lkSkor(rek.em);
+    const kl = rekKartu("LK", q ? q.label + (q.F.length ? " \u26a0" : "") : "\u2013", q ? "lk-kn " + q.label : "",
+      q ? "skor " + q.skor + "/100 \u00b7 " + q.r.jenis + " " + q.r.akhir.slice(0, 4) : (LK ? "LK belum cukup" : "memuat lk.json\u2026"));
+    kl.title = q ? q.kal + " Ketuk untuk melihat rinciannya di menu CARI." : "";
+    if (q) { kl.style.cursor = "pointer"; kl.onclick = () => { if (typeof bukaCariLK === "function") bukaCariLK(rek.em); }; }
+    kartu.appendChild(kl); lkPastikan(halScreener); }
   p.appendChild(kartu);
 
   /* ---- % NET TERHADAP GROSS: batang panjang sama dengan menu BROKER > %NET > RASIO ---- */
@@ -7013,7 +7227,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-07-30";
+const VERSI_APP = "2026-10-10-31";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -13216,6 +13430,7 @@ function halCari() {
     w.appendChild(panelChart(cariKode));
 
   } else if (cariSub === "keystats") {
+    w.appendChild(panelKesimpulanLK(cariKode));
     w.appendChild(panelKeystatsKuartal(cariKode));
     w.appendChild(panelKeystats(cariKode, periode));
 
