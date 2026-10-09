@@ -542,6 +542,15 @@ td .ph-porsi{display:block;width:max-content}
 .pt-tutup span{display:block}
 .pb-pilih{align-items:center;margin:6px 0 8px}
 .pb-cari{max-width:220px;padding:6px 10px;font-size:13px}
+.pt-sa{text-align:left;background:rgba(217,164,0,.05)}
+.pt-sa-isi{display:flex;align-items:center;gap:6px;white-space:nowrap}
+.pt-sa-n{font-weight:800;min-width:30px}
+.pt-sa-bar{width:46px;height:6px;background:var(--surface-2);border-radius:3px;overflow:hidden;display:inline-block}
+.pt-sa-bar i{display:block;height:100%;background:#8a8f98}
+.pt-sa-b{font-size:10.5px;font-weight:800;border-radius:4px;padding:1px 5px;background:var(--surface-2);color:var(--ink-3)}
+.pt-sa.tinggi .pt-sa-bar i{background:var(--naik)}.pt-sa.tinggi .pt-sa-b{background:rgba(47,125,79,.18);color:var(--naik)}
+.pt-sa.sedang .pt-sa-bar i{background:#d99a00}.pt-sa.sedang .pt-sa-b{background:rgba(230,170,0,.16);color:#a87400}
+.pt-sa-tombol.aktif{background:var(--naik);color:#fff}
 .pb-pil{cursor:pointer;color:inherit;font:inherit;font-size:12px}
 .pb-pil.aktif{outline:2px solid var(--merek);background:var(--surface-3,var(--surface-2))}
 .pb-l.sm{background:#555;color:#fff}
@@ -1710,7 +1719,16 @@ const PT_STAT = {
 };
 const PT_GAP_MAX = 2;   /* % - di atas ini jangan dibeli */
 let ptTgl = "", ptAkhir = "", ptCariEm = "";   /* ptCariEm: tampilkan satu emiten saja */
-let ptUrut = {k: "", a: -1};   /* urutan tabel POTENSI 3 HARI; k kosong = bawaan */
+let ptUrut = {k: "", a: -1};
+let ptSaTinggi = false;   /* saring: hanya emiten "Searah asing" Tinggi */
+/* SEARAH ASING (uji 9 Okt 2026, 146 emiten likuid, latih 2025 / uji 2026):
+   korelasi %NF harian dengan perubahan harga HARI ITU. Rata-rata 0,31 (2025) / 0,26 (2026),
+   dan peringkat emitennya bertahan dari tahun ke tahun (korelasi peringkat 0,35).
+   Kenaikan terbesar terjadi di hari yang sama (top 30% %NF unggul +1,12% buka->tutup, t=18),
+   ke H+1..H+3 tinggal +0,1..0,3% - jadi gunanya untuk keputusan beli sesi II dari MF sesi I.
+   Batas: Tinggi >= 0,35, Sedang 0,20-0,35, Rendah < 0,20. Jendela 120 hari bursa, minimal 60. */
+const PT_SA_HARI = 120, PT_SA_MIN = 60;
+function ptKelasSA(v) { return v === null || v === undefined ? "" : v >= 0.35 ? "tinggi" : v >= 0.2 ? "sedang" : "rendah"; }   /* urutan tabel POTENSI 3 HARI; k kosong = bawaan */
 /* fraksi harga BEI */
 function fraksiHarga(h) { return h < 200 ? 1 : h < 500 ? 2 : h < 2000 ? 5 : h < 5000 ? 10 : 25; }
 function batasBeli(c) { const x = c * (1 + PT_GAP_MAX / 100), f = fraksiHarga(x); return Math.floor(x / f) * f; }
@@ -1747,7 +1765,15 @@ function hitungPotensi(tglSinyal) {
     const gap = o1 ? (o1 / acuan - 1) * 100 : null;
     const c1 = d1 && d1.c ? d1.c : null, c2 = d2 && d2.c ? d2.c : null, c3 = d3 && d3.c ? d3.c : null;
     const am1 = i >= 1 ? perTgl[tgl[i - 1]][k] : null;   /* hari bursa sebelum tanggal sinyal */
-    semesta.push({em: k, c: a.c, batas: batasBeli(a.c), nf1, nf10, r10, lonjak: m10 && m50 ? m10 / m50 : null, v520: m5 && m20 ? m5 / m20 : null, val20,
+    /* searah asing: korelasi %NF harian vs perubahan harga hari itu, 120 hari bursa terakhir */
+    let sa = null;
+    { const xs = [], ys = [];
+      ambil(k, PT_SA_HARI).forEach(d => { if (!d.v || !d.p || !d.c) return; const r = d.c / d.p - 1; if (Math.abs(r) > 0.35) return;
+        xs.push(((d.fb || 0) - (d.fs || 0)) / d.v); ys.push(r); });
+      if (xs.length >= PT_SA_MIN) { const n = xs.length, mx = xs.reduce((a, b) => a + b) / n, my = ys.reduce((a, b) => a + b) / n;
+        let sxy = 0, sxx = 0, syy = 0; for (let j = 0; j < n; j++) { const a = xs[j] - mx, b = ys[j] - my; sxy += a * b; sxx += a * a; syy += b * b; }
+        sa = sxx && syy ? sxy / Math.sqrt(sxx * syy) : null; } }
+    semesta.push({em: k, c: a.c, batas: batasBeli(a.c), nf1, sa, nf10, r10, lonjak: m10 && m50 ? m10 / m50 : null, v520: m5 && m20 ? m5 / m20 : null, val20,
       lot0: a.v / LOT, lotm1: am1 && am1.v ? am1.v / LOT : null, val0: a.n || 0,
       gap, o1, c1, c2, c3,
       h1: o1 && c1 ? (c1 / o1 - 1) * 100 : null,
@@ -1791,6 +1817,9 @@ function panelPotensi(w) {
   ie.onchange = pakaiEm; ie.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); pakaiEm(); } };
   le.appendChild(ie); le.appendChild(dl); rt.appendChild(le);
   if (ptCariEm) { const bx = el("button", "kecil", "\u2715 Semua emiten"); bx.onclick = () => { ptCariEm = ""; halScreener(); }; rt.appendChild(bx); }
+  const bSa = el("button", "kecil pt-sa-tombol" + (ptSaTinggi ? " aktif" : ""), "Searah asing tinggi saja");
+  bSa.title = "Tampilkan hanya emiten yang harganya biasanya ikut arah asing di hari yang sama (skor \u2265 0,35)";
+  bSa.onclick = () => { ptSaTinggi = !ptSaTinggi; halScreener(); }; rt.appendChild(bSa);
   const K = H.semesta.filter(x => x.tk).sort((a, b) => (a.tk < b.tk ? -1 : a.tk > b.tk ? 1 : 0) || b.nf1 - a.nf1);
   const pr = v => v === null || v === undefined || isNaN(v) ? "–" : (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(1).replace(".", ",") + "%";
   const kls = v => v === null || v === undefined ? "" : v > 0 ? " naik" : v < 0 ? " turun" : "";
@@ -1883,13 +1912,14 @@ function panelPotensi(w) {
   /* pilihan emiten: tampilkan emiten itu saja, kandidat atau bukan */
   if (ptCariEm) { const s3 = H.semesta.filter(x => x.em === ptCariEm); K.length = 0; s3.forEach(x => K.push(x)); }
   else if (adaMF && ptSaring !== "semua") { const s2 = K.filter(x => ptSaring === "beli" ? x.grup === 1 || x.grup === 2 : x.grup === 5); K.length = 0; s2.forEach(x => K.push(x)); }
+  if (ptSaTinggi && !ptCariEm) { const s4 = K.filter(x => x.sa !== null && x.sa >= 0.35); K.length = 0; s4.forEach(x => K.push(x)); }
   /* urutan bawaan: kelompok, lalu Tk MF (A, B, P), lalu MF ÷ Value 20h terbesar */
   if (adaMF && !ptUrut.k) K.sort((a, b) => a.grup - b.grup || (a.grup === 5 ? (a.r || 0) - (b.r || 0) : a.grup === 4 ? b.nf1 - a.nf1 : a.tmU - b.tmU || (b.r || 0) - (a.r || 0)));
   const bung = el("div", "tbl-bungkus tbl-kunci");   /* judul kolom beku saat digulir */
   const t = el("table", "pt-tbl"), th = el("tr");
   /* kolom: [judul, kunci urut]; ketuk judul = urutkan, ketuk lagi = balik.
      Bawaan (ptUrut.k kosong): tingkat A dulu lalu B, masing-masing %NF terbesar. */
-  const kol = (adaMF ? [["Tr POTENSI", "tk"], ["Tr MF", "tmU"], ["Emiten", "em"], ["VALUE MF", "mf"], ["VOL MF1", "mfLot"], ["MF \u00f7 Value 20h", "r"]] : [["Tr", "tk"], ["Emiten", "em"]])
+  const kol = (adaMF ? [["Tr POTENSI", "tk"], ["Tr MF", "tmU"], ["Emiten", "em"], ["Searah asing", "sa"], ["VALUE MF", "mf"], ["VOL MF1", "mfLot"], ["MF \u00f7 Value 20h", "r"]] : [["Tr", "tk"], ["Emiten", "em"], ["Searah asing", "sa"]])
     .concat([["%NF " + tglID(ptTgl), "nf1"], ["VMA5/VMA20", "v520"], ["VMA10/VMA50 \u2605", "lonjak"], ["Harga " + tglID(ptTgl), "c"], ["Batas beli (+" + PT_GAP_MAX + "%)", "batas"]])
     .concat(adaMF ? [["Harga beli", "beli"]] : [])
     .concat(lalu ? [["Gap buka H+1", "gap"], ["H+1 \u00b7 " + tPendek(H.tglNanti[0]), "c1"], ["H+2 \u00b7 " + tPendek(H.tglNanti[1]), "c2"], ["H+3 \u00b7 " + tPendek(H.tglNanti[2]), "c3"],
@@ -1901,7 +1931,8 @@ function panelPotensi(w) {
   kol.forEach(([j, k], n) => {
     const tanda = ptUrut.k === k ? (ptUrut.a < 0 ? " \u25bc" : " \u25b2") : "";
     const h = el("th", n > (adaMF ? 2 : 1) ? "num" : null, j + tanda);
-    if (k === "em") h.style.textAlign = "left";
+    if (k === "em" || k === "sa") h.style.textAlign = "left";
+    if (k === "sa") h.title = "Searah asing: seberapa kuat harga emiten ini biasanya ikut arah asing DI HARI YANG SAMA (korelasi %NF harian dengan perubahan harga, 120 hari bursa). Tinggi \u2265 0,35 \u00b7 Sedang 0,20\u20130,35 \u00b7 Rendah < 0,20. Ketuk untuk mengurutkan.";
     h.style.cursor = "pointer"; h.title = "Urutkan menurut " + j;
     h.onclick = () => {
       if (ptUrut.k === k) ptUrut.a = -ptUrut.a;
@@ -1934,6 +1965,13 @@ function panelPotensi(w) {
     const c0 = el("td"); if (x.tk) c0.appendChild(el("span", "pt-tier t" + x.tk, x.tk)); else c0.textContent = "\u2013"; tr.appendChild(c0);
     if (adaMF) { const cm = el("td"); if (x.tm) cm.appendChild(el("span", "pt-tier t" + x.tm, x.tm)); else cm.textContent = "\u2013"; tr.appendChild(cm); }
     const c1 = el("td"); c1.appendChild(el("span", "kode", x.em)); c1.appendChild(el("span", "nm", (DATA.nama && DATA.nama[x.em]) || "")); c1.style.textAlign = "left"; tr.appendChild(c1);
+    { const ks = ptKelasSA(x.sa), cs = el("td", "pt-sa " + ks);
+      if (x.sa === null || x.sa === undefined) { cs.textContent = "\u2013"; cs.title = "Riwayat kurang dari " + PT_SA_MIN + " hari bursa"; }
+      else { const d = el("div", "pt-sa-isi"); d.appendChild(el("span", "pt-sa-n", (Math.abs(x.sa) < 0.005 ? 0 : x.sa).toFixed(2).replace(".", ",").replace("-", "\u2212")));
+        const bar = el("span", "pt-sa-bar"), i2 = el("i"); i2.style.width = Math.max(0, Math.min(1, x.sa / 0.6)) * 100 + "%"; bar.appendChild(i2); d.appendChild(bar);
+        d.appendChild(el("span", "pt-sa-b", ks.charAt(0).toUpperCase() + ks.slice(1))); cs.appendChild(d);
+        cs.title = "Korelasi %NF harian dengan perubahan harga hari itu, " + PT_SA_HARI + " hari bursa terakhir"; }
+      tr.appendChild(cs); }
     if (adaMF) {
       const cv = el("td", "num" + kls(x.mf), x.mf === null ? "\u2013" : rpSingkat(x.mf));
       const cl = el("td", "num" + kls(x.mfLot), x.mfLot === null ? "\u2013" : lotSingkat(Math.round(x.mfLot)));
@@ -2014,7 +2052,7 @@ function panelPotensi(w) {
     "VALUE MF (UNGGAH MF1) = nilai net foreign sesi I hari bursa sesudah tanggal sinyal, dari screenshot Stockbit Half Time \u00b7 Sesi 1. VOL MF1 = N.Lot (net lot asing) sesi I dari layar yang sama - keterangan saja. MF \u00f7 Value 20h = MF dibagi rata-rata nilai transaksi 20 hari. " +
     
     "Tr MF (tier MF): A = MF \u00f7 Value 20h \u2265 10% dan VMA10/VMA50 di 30% teratas; B = sama, 30\u201350%; P = pantau (\u2265 4%). Net beli asing sesi I bertahan sampai tutup 96% kasus dan berlanjut di sesi II 78% (19 hari, 325 kasus); " +
-    "ambang 10% masih SEMENTARA dan beli di sesi II belum diuji - karena itu Harga beli dicatat (tersimpan di HP ini). Hasil harga beli = harga beli \u2192 tutup terakhir s/d H+3 tanggal sinyal. Bukan rekomendasi investasi."));
+    "ambang 10% masih SEMENTARA dan beli di sesi II belum diuji - karena itu Harga beli dicatat (tersimpan di HP ini). Hasil harga beli = harga beli \u2192 tutup terakhir s/d H+3 tanggal sinyal. Searah asing = korelasi %NF harian dengan perubahan harga hari itu, 120 hari bursa (Tinggi \u2265 0,35, Sedang 0,20\u20130,35, Rendah < 0,20); uji 2025\u21922026: sifatnya bertahan per emiten dan efeknya terutama di HARI YANG SAMA, jadi paling berguna untuk keputusan beli sesi II dari MF. Bukan rekomendasi investasi."));
   w.appendChild(p);  /* bagian bawah: pembeli besar + label broker (penahan / pembuang / akum) */
   try { w.appendChild(pbPanel(K, ptTgl, adaMF)); }
   catch (e) { w.appendChild(el("div", "bantu", "Label broker gagal dihitung: " + e.message)); }
@@ -6951,7 +6989,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-07-26";
+const VERSI_APP = "2026-10-07-27";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
