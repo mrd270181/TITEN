@@ -511,11 +511,14 @@ td .ph-porsi{display:block;width:max-content}
 .pt-gap-lewat{background:var(--turun-bg);color:var(--turun);font-weight:700}
 .pt-coret{text-decoration:line-through;opacity:.6}
 .pt-tier.tP{background:#8a8f98}
-.pt-mf{border:2px solid var(--naik);border-radius:12px;padding:10px 12px;margin:8px 0 10px;background:var(--surface-2)}
-.pt-mf-j{font-weight:800;font-size:12.5px;margin-bottom:7px}
-.pt-mf-u{background:var(--naik);color:#fff;border:0;border-radius:9px;padding:10px 14px;font-weight:800;font-size:14px;letter-spacing:.4px;cursor:pointer}
+.pt-mf{border:2px solid var(--naik);border-radius:10px;padding:7px 10px;margin:6px 0 8px;background:var(--surface-2)}
+.pt-mf-b1{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.pt-mf-b1 .pt-mf-manual{margin-top:0}
+.pt-mf-b1 .pt-mf-manual[open]{flex-basis:100%}
+.pt-mf-j{font-weight:800;font-size:12px}
+.pt-mf-u{background:var(--naik);color:#fff;border:0;border-radius:8px;padding:6px 11px;font-weight:800;font-size:12.5px;letter-spacing:.3px;cursor:pointer}
 .pt-mf-u:disabled{opacity:.6}
-.pt-mf-st{margin-top:7px;font-size:12px;font-weight:600}
+.pt-mf-st{margin-top:5px;font-size:11.5px;font-weight:600}
 .pt-mf-manual{margin-top:7px;font-size:12.5px}.pt-mf-manual summary{cursor:pointer;color:var(--ink-2)}
 .pt-mf-saring{margin-top:7px;display:flex;flex-wrap:wrap;gap:5px;align-items:center}
 .pt-mf-saring button.aktif{background:var(--naik);color:#fff}
@@ -557,15 +560,16 @@ td .ph-porsi{display:block;width:max-content}
 .pb-l.bs{background:var(--surface-2);color:var(--ink-2);border:1px solid var(--garis)}
 .pb-bar{display:inline-block;height:7px;border-radius:4px;margin-left:6px;vertical-align:middle}
 .pb-bar.pn{background:var(--naik)}.pb-bar.pb{background:var(--turun)}.pb-bar.bs{background:var(--ink-3)}
-.pt-mf-pasar{margin-top:8px;border-radius:9px;padding:8px 10px;background:var(--surface);border:1px solid var(--garis);font-size:12.5px}
+.pt-mf-pasar{margin-top:6px;border-radius:8px;padding:5px 9px;background:var(--surface);border:1px solid var(--garis);font-size:11.5px;max-width:640px}
+.pt-mf-pasar-1{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .pt-mf-pasar.jual{border-color:var(--turun);background:var(--turun-bg)}
 .pt-mf-pasar.beli{border-color:var(--naik)}
-.pt-mf-pasar-n{font-weight:900;font-size:24px;letter-spacing:.5px;margin:6px 0 2px;line-height:1.15}
-.pt-mf-pasar-t{margin-top:6px;padding-top:6px;border-top:1px dashed var(--garis);font-size:13px;line-height:1.6}
-.pt-mf-pasar-t>b{font-size:13px}
+.pt-mf-pasar-n{font-weight:900;font-size:15px;letter-spacing:.3px;margin-left:auto;line-height:1.2}
+.pt-mf-pasar-t{margin-top:3px;padding-top:3px;border-top:1px dashed var(--garis);font-size:11px;line-height:1.5;color:var(--ink-3)}
+.pt-mf-pasar-t>b{font-size:11.5px}
 .pt-mf-pasar-t .fx{margin-top:6px}
-.pt-mf-pasar-k{margin-top:4px;font-size:12px;line-height:1.45}
-.mf-in.pasar{width:92px;text-align:right;font-weight:700;margin-left:4px}
+.pt-mf-pasar-k{margin-top:3px;font-size:10.5px;line-height:1.35;color:var(--ink-2)}
+.mf-in.pasar{width:84px;text-align:right;font-weight:700;padding:2px 5px}
 .mf-ta{width:100%;box-sizing:border-box;margin:6px 0;font:12px monospace;background:var(--surface);color:var(--ink);border:1px solid var(--garis);border-radius:8px;padding:6px}
 .mf-in{width:70px;font:inherit;font-size:12px;text-align:right;background:var(--surface);color:var(--ink);border:1px solid var(--garis);border-radius:6px;padding:3px 5px}
 .mf-in.kode{width:56px;text-align:left;font-weight:700}
@@ -1546,7 +1550,9 @@ function mfTabel(kol, data, urut, isiBaris, kelas) {
    saatTanggalLain(t): gambar ternyata bertanggal lain -> pindah tanggal sinyal */
 function mfKotak(tglMF, tglSinyal, harga, isi, simpanIsi, ringkas, saatTanggalLain) {
   const box = el("div", "pt-mf");
-  box.appendChild(el("div", "pt-mf-j", "MF sesi I · " + tglID(tglMF) + " (hari bursa sesudah sinyal " + tglID(tglSinyal) + ")"));
+  /* 9 Okt 2026: judul, tombol unggah, dan "Ketik manual" satu baris supaya kotak lebih ringkas */
+  const b1 = el("div", "pt-mf-b1"); box.appendChild(b1);
+  b1.appendChild(el("span", "pt-mf-j", "MF sesi I · " + tglID(tglMF) + " (sesudah sinyal " + tglID(tglSinyal) + ")"));
   const fi = el("input"); fi.type = "file"; fi.accept = "image/*"; fi.multiple = true; fi.style.display = "none";
   const bU = el("button", "pt-mf-u", "📷 UNGGAH MF1");
   bU.title = "Screenshot Stockbit Half Time · Sesi 1 - boleh beberapa gambar sekaligus";
@@ -1572,7 +1578,7 @@ function mfKotak(tglMF, tglSinyal, harga, isi, simpanIsi, ringkas, saatTanggalLa
     } catch (e) { mfPesan = "Gagal membaca: " + e.message; mfPesanTgl = tglMF; }
     bU.disabled = false; halScreener();
   };
-  box.appendChild(bU); box.appendChild(fi);
+  b1.appendChild(bU); b1.appendChild(fi);
   const det = el("details", "pt-mf-manual");
   det.appendChild(el("summary", null, "Ketik manual"));
   const ta = el("textarea", "mf-ta"); ta.rows = 4;
@@ -1590,7 +1596,7 @@ function mfKotak(tglMF, tglSinyal, harga, isi, simpanIsi, ringkas, saatTanggalLa
     mfPesan = baru.length + " baris ditambahkan secara manual."; mfPesanTgl = tglMF; halScreener();
   };
   det.appendChild(bT);
-  box.appendChild(det);
+  b1.appendChild(det);
   box.appendChild(st);
   /* Net foreign seluruh pasar sesi I - PERINGATAN saja, tidak mengubah tier.
      Uji 7 Okt 2026 (data seharian sebagai proksi), MF tier A: pasar net beli +1,44%,
@@ -1599,8 +1605,8 @@ function mfKotak(tglMF, tglSinyal, harga, isi, simpanIsi, ringkas, saatTanggalLa
   if (isi.baris.length || isi.pasar) {
     const nf = isi.pasar ? isi.pasar.nf : null;
     const ps = el("div", "pt-mf-pasar" + (nf === null ? "" : nf < 0 ? " jual" : " beli"));
-    const kiri = el("div");
-    kiri.appendChild(el("b", null, "Net foreign seluruh pasar sesi I: "));
+    const kiri = el("div", "pt-mf-pasar-1");
+    kiri.appendChild(el("b", null, "Net foreign pasar sesi I:"));
     const ip = el("input", "mf-in pasar"); ip.value = nf === null ? "" : mfSB(nf); ip.placeholder = "mis. -663.34B";
     ip.title = "Angka \"Net Foreign\" di kepala layar Half Time - terbaca otomatis, boleh diketik";
     const simpanPasar = () => { const a = mfAngka(ip.value.replace(/\s/g, ""), true);
@@ -1608,17 +1614,22 @@ function mfKotak(tglMF, tglSinyal, harga, isi, simpanIsi, ringkas, saatTanggalLa
     ip.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); ip.blur(); } };
     ip.onchange = simpanPasar;
     kiri.appendChild(ip);
+    /* angka besar: NET SELL / NET BUY - satu baris dengan isiannya (9 Okt: kotak dibuat separuh) */
+    if (nf !== null) kiri.appendChild(el("span", "pt-mf-pasar-n " + (nf < 0 ? "turun" : "naik"),
+      (nf < 0 ? "NET SELL " : "NET BUY ") + (nf < 0 ? "\u2212" : "+") + rpSingkat(Math.abs(nf))));
     ps.appendChild(kiri);
-    /* angka besar: NET SELL / NET BUY FOREIGN */
-    if (nf !== null) ps.appendChild(el("div", "pt-mf-pasar-n " + (nf < 0 ? "turun" : "naik"),
-      (nf < 0 ? "NET SELL FOREIGN " : "NET BUY FOREIGN ") + (nf < 0 ? "\u2212" : "+") + rpSingkat(Math.abs(nf))));
     ps.appendChild(el("div", "pt-mf-pasar-k", nf === null ? "Belum terbaca dari gambar - ketik angka \"Net Foreign\" di kepala layar Half Time (format Stockbit, B = miliar)." :
-      nf < 0 ? "\u26a0 Saat pasar net jual asing, sinyal MF cenderung lebih lemah. Uji Jan\u2013Sep 2026: MF tier A rata-rata \u22120,08% (pasar net jual) lawan +1,04% (net beli). Di Jul\u2013Des 2025 bedanya kecil, jadi ini peringatan, bukan larangan." :
-      "\u2713 Pasar net beli asing \u2014 kondisi terbaik untuk sinyal MF (uji: MF tier A rata-rata +1,44% lawan +0,40% saat pasar net jual)."));
+      nf < 0 ? "\u26a0 Pasar net jual asing: sinyal MF cenderung lebih lemah (uji Jan\u2013Sep 2026: tier A \u22120,08% lawan +1,04% saat net beli) \u2014 peringatan, bukan larangan." :
+      "\u2713 Pasar net beli asing \u2014 kondisi terbaik untuk sinyal MF (uji: tier A +1,44% lawan +0,40% saat net jual)."));
     /* penutupan seluruh pasar (gaya CEK VOLUME) + sesi I/II - sama dengan REKOMENDASI */
-    const pt = el("div", "pt-mf-pasar-t");
-    pt.appendChild(el("b", null, "Net foreign seluruh pasar penutupan " + tglID(tglMF)));
-    nfPasarKotak(pt, tglMF, tglMF);
+    /* penutupan seluruh pasar (rumus sama dengan CEK VOLUME / REKOMENDASI) + sesi II, satu baris kecil */
+    const pt = el("div", "pt-mf-pasar-t"), tut = mfPasarTutup(tglMF);
+    if (tut === null) pt.textContent = "Penutupan " + tglID(tglMF) + ": belum ada \u2014 muncul sesudah data harian diimpor.";
+    else {
+      const tulis = (j, v) => { pt.appendChild(document.createTextNode(j)); pt.appendChild(el("b", v < 0 ? "turun" : "naik", (v < 0 ? "JUAL " : "BELI ") + rpSingkat(Math.abs(v)))); };
+      tulis("Penutupan " + tglID(tglMF) + ": ", tut);
+      if (nf !== null) tulis(" \u00b7 sesi II: ", tut - nf);
+    }
     ps.appendChild(pt);
     box.appendChild(ps);
   }
@@ -6989,7 +7000,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-07-27";
+const VERSI_APP = "2026-10-07-28";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
