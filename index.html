@@ -1195,7 +1195,7 @@ function mfAngka(tok, bolehTanpaAkhiran) {
   if (!/^\d+(\.\d+)?$/.test(s)) return null;
   if (!s.includes(".") && s.length >= 3 && akh) s = s.slice(0, -2) + "." + s.slice(-2);   /* "491B" -> 4.91B */
   if (!akh && !bolehTanpaAkhiran) return null;
-  const v = parseFloat(s) * (MF_KALI[akh] || 1);
+  const v = Math.round(parseFloat(s) * (MF_KALI[akh] || 1) * 100) / 100;   /* 8.13*1000 = 8130.000000000001 */
   return isFinite(v) ? {v: neg ? -v : v, akh, neg} : null;
 }
 function mfKode(tok) {
@@ -1225,6 +1225,20 @@ function mfBacaTeks(teks, sisi) {
   });
   return hasil;
 }
+/* N.Lot Stockbit: bilangan bulat (< 1.000) atau tepat 2 desimal + K/M ("8.13K").
+   Kalau akhirannya hilang / terbaca angka (9 Okt 2026: "8.13K" -> "8.13", "4.40K" -> "4.401"),
+   nilainya pecahan - mustahil untuk lot. Beri calon x1.000 (dan versi 2 desimal),
+   lalu mfCocokkan memilih yang harga tersiratnya cocok. */
+function mfCalonLot(v) {
+  if (!v) return [];
+  if (Math.abs(v - Math.round(v)) < 1e-9) return [v];
+  const c = [];
+  const s = String(v), m = s.match(/^(\d+)\.(\d{3,})$/);
+  if (m) c.push(Math.round(parseFloat(m[1] + "." + m[2].slice(0, 2)) * 1000));   /* "4.401" = 4.40K, digit ke-3 = huruf K */
+  c.push(Math.round(v * 1000));
+  c.push(v);
+  return c.map(x => Math.round(x * 1000) / 1000).filter((x, i, a) => a.indexOf(x) === i);
+}
 /* jarak edit sederhana */
 function mfJarak(a, b) {
   const d = Array.from({length: a.length + 1}, (_, i) => [i]);
@@ -1243,12 +1257,13 @@ function mfCocokkan(baris, harga) {
        di lintasan 2): pilih pasangan yang harga tersiratnya paling dekat dengan kode terbaca */
     let r = r0;
     const kk = [r0.ocr, r0.ocr1].filter(k => k && harga[k]);
-    if (kk.length && (r0.nf1 !== undefined)) {
+    const lotCalon = [...mfCalonLot(r0.lot), ...mfCalonLot(r0.lot1)];
+    if (kk.length && (r0.nf1 !== undefined || lotCalon.length > 1)) {
       let best = null;
-      for (const nf of [r0.nf, r0.nf1]) for (const lot of [r0.lot, r0.lot1]) for (const k of kk) {
+      for (const nf of [r0.nf, r0.nf1]) for (const lot of lotCalon) for (const k of kk) {
         if (!nf || !lot) continue;
         const e = Math.abs(Math.log(Math.abs(nf) / (lot * 100) / harga[k]));
-        if (!best || e < best.e - 1e-9) best = {e, nf, lot};
+        if (!best || e < best.e - 0.003) best = {e, nf, lot};   /* seri: calon yang lebih dulu (bentuk Stockbit) menang */
       }
       if (best) r = Object.assign({}, r0, {nf: best.nf, lot: best.lot});
     }
@@ -1266,8 +1281,11 @@ function mfCocokkan(baris, harga) {
     /* calon: jarak edit <= 2 dan harga tersirat dalam ±30% (sesi I bisa bergerak jauh) */
     /* dua huruf saja ("UT" = ULTJ): hanya kalau hurufnya berurutan ada di kode DAN harganya sangat dekat */
     const urut = (o, k) => { let n = 0; for (const c of k) if (c === o[n]) n++; return n === o.length; };
-    const calon = r.ocr.length < 2 ? [] : kodeSemua.filter(k => r.ocr.length === 2 ? urut(r.ocr, k) && dekat(k) < 0.08 : dekat(k) < 0.3 && jarak(r.ocr, k) <= 2)
-      .map(k => ({k, j: jarak(r.ocr, k), h: dekat(k)})).sort((x, y) => (x.j + 5 * x.h) - (y.j + 5 * y.h));
+    /* kode lintasan 1 ikut dicoba kalau lintasan 2 terlalu pendek (9 Okt: SDMU -> "SH" / "SOMU") */
+    const cariCalon = oc => !oc || oc.length < 2 ? [] : kodeSemua.filter(k => oc.length === 2 ? urut(oc, k) && dekat(k) < 0.08 : dekat(k) < 0.3 && jarak(oc, k) <= 2)
+      .map(k => ({k, j: jarak(oc, k), h: dekat(k)}));
+    const calon = [...cariCalon(r.ocr), ...(r.ocr1 && r.ocr1 !== r.ocr ? cariCalon(r.ocr1) : [])]
+      .sort((x, y) => (x.j + 5 * x.h) - (y.j + 5 * y.h)).filter((c, i, a) => a.findIndex(z => z.k === c.k) === i);
     if (calon.length) return Object.assign(o, {em: calon[0].k, st: mfRingkas(r.ocr) === mfRingkas(calon[0].k) && calon[0].h < 0.3 ? "ok" : "dibetulkan", skor: calon[0].j + 5 * calon[0].h,
       alt: calon.slice(1, 4).map(c => c.k)});
     if (harga[r.ocr]) return Object.assign(o, {em: r.ocr, st: "periksa"});
@@ -1293,6 +1311,13 @@ function mfGabung(baris) {
   const kembar = r => out.some(x => x.lot && r.lot && Math.abs(x.lot - r.lot) < 1 && Math.abs(x.nf - r.nf) < 1);
   baris.slice().sort((a, b) => mutu(a) - mutu(b) || (b.waktu || 0) - (a.waktu || 0))   /* ketikan TERBARU menang */.forEach(r => {
     if ((!r.em || pakai[r.em]) && kembar(r)) return;   /* baris sama dari gambar bertumpuk, kodenya terbaca lain */
+    /* tebakan (kuning/merah) yang N.Foreign-nya PERSIS sama dengan baris yakin DAN huruf terbacanya
+       mirip kode baris itu (N.Foreign sama saja tidak cukup: ABMM & RODA sama-sama 20.10M) =
+       baris itu juga, terbaca separuh di tepi gambar bertumpuk (9 Okt: BIPI -1.32B di atas
+       gambar tertutup kepala tabel -> "BVI" -> ditebak BBHI/BESS). Buang. */
+    const mirip = (x, o) => o && x.em && mfJarak(o, x.em) <= 2;
+    if (r.st !== "ok" && r.st !== "manual" && out.some(x => (x.st === "ok" || x.st === "manual") && x.em !== r.em &&
+        Math.abs(x.nf - r.nf) <= Math.abs(x.nf) * 0.0005 + 1 && (mirip(x, r.ocr) || mirip(x, r.ocr1)))) return;
     if (r.em && pakai[r.em]) {
       if (sama(pakai[r.em], r)) return;   /* duplikat */
       const alt = (r.alt || []).find(k => !pakai[k]);
@@ -1375,11 +1400,38 @@ async function mfSiapOCR(lapor) {
 }
 /* gambar -> potongan siap baca: kanal paling terang, dibalik (teks gelap di latar
    putih), diperbesar. Layar lebar (desktop) dibelah dua: kiri Buy, kanan Sell. */
+/* titik belah kolom Buy | Sell. Dulu tetap 49% lebar gambar - tangkapan layar 9 Okt 2026
+   yang lebih sempit membuat angka terakhir N.Lot kolom Buy terpotong ("456" -> "45",
+   "8.13K" -> "8.13"). Sekarang dicari celah kosong terlebar di antara 40-60% lebar:
+   kolom piksel tanpa tulisan (beda terang dari latar) di bagian tabel. */
+function mfBelah(img, W, H) {
+  const cadangan = Math.round(W * 0.49);
+  try {
+    const cv = document.createElement("canvas"); cv.width = W; cv.height = H;
+    const g = cv.getContext("2d"); g.drawImage(img, 0, 0);
+    const y0 = Math.round(H * 0.22), d = g.getImageData(0, y0, W, H - y0).data, h = H - y0;
+    const terang = i => Math.max(d[i], d[i + 1], d[i + 2]);
+    const xa = Math.round(W * 0.42), xb = Math.round(W * 0.60);
+    const contoh = []; for (let x = xa; x < xb; x += 7) for (let y = 0; y < h; y += 13) contoh.push(terang((y * W + x) * 4));
+    contoh.sort((p, q) => p - q); const latar = contoh[contoh.length >> 1];
+    const kosong = x => { let t = 0; for (let y = 0; y < h; y += 2) if (Math.abs(terang((y * W + x) * 4) - latar) > 70 && ++t > 1) return false; return true; };
+    /* celah pertama (>= 14 piksel) yang dimulai SESUDAH xa: sisi kirinya = tepi kanan angka N.Lot
+       Buy (rata kanan). Celah yang sudah kosong sejak xa = celah N.Foreign-N.Lot, dilewati. */
+    let x = xa; while (x < xb && kosong(x)) x++;
+    for (; x < xb; x++) {
+      if (!kosong(x)) continue;
+      let e = x; while (e < xb && kosong(e)) e++;
+      if (e - x >= 14) return x + 8;   /* celah N.Lot->ikon Sell ~20 px; celah antar-angka paling 9 px */
+      x = e;
+    }
+  } catch (e) {}
+  return cadangan;
+}
 async function mfPotong(file) {
   const img = await new Promise((ok, gagal) => { const im = new Image(); im.onload = () => ok(im);
     im.onerror = () => gagal(new Error(file.name + " bukan gambar")); im.src = URL.createObjectURL(file); });
   const W = img.naturalWidth, H = img.naturalHeight, lebar = W / H > 1.1;
-  const bagian = lebar ? [[0, Math.round(W * 0.49), 1], [Math.round(W * 0.49), W, -1]] : [[0, W, 0]];
+  const bagian = lebar ? [[0, mfBelah(img, W, H), 1], [mfBelah(img, W, H), W, -1]] : [[0, W, 0]];
   return bagian.map(([x0, x1, sisi]) => {
     const sk = Math.min(3, 2400 / (x1 - x0), 6000 / H);
     const cv = document.createElement("canvas");
@@ -6899,7 +6951,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-07-25";
+const VERSI_APP = "2026-10-07-26";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
