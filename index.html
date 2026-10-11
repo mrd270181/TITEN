@@ -2285,8 +2285,10 @@ function pbPanel(K, tgl, adaMF) {
    10 Okt 2026. Skor 0-100 dari LK TERAKHIR tiap emiten di lk.json. Laba rugi & arus kas
    disetahunkan (TTM = kumulatif tahun ini + tahun lalu penuh - kumulatif periode sama tahun lalu),
    neraca memakai saldo akhir periode.
-   7 ukuran (poin maks): Profitabilitas 20 (bank 35), Pertumbuhan 20, Kualitas laba 20,
-   Utang & likuiditas 15, Konsistensi 15, Arah margin 10, Arus kas bebas 5. Ukuran yang tidak
+   11 Okt 2026: poin dibuat tepat 100, jadi poin = skor (tanpa diubah skala).
+   Bukan bank: Profitabilitas 20, Pertumbuhan 20, Kualitas laba 20, Utang & likuiditas 15,
+   Konsistensi 10, Arah margin 10, Arus kas bebas 5 = 100.
+   Bank: Profitabilitas 40, Pertumbuhan 20, Konsistensi 20, Arah margin 20 = 100. Ukuran yang tidak
    dinilai (bank) dibuang lalu skornya diubah ke skala 0-100.
    Tanda bahaya -> skor paling tinggi 59. Label: >= 75 Bagus, 60-74 Sedang, < 60 Jelek.
    Batas angka = patokan umum analis, BUKAN hasil uji daya ramal harga. */
@@ -2366,7 +2368,7 @@ function lkSkor(kode) {
   const tambah = (n, p, m, t) => { if (p !== null) s += p; cat.push({n, p, m, t, acu: LKS_ACU[n]}); };
   const roe = r.roe;
   const pr = roe >= 15 ? 20 : roe >= 8 ? 12 : roe > 0 ? 5 : 0;
-  if (r.bank) tambah("Profitabilitas", Math.round(pr * 1.75), 35, "ROE " + f1(roe) + "%");
+  if (r.bank) tambah("Profitabilitas", pr * 2, 40, "ROE " + f1(roe) + "%");
   else tambah("Profitabilitas", pr, 20, "ROE " + f1(roe) + "%");
   const gp = r.gp, gl = r.gl;
   tambah("Pertumbuhan", (gp !== null && gp >= 10 ? 10 : gp !== null && gp >= 0 ? 5 : 0) + (gl !== null && gl >= 10 ? 10 : gl !== null && gl >= 0 ? 5 : 0), 20,
@@ -2377,9 +2379,10 @@ function lkSkor(kode) {
   if (r.bank) tambah("Utang & likuiditas", null, 15, "tidak dinilai untuk bank");
   else tambah("Utang & likuiditas", (r.der !== null && r.der <= 1 ? 10 : r.der !== null && r.der <= 2 ? 5 : 0) + (r.cr !== null && r.cr >= 1.5 ? 5 : r.cr !== null && r.cr >= 1 ? 2 : 0), 15,
     "DER " + f1(r.der) + "×, rasio lancar " + f1(r.cr) + "×");
-  tambah("Konsistensi", [0, 2, 5, 9, 15][r.kons], 15, "untung " + r.kons + " dari " + r.konsN + " tahun terakhir");
-  tambah("Arah margin", r.npm !== null && r.npm1 !== null && r.npm >= r.npm1 && r.npm > 0 ? 10 : r.npm !== null && r.npm > 0 ? 4 : 0, 10,
-    "margin bersih " + f1(r.npm) + "% (tahun lalu " + f1(r.npm1) + "%)");
+  tambah("Konsistensi", r.bank ? [0, 3, 7, 12, 20][r.kons] : [0, 2, 4, 7, 10][r.kons], r.bank ? 20 : 10, "untung " + r.kons + " dari " + r.konsN + " tahun terakhir");
+  { const mg = r.npm !== null && r.npm1 !== null && r.npm >= r.npm1 && r.npm > 0 ? 2 : r.npm !== null && r.npm > 0 ? 1 : 0;
+  tambah("Arah margin", r.bank ? [0, 8, 20][mg] : [0, 4, 10][mg], r.bank ? 20 : 10,
+    "margin bersih " + f1(r.npm) + "% (tahun lalu " + f1(r.npm1) + "%)"); }
   if (r.bank) tambah("Arus kas bebas", null, 5, "tidak dinilai untuk bank");
   else tambah("Arus kas bebas", r.fcf !== null && r.fcf > 0 ? 5 : 0, 5, r.fcf === null ? "-" : r.fcf > 0 ? "positif" : "negatif");
   /* tanda bahaya: [judul, angka bukti, arti] */
@@ -2461,7 +2464,7 @@ function panelKesimpulanLK(kode) {
   });
   if (k.F.length) p.appendChild(el("div", "bantu", "Karena ada tanda bahaya, skor dibatasi paling tinggi 59 (Jelek) walaupun ukuran lain bagus."));
   p.appendChild(el("div", "bantu", "Dihitung dari LK terakhir (laba rugi & arus kas = 4 kuartal terakhir, neraca = saldo akhir). " +
-    "Skor bank memakai ROE, pertumbuhan, konsistensi, dan margin saja. Skor menilai kesehatan perusahaan, bukan murah/mahalnya saham dan bukan sinyal harga." +
+    "Total poin 100. Bank dinilai dari ROE (40), pertumbuhan (20), konsistensi (20), dan margin (20), juga total 100. Skor menilai kesehatan perusahaan, bukan murah/mahalnya saham dan bukan sinyal harga." +
     (r.mu === "USD" ? " Emiten melapor dalam dolar; rupiah di atas memakai kurs " + kursUSD().toLocaleString("id-ID") + "." : "")));
   return p;
 }
@@ -7240,7 +7243,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-11-33";
+const VERSI_APP = "2026-10-11-34";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
