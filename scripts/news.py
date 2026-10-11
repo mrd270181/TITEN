@@ -43,6 +43,15 @@ PASAR_GLOBAL = [
     ('^JKSE', 'IHSG', 'poin', 'Pasar global'),
     ('^GSPC', 'S&P 500', 'poin', 'Pasar global'),
     ('DX-Y.NYB', 'Indeks Dolar (DXY)', 'poin', 'Pasar global'),
+    # ETF favorit (11 Okt 2026): kelompok sendiri supaya tidak tertukar dengan INDEKS di atas.
+    # Harga per lembar dalam USD, bisa dibandingkan dengan aplikasi Gotrade.
+    ('SPY', 'SPY \u00b7 ETF S&P 500', 'USD/lembar', 'ETF (AS & dunia)'),
+    ('VOO', 'VOO \u00b7 ETF S&P 500', 'USD/lembar', 'ETF (AS & dunia)'),
+    ('QQQ', 'QQQ \u00b7 ETF Nasdaq 100', 'USD/lembar', 'ETF (AS & dunia)'),
+    ('QQQM', 'QQQM \u00b7 ETF Nasdaq 100', 'USD/lembar', 'ETF (AS & dunia)'),
+    ('VWRA.L', 'VWRA \u00b7 ETF saham dunia', 'USD/lembar', 'ETF (AS & dunia)'),
+    ('VT', 'VT \u00b7 ETF saham dunia', 'USD/lembar', 'ETF (AS & dunia)'),
+    ('ACWI', 'ACWI \u00b7 ETF saham dunia', 'USD/lembar', 'ETF (AS & dunia)'),
 ]
 
 # kata penanda sentimen di JUDUL (huruf kecil). Kasar tapi cepat.
