@@ -617,6 +617,42 @@ tr.pt-dicoret td{opacity:.6} tr.pt-dicoret .kode{text-decoration:line-through}
 .lk-t{grid-column:2/4;color:var(--ink-3);font-size:10.5px;margin:-2px 0 3px}.lk-acu{color:var(--merek);font-size:10px}
 .lk-flag{margin-top:8px;padding:6px 8px;border-radius:6px;background:var(--turun-bg);color:var(--turun);font-size:11.5px}
 .lk-fx{color:var(--ink-2);margin-top:3px;font-size:11px}
+.jv-reaktor{display:inline-block;width:46px;height:46px;border-radius:50%;flex:none;cursor:pointer;
+  background:radial-gradient(circle,#e8fbff 0 14%,#33d6ff 15% 30%,#0b3b52 31% 46%,#33d6ff 47% 51%,transparent 52%);box-shadow:0 0 14px #33d6ff88}
+.jv-reaktor.besar{width:58px;height:58px}.jv-reaktor.kecil{width:30px;height:30px;box-shadow:0 0 8px #33d6ffaa}
+.jv-reaktor.bicara{animation:jvNadi 1s infinite}
+@keyframes jvNadi{50%{box-shadow:0 0 30px #33d6ffee;transform:scale(1.07)}}
+.jv-kepala{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.jv-jd{flex:1;min-width:160px}.jv-nama{font-weight:800;letter-spacing:1.5px;color:#0aa5cc;font-size:15px}
+.jv-tbl-tombol{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.jv-utama{background:#0aa5cc;color:#fff;border:0;border-radius:999px;padding:7px 14px;font-weight:800;cursor:pointer;font-family:inherit}
+.jv-ucap{border-left:3px solid #33d6ff;background:var(--surface-2);border-radius:6px;padding:9px 11px;font-size:14px;line-height:1.55}
+.jv-tanya-b{display:flex;gap:6px;align-items:center}
+.jv-tanya-b input{flex:1;min-width:0;padding:8px 12px;border-radius:999px;border:1px solid var(--garis);background:var(--surface-1);color:var(--ink-1);font-family:inherit;font-size:13px}
+.jv-mik{background:#0aa5cc;color:#fff;border:0;border-radius:999px;padding:8px 12px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit}
+.jv-mik.dengar{background:var(--turun);animation:jvNadi 1s infinite}
+.jv-contoh{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
+.jv-chip{border:1px solid var(--garis);background:var(--surface-2);color:var(--ink-2);border-radius:999px;padding:3px 10px;font-size:12px;cursor:pointer;font-family:inherit}
+.jv-jawab{margin-top:8px;display:flex;flex-direction:column;gap:6px}
+.jv-qa{border:1px solid var(--garis);border-radius:8px;padding:7px 9px}.jv-qa.lama{opacity:.6}
+.jv-q{font-size:12px;color:var(--ink-3)}.jv-a{font-size:13.5px;line-height:1.5}
+.jv-al{display:flex;gap:9px;align-items:flex-start;padding:7px 0;border-top:1px solid var(--garis)}
+.jv-al:first-of-type{border-top:0}.jv-al>div:nth-child(2){flex:1;min-width:0;font-size:13px}
+.jv-ik{flex:none;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:12px}
+.jv-ik.m{background:var(--turun-bg);color:var(--turun)}.jv-ik.h{background:var(--naik-bg);color:var(--naik)}
+.jv-ik.k{background:rgba(230,170,0,.18);color:#a87400}.jv-ik.c{background:rgba(10,165,204,.15);color:#0a8fb0}
+.jv-link{font-size:12px}.jv-kd{cursor:pointer;text-decoration:underline dotted}
+.jv-tbl{max-height:55vh}.jv-set{display:block;margin:4px 0;font-size:13px}.jv-set input[type=checkbox]{width:auto;margin:0 6px 0 0;vertical-align:middle}.jv-set select{margin-left:4px;max-width:260px}
+.jv-pojok{position:fixed;right:14px;bottom:calc(74px + env(safe-area-inset-bottom));z-index:40;width:52px;height:52px;border-radius:50%;
+  border:1px solid #0b3b52;background:#06101a;display:grid;place-items:center;cursor:pointer;box-shadow:0 3px 12px rgba(0,0,0,.35);padding:0}
+.jv-badge{position:absolute;top:-4px;right:-4px;background:var(--turun);color:#fff;border-radius:999px;font-size:11px;font-weight:800;padding:1px 6px;min-width:18px}
+.jv-panel{position:fixed;right:12px;bottom:calc(134px + env(safe-area-inset-bottom));z-index:41;width:min(380px,calc(100vw - 24px));max-height:65vh;overflow:auto;
+  background:var(--surface-1);border:1px solid var(--garis);border-radius:12px;padding:10px;box-shadow:0 8px 28px rgba(0,0,0,.3)}
+.jv-panel-j{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;color:#0aa5cc;letter-spacing:1.5px}
+.jv-panel .jv-tbl-tombol{margin-bottom:8px}
+.jv-modal{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.45);display:grid;place-items:center;padding:16px}
+.jv-modal-k{background:var(--surface-1);border:1px solid var(--garis);border-radius:14px;padding:14px;width:min(560px,100%);max-height:85vh;overflow:auto;display:flex;flex-direction:column;gap:10px}
+nav button.jv-ada svg{stroke:#0aa5cc}
 .pt-tgl-h{display:block;font-size:9.5px;font-weight:400;opacity:.85}
 .ph-tag{font-size:10px;font-weight:700;color:#d9a441;border:1px solid #d9a441;border-radius:5px;padding:0 5px}
 .ph-kol td:nth-child(2),.ph-kol th:nth-child(2){text-align:left}
@@ -732,6 +768,7 @@ tfoot td{border-top:2px solid var(--garis);font-weight:800;background:var(--surf
   <section id="hal-broker" hidden></section>
   <section id="hal-cari" hidden></section>
   <section id="hal-news" hidden></section>
+  <section id="hal-jarvis" hidden></section>
   <section id="hal-data" hidden></section>
   <footer>
     Sumber: Ringkasan Saham &amp; laporan keuangan XBRL Bursa Efek Indonesia.<br>
@@ -759,6 +796,9 @@ tfoot td{border-top:2px solid var(--garis);font-weight:800;background:var(--surf
   <button data-hal="news">
     <svg viewBox="0 0 24 24"><path d="M5 4h11v16H6a2 2 0 0 1-2-2V5a1 1 0 0 1 1-1z"/><path d="M16 8h3v10a2 2 0 0 1-2 2"/><path d="M8 8h5M8 12h5M8 16h3"/></svg>
     NEWS</button>
+  <button data-hal="jarvis">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4"/><path d="M12 3.5v3M12 17.5v3M3.5 12h3M17.5 12h3"/></svg>
+    JARVIS</button>
   <button data-hal="data">
     <svg viewBox="0 0 24 24"><path d="M12 3v11"/><path d="M8 11l4 4 4-4"/><path d="M4 20h16"/></svg>
     PERBARUI</button>
@@ -2644,6 +2684,496 @@ function rekPanelNews(em) {
   p.appendChild(el("div", "bantu", "Berita media dari Google Berita dan keterbukaan informasi resmi IDX (label biru, membuka PDF di idx.co.id) yang menyebut " + em +
     ". Positif/negatif ditebak dari kata di judul, jadi kadang meleset — baca judulnya. Sama dengan data menu NEWS."));
   return p;
+}
+
+/* ---------- JARVIS (asisten suara TITEN) ----------
+   12 Okt 2026. Gratis, tanpa server/API: semua dihitung di peramban dari data yang
+   sudah dimuat TITEN (daftarHari = harga harian, NEWS = berita + keterbukaan IDX,
+   LK = skor laporan keuangan, data broker lewat kumpulkan()).
+   Suara: speechSynthesis (id-ID). Mikrofon: webkitSpeechRecognition (Chrome, perlu internet).
+   Isi: menu JARVIS (briefing, peringatan watchlist, tabel watchlist, lonjakan volume, tanya),
+   tombol reaktor di pojok semua menu (+ angka peringatan), dan briefing otomatis sekali sehari.
+   Peringatan memakai harga PENUTUPAN harian, bukan harga berjalan saat bursa buka. */
+const JV_VOL = 1.5;          /* volume >= 1,5x rata-rata 20 hari -> peringatan */
+const JV_VOL_LONJAK = 2;     /* tabel lonjakan volume: >= 2x */
+const JV_VAL_LONJAK = 5e9;   /* ... dan value >= 5 M supaya saham tidur tidak ikut */
+const JV_ASING = 5e9;        /* asing net >= 5 M, atau */
+const JV_ASING_P = 0.15;     /* >= 15% dari value hari itu (value >= 1 M) */
+const JV_HARGA = 0.07;       /* harga bergerak >= 7% */
+const JV_DEKAT = 0.02;       /* jarak ke S1/R1 <= 2% */
+const JV_KI_HARI = 3;        /* keterbukaan IDX 3 hari terakhir */
+let jvLog = [], jvUrut = {wl: ["kode", 1], lj: ["rasio", -1]}, jvSuaraId = null, jvHitungCache = null;
+
+const jvBil = (x, d) => x === null || x === undefined || isNaN(x) ? "–" : x.toLocaleString("id-ID", {minimumFractionDigits: d || 0, maximumFractionDigits: d || 0});
+const jvPersen = (x, d) => jvBil(Math.abs(x * 100), d || 1).replace(/,0+$/, "") + " persen";
+const jvMiliar = v => { const a = Math.abs(v); return a >= 1e12 ? jvBil(a / 1e12, 1) + " triliun" : a >= 1e9 ? jvBil(a / 1e9, 1) + " miliar" : jvBil(a / 1e6, 0) + " juta"; };
+const jvHariNama = t => { const d = new Date(t + "T12:00:00"); return ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"][d.getDay()] + " " + parseInt(t.slice(8, 10), 10) + " " + ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"][parseInt(t.slice(5, 7), 10) - 1]; };
+const jvHariIni = () => new Date().toLocaleDateString("sv-SE", {timeZone: "Asia/Jakarta"});
+const jvSapa = () => { const j = parseInt(new Date().toLocaleString("en-GB", {timeZone: "Asia/Jakarta", hour: "2-digit", hour12: false}), 10);
+  return j < 11 ? "Selamat pagi" : j < 15 ? "Selamat siang" : j < 18 ? "Selamat sore" : "Selamat malam"; };
+function jvSimpan(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+function jvAmbil(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+
+/* ---- ringkasan satu emiten dari 21 hari terakhir ---- */
+function jvEm(kode) {
+  const H = daftarHari.slice(0, 21);
+  if (!H.length) return null;
+  const b = H[0].baris && H[0].baris[kode];
+  if (!b || !(b.c > 0)) return null;
+  const lalu = H.slice(1).map(r => r.baris && r.baris[kode]).filter(x => x);
+  const rata = lalu.length ? lalu.reduce((a, x) => a + (x.v || 0), 0) / lalu.length : 0;
+  const asing5 = H.slice(0, 5).reduce((a, r) => { const x = r.baris && r.baris[kode]; return a + (x ? ((x.fb || 0) - (x.fs || 0)) * (x.c || 0) : 0); }, 0);
+  return {kode, tgl: H[0].tgl, c: b.c, p: b.p, pct: b.p > 0 ? b.c / b.p - 1 : 0, v: b.v || 0, val: b.n || 0,
+          rasio: rata > 0 ? (b.v || 0) / rata : null, asing: ((b.fb || 0) - (b.fs || 0)) * b.c, asing5,
+          nama: b.nm || (DATA.nama && DATA.nama[kode]) || ""};
+}
+
+/* ---- level dari fungsi REKOMENDASI (pivot 70 hari) ---- */
+function jvLevel(kode) {
+  const H = daftarHari; if (H.length < 2) return null;
+  const t0 = H[0].tgl, t1 = H[1].tgl;
+  const s = rekSupport(kode, t0), r = rekResist(kode, t0), sLalu = rekSupport(kode, t1), rLalu = rekResist(kode, t1);
+  return {s1: s[0] || null, r1: r[0] || null, s1Lalu: sLalu[0] || null, r1Lalu: rLalu[0] || null};
+}
+
+function jvBeritaEm(kode, hari) {
+  if (!NEWS || !NEWS.item) return [];
+  const batas = Date.now() / 1000 - hari * 86400;
+  return NEWS.item.filter(x => x.w >= batas && (x.e || []).indexOf(kode) >= 0).sort((a, b) => b.w - a.w);
+}
+
+/* ---- peringatan untuk emiten di Watchlist saya ---- */
+function jvPeringatan() {
+  const hasil = [];
+  [...FAVORIT].forEach(k => {
+    const e = jvEm(k); if (!e) return;
+    const harga = jvBil(e.c), arah = e.pct >= 0 ? "naik" : "turun";
+    const L = jvLevel(k);
+    if (L) {
+      if (L.s1Lalu && e.c < L.s1Lalu) hasil.push({k, j: "L", p: 5, kl: "m", t: k + " tembus support " + jvBil(L.s1Lalu) + ", ditutup " + harga,
+        u: k + " menembus support " + jvBil(L.s1Lalu) + ", ditutup di " + harga + "."});
+      else if (L.r1Lalu && e.c > L.r1Lalu) hasil.push({k, j: "L", p: 5, kl: "h", t: k + " tembus resist " + jvBil(L.r1Lalu) + ", ditutup " + harga,
+        u: k + " menembus resist " + jvBil(L.r1Lalu) + ", ditutup di " + harga + "."});
+      else {
+        if (L.s1 && (e.c - L.s1) / e.c <= JV_DEKAT) hasil.push({k, j: "L", p: 1, kl: "c", t: k + " " + harga + " dekat support S1 " + jvBil(L.s1),
+          u: k + " mendekati support " + jvBil(L.s1) + "."});
+        if (L.r1 && (L.r1 - e.c) / e.c <= JV_DEKAT) hasil.push({k, j: "L", p: 1, kl: "c", t: k + " " + harga + " dekat resist R1 " + jvBil(L.r1),
+          u: k + " mendekati resist " + jvBil(L.r1) + "."});
+      }
+    }
+    if (Math.abs(e.asing) >= JV_ASING || (e.val >= 1e9 && Math.abs(e.asing) / e.val >= JV_ASING_P)) {
+      const beli = e.asing > 0, beda = (beli && e.pct < 0) || (!beli && e.pct > 0);
+      hasil.push({k, j: "A", p: beda ? 4 : 3, kl: beli ? "h" : "m",
+        t: k + " asing net " + (beli ? "beli" : "jual") + " " + fmtValue(Math.abs(e.asing)) + ", harga " + arah + " " + jvBil(Math.abs(e.pct * 100), 1) + "%",
+        sub: beda ? (beli ? "Asing masuk saat harga turun" : "Harga naik tapi asing keluar — hati-hati distribusi") : "",
+        u: "Asing net " + (beli ? "beli " : "jual ") + k + " " + jvMiliar(e.asing) + " rupiah" + (beda ? ", padahal harganya " + arah + " " + jvPersen(e.pct) : "") + "."});
+    }
+    if (e.rasio !== null && e.rasio >= JV_VOL) hasil.push({k, j: "V", p: e.rasio >= 3 ? 4 : 3, kl: "k",
+      t: k + " volume " + jvBil(e.rasio, 1) + "× rata-rata 20 hari, harga " + arah + " " + jvBil(Math.abs(e.pct * 100), 1) + "% ke " + harga,
+      sub: e.pct < 0 ? "Volume besar saat turun — cek broker penjual" : "",
+      u: "Volume " + k + " " + jvBil(e.rasio, 1) + " kali rata-rata, harga " + arah + " " + jvPersen(e.pct) + "."});
+    if (Math.abs(e.pct) >= JV_HARGA && !(e.rasio >= JV_VOL)) hasil.push({k, j: "H", p: 3, kl: e.pct > 0 ? "h" : "m",
+      t: k + " " + arah + " " + jvBil(Math.abs(e.pct * 100), 1) + "% ke " + harga, u: k + " " + arah + " " + jvPersen(e.pct) + " ke " + harga + "."});
+    const ki = jvBeritaEm(k, JV_KI_HARI).filter(x => x.x);
+    if (ki.length) hasil.push({k, j: "K", p: 2, kl: "c", t: k + " — " + ki.length + " keterbukaan IDX baru: " + ki[0].t.replace(/^[A-Z]{4}\s*-\s*/, ""),
+      url: ki[0].u, u: "Ada " + ki.length + " keterbukaan informasi baru dari " + k + "."});
+  });
+  return hasil.sort((a, b) => b.p - a.p || a.k.localeCompare(b.k));
+}
+
+function jvLonjakan() {
+  const H = daftarHari[0]; if (!H || !H.baris) return [];
+  return Object.keys(H.baris).map(jvEm).filter(e => e && e.rasio !== null && e.rasio >= JV_VOL_LONJAK && e.val >= JV_VAL_LONJAK)
+    .sort((a, b) => b.rasio - a.rasio);
+}
+
+function jvPasar(kode) { return NEWS && NEWS.pasar ? NEWS.pasar.find(p => p.k === kode) : null; }
+function jvArah(p) {
+  if (!p || !(p.sebelum > 0)) return "";
+  const g = p.harga / p.sebelum - 1;
+  return Math.abs(g) < 0.0005 ? "datar" : (g > 0 ? "naik " : "turun ") + jvPersen(g, Math.abs(g) < 0.1 ? 2 : 1);
+}
+function jvPasarKal(p, nama) { const a = jvArah(p); return a ? (nama || p.n) + " " + a : ""; }
+
+/* ---- hitung semua sekali per keadaan data ---- */
+function jvHitung() {
+  const kunci = (daftarHari[0] && daftarHari[0].tgl) + "|" + (NEWS ? NEWS.dibuat + "|" + (NEWS.kiDibuat || 0) : "-") + "|" + [...FAVORIT].join(",");
+  if (jvHitungCache && jvHitungCache.kunci === kunci) return jvHitungCache;
+  jvHitungCache = {kunci, per: jvPeringatan(), lj: jvLonjakan()};
+  return jvHitungCache;
+}
+
+function jvBriefing() {
+  const H = daftarHari[0];
+  if (!H) return "Data harga belum ada di perangkat ini. Buka menu PERBARUI dulu.";
+  const X = jvHitung(), K = [];
+  K.push(jvSapa() + ". Data bursa terakhir " + jvHariNama(H.tgl) + ".");
+  const ih = jvPasar("^JKSE");
+  if (ih && ih.sebelum > 0) { const g = ih.harga / ih.sebelum - 1;
+    K.push("IHSG " + (g >= 0 ? "naik " : "turun ") + jvPersen(g, 2) + " di " + jvBil(ih.harga) + "."); }
+  const ps = [jvPasarKal(jvPasar("GC=F"), "Emas"), jvPasarKal(jvPasar("BZ=F"), "minyak Brent"), jvPasarKal(jvPasar("^GSPC"), "S&P 500")].filter(x => x);
+  if (NEWS && NEWS.kurs && NEWS.kurs.harga) ps.push("kurs dolar " + jvBil(NEWS.kurs.harga) + " rupiah");
+  if (ps.length) K.push(ps.join(", ") + ".");
+  if (!NEWS) K.push("Data pasar global belum termuat.");
+  if (!FAVORIT.size) K.push("Watchlist Anda masih kosong, jadi belum ada peringatan.");
+  else if (!X.per.length) K.push("Tidak ada peringatan untuk " + FAVORIT.size + " emiten di watchlist Anda.");
+  else {
+    K.push("Ada " + X.per.length + " peringatan untuk watchlist Anda.");
+    X.per.slice(0, 3).forEach(x => K.push(x.u));
+  }
+  if (X.lj.length) K.push("Lonjakan volume terbesar: " + X.lj.slice(0, 3).map(e => e.kode + " " + jvBil(e.rasio, 0) + " kali rata-rata, " + (e.pct >= 0 ? "naik " : "turun ") + jvPersen(e.pct)).join("; ") + ".");
+  return K.join(" ");
+}
+
+/* ---- suara ---- */
+function jvSuara() {
+  if (!window.speechSynthesis) return null;
+  const V = speechSynthesis.getVoices().filter(v => /^id/i.test(v.lang));
+  return V.find(v => v.voiceURI === jvSuaraId) || V.find(v => /google/i.test(v.name)) || V[0] || null;
+}
+function jvBicara(teks) {
+  if (!window.speechSynthesis) { jvTulisJawab("Perangkat ini tidak mendukung suara."); return; }
+  speechSynthesis.cancel();
+  /* Chrome memotong ucapan panjang (~15 detik), jadi dipecah per kalimat */
+  const pot = (teks.match(/[^.!?;]+[.!?;]?/g) || [teks]).map(x => x.trim()).filter(x => x);
+  const v = jvSuara();
+  pot.forEach((p, i) => {
+    const u = new SpeechSynthesisUtterance(p); u.lang = "id-ID"; u.rate = 1.03; if (v) u.voice = v;
+    if (i === 0) u.onstart = () => jvNyala(true);
+    if (i === pot.length - 1) u.onend = u.onerror = () => jvNyala(false);
+    speechSynthesis.speak(u);
+  });
+}
+function jvDiam() { try { speechSynthesis.cancel(); } catch (e) {} jvNyala(false); }
+function jvNyala(on) { document.querySelectorAll(".jv-reaktor").forEach(r => r.classList.toggle("bicara", on)); }
+if (window.speechSynthesis) speechSynthesis.onvoiceschanged = () => {};
+jvSuaraId = jvAmbil("titen-jv-suara");
+
+/* ---- mikrofon ---- */
+function jvDengar(selesai) {
+  const R = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!R) { selesai(null, "Peramban ini tidak bisa mendengar. Pakai Google Chrome, atau ketik pertanyaannya."); return; }
+  jvDiam();
+  const r = new R(); r.lang = "id-ID"; r.interimResults = false; r.maxAlternatives = 1;
+  document.querySelectorAll(".jv-mik").forEach(b => b.classList.add("dengar"));
+  const lepas = () => document.querySelectorAll(".jv-mik").forEach(b => b.classList.remove("dengar"));
+  let dapat = false;
+  r.onresult = e => { dapat = true; lepas(); selesai(e.results[0][0].transcript); };
+  r.onerror = e => { lepas(); dapat = true; selesai(null, e.error === "not-allowed" ? "Izin mikrofon ditolak. Klik ikon gembok di samping alamat lalu izinkan Mikrofon." : e.error === "no-speech" ? "Tidak terdengar suara. Coba lagi." : "Mikrofon gagal (" + e.error + ")."); };
+  r.onend = () => { lepas(); if (!dapat) selesai(null, "Tidak terdengar suara. Coba lagi."); };
+  try { r.start(); } catch (e) { lepas(); selesai(null, "Mikrofon sedang dipakai. Coba lagi."); }
+}
+
+/* ---- memahami pertanyaan ---- */
+function jvCariKode(q) {
+  const ada = k => !!(daftarHari[0] && daftarHari[0].baris && daftarHari[0].baris[k]);
+  const saham = /\bsaham\b/i.test(q);
+  /* kata perintah/pasar yang kebetulan juga kode saham (BUKA, BACA, BELI, DATA, BANK, EMAS, GOLD):
+     dibaca sebagai kode hanya kalau tidak ada kode lain DAN ada kata "saham" */
+  const KATA = /^(BUKA|BACA|BELI|DATA|BANK|EMAS|GOLD|PERAK|MINYAK|BRENT|TEMBAGA|KURS|DOLAR|IHSG|SAHAM)$/;
+  const semua = q.toUpperCase().replace(/[^A-Z0-9 ]/g, " ").split(/\s+/).filter(x => x);
+  const tok = semua.filter(x => !KATA.test(x));
+  for (const t of tok) if (t.length === 4 && ada(t)) return t;
+  if (saham) for (const t of semua) if (t !== "SAHAM" && t.length === 4 && ada(t)) return t;
+  /* "B B C A" / "BBC A" hasil pengenalan suara: gabungkan potongan pendek */
+  for (let i = 0; i < tok.length; i++) {
+    let g = "";
+    for (let j = i; j < tok.length && g.length < 4; j++) { g += tok[j]; if (g.length === 4 && ada(g)) return g; }
+  }
+  /* nama perusahaan: kata pertama nama (mis. "telkom") - hanya kalau cuma satu yang cocok */
+  const nm = (DATA && DATA.nama) || {};
+  for (const t of tok) {
+    if (t.length < 4 || /^(ASING|BROKER|VOLUME|BERITA|HARGA|SAHAM|BUKA|LIHAT|SKOR|LEVEL|SUPPORT|RESIST|BANDAR|LAPORAN|KEUANGAN|BAGAIMANA|GIMANA|KONDISI|HARI|KEMARIN|BERAPA|SIAPA|KURS|DOLAR|EMAS|MINYAK|IHSG|PASAR|PERINGATAN|BRIEFING|RINGKASAN|LONJAKAN|TOLONG|COBA|BACA|BACAKAN|JARVIS|APA|YANG|DAN|DARI|NET|BELI|JUAL)$/.test(t)) continue;
+    const c = Object.keys(nm).filter(k => ada(k) && String(nm[k]).toUpperCase().split(/[\s.,()]+/)[0] === t);
+    if (c.length === 1) return c[0];
+  }
+  return "";
+}
+
+function jvJawab(q) {
+  const s = (q || "").toLowerCase().trim();
+  if (!s) return {t: "Silakan ucapkan atau ketik pertanyaan."};
+  if (/bantu|bisa apa|perintah|contoh/.test(s)) return {t: "Contoh yang bisa ditanyakan: baca briefing, peringatan, lonjakan volume, kurs dolar, IHSG, emas. Untuk emiten: BBCA saja, asing TLKM, volume KOTA, broker BUMI, LK ANTM, berita BUMI, level BBCA, atau buka BBCA."};
+  if (/brief|ringkasan (pagi|hari)|laporan pagi|apa kabar pasar/.test(s)) return {t: jvBriefing()};
+  const kode = jvCariKode(q);
+  if (!kode) {
+    const X = jvHitung();
+    if (/peringatan|alert|waspada/.test(s)) return {t: X.per.length ? "Ada " + X.per.length + " peringatan. " + X.per.slice(0, 5).map(x => x.u).join(" ") : "Tidak ada peringatan untuk watchlist Anda."};
+    if (/lonjak|volume|ramai/.test(s)) return {t: X.lj.length ? "Lonjakan volume terbesar: " + X.lj.slice(0, 5).map(e => e.kode + " " + jvBil(e.rasio, 1) + " kali, " + (e.pct >= 0 ? "naik " : "turun ") + jvPersen(e.pct)).join("; ") + "." : "Tidak ada lonjakan volume besar di data terakhir."};
+    if (/kurs|dolar|rupiah|usd/.test(s)) { const k = NEWS && NEWS.kurs;
+      return {t: k && k.harga ? "Kurs dolar " + jvBil(k.harga) + " rupiah" + (k.sebelum ? ", sebelumnya " + jvBil(k.sebelum) : "") + "." : "Data kurs belum termuat."}; }
+    const PS = [[/ihsg|indeks|pasar/, "^JKSE", "IHSG"], [/emas|gold/, "GC=F", "Emas"], [/perak/, "SI=F", "Perak"], [/brent|minyak/, "BZ=F", "Minyak Brent"], [/wti/, "CL=F", "Minyak WTI"],
+      [/tembaga/, "HG=F", "Tembaga"], [/gas/, "NG=F", "Gas alam"], [/s ?& ?p|amerika|wall street/, "^GSPC", "S&P 500"], [/\bspy\b/, "SPY", "SPY"], [/\bqqqm\b/, "QQQM", "QQQM"], [/\bqqq\b/, "QQQ", "QQQ"], [/\bvoo\b/, "VOO", "VOO"]];
+    for (const [re, k, n] of PS) if (re.test(s)) { const p = jvPasar(k);
+      return {t: p ? n + " " + jvBil(p.harga, p.harga >= 1000 ? 0 : 2) + ", " + jvArah(p) + " dibanding sebelumnya." : "Data " + n + " belum termuat."}; }
+    return {t: "Maaf, saya belum paham. Sebutkan kode emitennya, misalnya asing TLKM, atau ucapkan bantuan untuk melihat contoh."};
+  }
+  const e = jvEm(kode);
+  if (!e) return {t: kode + " tidak ada di data harga terakhir.", kode};
+  if (/^(buka|lihat|tampilkan)\b/.test(s) || /\b(buka|tampilkan)\b/.test(s)) {
+    setTimeout(() => { cariKode = kode; cariSub = "keystats"; try { cariTutup = true; } catch (x) {}
+      document.querySelector('nav button[data-hal="cari"]').click(); halCari(); jvTutupPanel(); }, 400);
+    return {t: "Membuka " + kode + " di menu Cari.", kode};
+  }
+  if (/asing|foreign/.test(s)) return {kode, t: "Asing " + (e.asing >= 0 ? "net beli " : "net jual ") + kode + " " + jvMiliar(e.asing) + " rupiah pada " + jvHariNama(e.tgl) +
+    ". Lima hari terakhir " + (e.asing5 >= 0 ? "net beli " : "net jual ") + jvMiliar(e.asing5) + " rupiah. Harga " + (e.pct >= 0 ? "naik " : "turun ") + jvPersen(e.pct) + " ke " + jvBil(e.c) + "."};
+  if (/volume|vol\b|transaksi/.test(s)) return {kode, t: "Volume " + kode + " " + (e.rasio === null ? "belum bisa dibandingkan" : jvBil(e.rasio, 1) + " kali rata-rata 20 hari") +
+    ", value " + jvMiliar(e.val) + " rupiah. Harga " + (e.pct >= 0 ? "naik " : "turun ") + jvPersen(e.pct) + " ke " + jvBil(e.c) + "."};
+  if (/broker|bandar|siapa|akumulasi|kumpul/.test(s)) {
+    let akhir = ""; const trx = semuaTrx() || {};
+    (trx.REG || []).forEach(r => { if (r.em === kode && r.tgl > akhir) akhir = r.tgl; });
+    if (!akhir) return {kode, t: "Data broker " + kode + " belum ada. Emiten ini belum masuk pantau.txt."};
+    const A = kumpulkan(kode, "REGULER", akhir, akhir);
+    const net = Object.keys(A).map(b => ({b, n: A[b].beli - A[b].jual})).filter(x => x.n);
+    const beli = net.filter(x => x.n > 0).sort((a, b) => b.n - a.n).slice(0, 3), jual = net.filter(x => x.n < 0).sort((a, b) => a.n - b.n).slice(0, 3);
+    const tulis = L => L.map(x => x.b + " " + jvBil(Math.abs(x.n)) + " lot").join(", ");
+    return {kode, t: "Broker " + kode + " pada " + jvHariNama(akhir) + ", pasar reguler. Net beli terbesar: " + (beli.length ? tulis(beli) : "tidak ada") +
+      ". Net jual terbesar: " + (jual.length ? tulis(jual) : "tidak ada") + "."};
+  }
+  if (/\blk\b|laporan|keuangan|fundamental|skor|sehat/.test(s)) {
+    if (!LK) { lkPastikan(() => {}); return {kode, t: "Laporan keuangan sedang dimuat. Tanyakan sekali lagi sebentar lagi."}; }
+    const k = lkSkor(kode);
+    if (!k) return {kode, t: "Laporan keuangan " + kode + " belum cukup untuk dinilai."};
+    let r = ""; try { const z = lksRingkasan(kode); r = Array.isArray(z) ? z.join(" ") : (z || ""); } catch (x) {}
+    return {kode, t: "Skor LK " + kode + " " + k.skor + " dari 100, " + k.label + (k.F.length ? ", ada tanda bahaya" : "") + ". " + r};
+  }
+  if (/berita|news|kabar|keterbukaan/.test(s)) {
+    const B = jvBeritaEm(kode, 7);
+    if (!NEWS) return {kode, t: "Berita belum termuat."};
+    if (!B.length) return {kode, t: "Tidak ada berita " + kode + " dalam 7 hari terakhir."};
+    const ki = B.filter(x => x.x).length;
+    return {kode, t: "Ada " + B.length + " berita " + kode + " dalam 7 hari" + (ki ? ", termasuk " + ki + " keterbukaan IDX" : "") + ". Terbaru: " + B.slice(0, 2).map(x => x.t).join(". ") + "."};
+  }
+  if (/level|support|resist|s1|r1|batas/.test(s)) {
+    const L = jvLevel(kode);
+    if (!L || (!L.s1 && !L.r1)) return {kode, t: kode + " belum punya cukup riwayat harga untuk level."};
+    return {kode, t: kode + " ditutup " + jvBil(e.c) + ". " + (L.s1 ? "Support terdekat " + jvBil(L.s1) + ". " : "Belum ada support di bawah harga. ") + (L.r1 ? "Resist terdekat " + jvBil(L.r1) + "." : "Belum ada resist di atas harga.")};
+  }
+  /* hanya kode: ringkasan */
+  let lk = ""; if (LK) { const k = lkSkor(kode); if (k) lk = " Skor LK " + k.skor + ", " + k.label + "."; }
+  return {kode, t: kode + " ditutup " + jvBil(e.c) + ", " + (e.pct >= 0 ? "naik " : "turun ") + jvPersen(e.pct) + " pada " + jvHariNama(e.tgl) + ". " +
+    (e.rasio === null ? "" : "Volume " + jvBil(e.rasio, 1) + " kali rata-rata. ") + "Asing " + (e.asing >= 0 ? "net beli " : "net jual ") + jvMiliar(e.asing) + " rupiah." + lk};
+}
+
+function jvTanya(q, wadahJawab) {
+  const j = jvJawab(q);
+  jvLog.unshift({q, a: j.t}); jvLog = jvLog.slice(0, 6);
+  jvTulisJawab(j.t, wadahJawab);
+  jvBicara(j.t);
+}
+function jvTulisJawab(t) {
+  document.querySelectorAll(".jv-jawab").forEach(d => {
+    d.innerHTML = "";
+    jvLog.forEach((x, i) => {
+      const b = el("div", "jv-qa" + (i ? " lama" : ""));
+      b.appendChild(el("div", "jv-q", "🗣 " + x.q)); b.appendChild(el("div", "jv-a", x.a)); d.appendChild(b);
+    });
+    if (!jvLog.length || (t && jvLog[0].a !== t)) d.insertBefore(el("div", "jv-a", t || ""), d.firstChild);
+  });
+}
+
+/* kotak tanya (dipakai di menu dan panel pojok) */
+function jvKotakTanya() {
+  const w = el("div", "jv-tanya");
+  const b1 = el("div", "jv-tanya-b");
+  const mik = el("button", "jv-mik", "🎤 Bicara");
+  const inp = el("input"); inp.placeholder = "mis. asing TLKM · volume KOTA · baca briefing";
+  const kir = el("button", "kecil", "Tanya");
+  const kirim = () => { const v = inp.value.trim(); if (v) jvTanya(v); };
+  kir.onclick = kirim; inp.onkeydown = e => { if (e.key === "Enter") kirim(); };
+  mik.onclick = () => { jvTulisJawab("Mendengarkan…"); jvDengar((teks, salah) => { if (!teks) { jvTulisJawab(salah); jvBicara(salah); return; } inp.value = teks; jvTanya(teks); }); };
+  b1.appendChild(mik); b1.appendChild(inp); b1.appendChild(kir); w.appendChild(b1);
+  const c = el("div", "jv-contoh");
+  ["baca briefing", "peringatan", "lonjakan volume", "asing TLKM", "broker KOTA", "LK BBCA", "level BBCA", "kurs dolar", "bantuan"].forEach(x => {
+    const s = el("button", "jv-chip", x); s.onclick = () => { inp.value = x; jvTanya(x); }; c.appendChild(s); });
+  w.appendChild(c);
+  const jw = el("div", "jv-jawab"); w.appendChild(jw);
+  setTimeout(() => jvTulisJawab(), 0);
+  return w;
+}
+
+function jvReaktor(besar) {
+  const r = el("div", "jv-reaktor" + (besar ? " besar" : ""));
+  r.title = "Dengarkan briefing"; r.onclick = () => jvBicara(jvBriefing());
+  return r;
+}
+
+/* tabel kecil bisa diurutkan, kepala beku */
+function jvTabel(id, kepala, baris) {
+  const [kunci, arah] = jvUrut[id];
+  const w = el("div", "tbl-bungkus tbl-kunci jv-tbl");
+  const t = el("table"), th = el("thead"), tr = el("tr");
+  kepala.forEach(k => {
+    const c = el("th", null, k.j + (kunci === k.k ? (arah < 0 ? " ▼" : " ▲") : ""));
+    c.style.cursor = "pointer";
+    c.onclick = () => { jvUrut[id] = [k.k, kunci === k.k ? -arah : (k.angka ? -1 : 1)]; halJarvis(); };
+    tr.appendChild(c);
+  });
+  th.appendChild(tr); t.appendChild(th);
+  const tb = el("tbody");
+  baris.slice().sort((a, b) => { const x = a[kunci], y = b[kunci];
+    if (typeof x === "number" || typeof y === "number") return ((x === null || x === undefined ? -1e18 : x) - (y === null || y === undefined ? -1e18 : y)) * arah;
+    return String(x || "").localeCompare(String(y || "")) * arah; })
+    .forEach(r => { const row = el("tr");
+      kepala.forEach(k => { const td = el("td", k.angka ? "num" : null); const v = r[k.k];
+        if (k.isi) { const n = k.isi(r); if (n) td.appendChild(n); } else td.textContent = k.f ? k.f(v, r) : (v === null || v === undefined ? "–" : String(v));
+        if (k.warna && typeof v === "number") td.style.color = v > 0 ? "var(--naik)" : v < 0 ? "var(--turun)" : "";
+        row.appendChild(td); });
+      tb.appendChild(row); });
+  t.appendChild(tb); w.appendChild(t);
+  return w;
+}
+
+function jvKodeSel(r) {
+  const s = el("span", "kode jv-kd", r.kode); s.title = "Buka " + r.kode + " di menu Cari";
+  s.onclick = () => { cariKode = r.kode; cariSub = "keystats"; try { cariTutup = true; } catch (x) {} document.querySelector('nav button[data-hal="cari"]').click(); halCari(); };
+  return s;
+}
+
+/* ---- menu JARVIS ---- */
+function halJarvis() {
+  const w = $("#hal-jarvis"); if (!w) return;
+  w.innerHTML = "";
+  const X = jvHitung(), H = daftarHari[0];
+  if (!LK) lkPastikan(() => { if (!$("#hal-jarvis").hidden) halJarvis(); });
+
+  const p0 = el("div", "panel jv-kepala");
+  p0.appendChild(jvReaktor(true));
+  const jd = el("div", "jv-jd"); jd.appendChild(el("div", "jv-nama", "J.A.R.V.I.S · TITEN"));
+  jd.appendChild(el("div", "bantu", H ? "Data bursa terakhir " + jvHariNama(H.tgl) + " · peringatan dihitung dari harga penutupan" : "Belum ada data harga"));
+  p0.appendChild(jd);
+  const tb = el("div", "jv-tbl-tombol");
+  const bP = el("button", "jv-utama", "▶ Dengarkan briefing"); bP.onclick = () => jvBicara(jvBriefing());
+  const bS = el("button", "kecil", "■ Berhenti"); bS.onclick = jvDiam;
+  tb.appendChild(bP); tb.appendChild(bS); p0.appendChild(tb);
+  w.appendChild(p0);
+
+  const p1 = el("div", "panel"); p1.appendChild(el("h2", null, "Briefing"));
+  p1.appendChild(el("div", "jv-ucap", jvBriefing()));
+  if (!NEWS && !nwGagal) muatNews(false).then(() => { jvHitungCache = null; if (!$("#hal-jarvis").hidden) halJarvis(); jvLencana(); }).catch(() => {});
+  w.appendChild(p1);
+
+  const p2 = el("div", "panel"); p2.appendChild(el("h2", null, "Tanya Jarvis"));
+  p2.appendChild(jvKotakTanya()); w.appendChild(p2);
+
+  const p3 = el("div", "panel"); p3.appendChild(el("h2", null, "Peringatan watchlist (" + X.per.length + ")"));
+  if (!FAVORIT.size) p3.appendChild(el("div", "bantu", "Watchlist saya masih kosong. Tambahkan emiten dengan bintang di menu WATCHLIST."));
+  else if (!X.per.length) p3.appendChild(el("div", "bantu", "Tidak ada peringatan untuk " + FAVORIT.size + " emiten di Watchlist saya."));
+  const IK = {L: "L", A: "A", V: "V", H: "%", K: "K"};
+  X.per.forEach(x => {
+    const r = el("div", "jv-al"); r.appendChild(el("div", "jv-ik " + x.kl, IK[x.j]));
+    const isi = el("div"); const tt = el("div", null, x.t); isi.appendChild(tt);
+    if (x.sub) isi.appendChild(el("div", "bantu", x.sub));
+    if (x.url) { const a = el("a", "jv-link", "Buka PDF keterbukaan"); a.href = x.url; a.target = "_blank"; a.rel = "noopener"; isi.appendChild(a); }
+    r.appendChild(isi);
+    const bk = el("button", "kecil", x.k); bk.title = "Buka " + x.k + " di menu Cari"; bk.onclick = () => jvKodeSel({kode: x.k}).onclick();
+    r.appendChild(bk);
+    p3.appendChild(r);
+  });
+  p3.appendChild(el("div", "bantu", "L = level (tembus atau dekat S1/R1, sama dengan level di REKOMENDASI) · A = asing net ≥ 5 M atau ≥ 15% value · V = volume ≥ 1,5× rata-rata 20 hari · % = harga bergerak ≥ 7% · K = keterbukaan IDX " + JV_KI_HARI + " hari terakhir. Pengingat, bukan sinyal beli/jual."));
+  w.appendChild(p3);
+
+  const p4 = el("div", "panel"); p4.appendChild(el("h2", null, "Watchlist saya"));
+  const B = [...FAVORIT].map(jvEm).filter(e => e).map(e => Object.assign(e, {lk: LK ? ((lkSkor(e.kode) || {}).skor ?? null) : null}));
+  p4.appendChild(jvTabel("wl", [
+    {j: "Kode", k: "kode", isi: jvKodeSel},
+    {j: "Harga", k: "c", angka: 1, f: v => fmtHarga(v)},
+    {j: "%", k: "pct", angka: 1, warna: 1, f: v => (v > 0 ? "+" : "") + jvBil(v * 100, 1)},
+    {j: "Vol ×rata2", k: "rasio", angka: 1, f: v => v === null ? "–" : jvBil(v, 1)},
+    {j: "Value", k: "val", angka: 1, f: v => fmtValue(v)},
+    {j: "Asing net", k: "asing", angka: 1, warna: 1, f: v => fmtValue(v)},
+    {j: "Asing 5 hari", k: "asing5", angka: 1, warna: 1, f: v => fmtValue(v)},
+    {j: "LK", k: "lk", angka: 1, isi: r => lkLencana(r.kode)}], B));
+  w.appendChild(p4);
+
+  const p5 = el("div", "panel"); p5.appendChild(el("h2", null, "Lonjakan volume · semua emiten (" + X.lj.length + ")"));
+  p5.appendChild(jvTabel("lj", [
+    {j: "Kode", k: "kode", isi: jvKodeSel},
+    {j: "Vol ×rata2", k: "rasio", angka: 1, f: v => jvBil(v, 1)},
+    {j: "Harga", k: "c", angka: 1, f: v => fmtHarga(v)},
+    {j: "%", k: "pct", angka: 1, warna: 1, f: v => (v > 0 ? "+" : "") + jvBil(v * 100, 1)},
+    {j: "Value", k: "val", angka: 1, f: v => fmtValue(v)},
+    {j: "Asing net", k: "asing", angka: 1, warna: 1, f: v => fmtValue(v)}], X.lj));
+  p5.appendChild(el("div", "bantu", "Volume hari terakhir ≥ " + JV_VOL_LONJAK + "× rata-rata 20 hari sebelumnya dan value ≥ 5 M."));
+  w.appendChild(p5);
+
+  const p6 = el("div", "panel"); p6.appendChild(el("h2", null, "Setelan"));
+  const lb = el("label", "jv-set"); const cb = el("input"); cb.type = "checkbox"; cb.checked = jvAmbil("titen-jv-auto") !== "0";
+  cb.onchange = () => jvSimpan("titen-jv-auto", cb.checked ? "1" : "0");
+  lb.appendChild(cb); lb.appendChild(document.createTextNode(" Tampilkan briefing otomatis sekali sehari saat TITEN dibuka")); p6.appendChild(lb);
+  if (window.speechSynthesis) {
+    const V = speechSynthesis.getVoices().filter(v => /^id/i.test(v.lang));
+    const ls = el("label", "jv-set"); ls.appendChild(document.createTextNode("Suara: "));
+    const sel = el("select");
+    if (!V.length) sel.appendChild(el("option", null, "suara bahasa Indonesia belum ditemukan"));
+    V.forEach(v => { const o = el("option", null, v.name); o.value = v.voiceURI; if (jvSuara() && jvSuara().voiceURI === v.voiceURI) o.selected = true; sel.appendChild(o); });
+    sel.onchange = () => { jvSuaraId = sel.value; jvSimpan("titen-jv-suara", sel.value); jvBicara("Halo, ini suara Jarvis."); };
+    ls.appendChild(sel); p6.appendChild(ls);
+    if (!V.length) setTimeout(() => { if (speechSynthesis.getVoices().some(v => /^id/i.test(v.lang)) && !$("#hal-jarvis").hidden) halJarvis(); }, 1500);
+  }
+  p6.appendChild(el("div", "bantu", "Mikrofon dan suara bekerja di Google Chrome. Saat pertama menekan 🎤, izinkan akses mikrofon. Kalau logat suaranya asing, tambahkan bahasa Indonesia di Windows: Settings → Time & language → Speech → Add voices."));
+  w.appendChild(p6);
+}
+
+/* ---- tombol reaktor pojok + panel kecil ---- */
+function jvTutupPanel() { const p = $("#jvPanel"); if (p) p.hidden = true; }
+function jvPasangPojok() {
+  if ($("#jvTombol")) return;
+  const t = el("button", "jv-pojok"); t.id = "jvTombol"; t.title = "Jarvis";
+  t.appendChild(el("span", "jv-reaktor kecil"));
+  const bd = el("span", "jv-badge"); bd.id = "jvBadge"; bd.hidden = true; t.appendChild(bd);
+  const p = el("div", "jv-panel"); p.id = "jvPanel"; p.hidden = true;
+  t.onclick = () => {
+    if (!p.hidden) { p.hidden = true; return; }
+    p.innerHTML = "";
+    const j = el("div", "jv-panel-j"); j.appendChild(el("b", null, "JARVIS"));
+    const x = el("button", "kecil", "✕"); x.onclick = jvTutupPanel; j.appendChild(x); p.appendChild(j);
+    const tb = el("div", "jv-tbl-tombol");
+    const b1 = el("button", "jv-utama", "▶ Briefing"); b1.onclick = () => { jvTulisJawab(jvBriefing()); jvBicara(jvBriefing()); };
+    const b2 = el("button", "kecil", "■ Berhenti"); b2.onclick = jvDiam;
+    const b3 = el("button", "kecil", "Buka menu JARVIS"); b3.onclick = () => { jvTutupPanel(); document.querySelector('nav button[data-hal="jarvis"]').click(); };
+    tb.appendChild(b1); tb.appendChild(b2); tb.appendChild(b3); p.appendChild(tb);
+    p.appendChild(jvKotakTanya());
+    p.hidden = false;
+  };
+  document.body.appendChild(p); document.body.appendChild(t);
+}
+function jvLencana() {
+  const b = $("#jvBadge"); if (!b) return;
+  const n = daftarHari.length ? jvHitung().per.length : 0;
+  b.hidden = !n; b.textContent = n > 99 ? "99+" : String(n);
+  const nav = document.querySelector('nav button[data-hal="jarvis"]');
+  if (nav) nav.classList.toggle("jv-ada", n > 0);
+}
+
+/* ---- briefing otomatis sekali sehari ---- */
+function jvMunculBriefing(paksa) {
+  if (!paksa && (jvAmbil("titen-jv-auto") === "0" || jvAmbil("titen-jv-hari") === jvHariIni())) return;
+  if (!daftarHari.length || $("#jvModal")) return;
+  jvSimpan("titen-jv-hari", jvHariIni());
+  const m = el("div", "jv-modal"); m.id = "jvModal";
+  const k = el("div", "jv-modal-k");
+  const atas = el("div", "jv-kepala"); atas.appendChild(jvReaktor(true));
+  const jd = el("div", "jv-jd"); jd.appendChild(el("div", "jv-nama", "Briefing " + (jvSapa().replace("Selamat ", ""))));
+  jd.appendChild(el("div", "bantu", "Data bursa " + jvHariNama(daftarHari[0].tgl))); atas.appendChild(jd); k.appendChild(atas);
+  k.appendChild(el("div", "jv-ucap", jvBriefing()));
+  const tb = el("div", "jv-tbl-tombol");
+  const b1 = el("button", "jv-utama", "▶ Dengarkan"); b1.onclick = () => jvBicara(jvBriefing());
+  const b2 = el("button", "kecil", "Buka JARVIS"); b2.onclick = () => { m.remove(); document.querySelector('nav button[data-hal="jarvis"]').click(); };
+  const b3 = el("button", "kecil", "Tutup"); b3.onclick = () => { jvDiam(); m.remove(); };
+  tb.appendChild(b1); tb.appendChild(b2); tb.appendChild(b3); k.appendChild(tb);
+  m.appendChild(k); m.onclick = e => { if (e.target === m) { jvDiam(); m.remove(); } };
+  document.body.appendChild(m);
+}
+
+async function jvMulai(tungguSinkron) {
+  jvPasangPojok();
+  const batas = ms => new Promise(r => setTimeout(r, ms));
+  try { await Promise.race([Promise.all([muatNews(false).catch(() => {}), tungguSinkron.catch(() => {})]), batas(20000)]); } catch (e) {}
+  if (nwSedang) await Promise.race([new Promise(r => { const i = setInterval(() => { if (!nwSedang) { clearInterval(i); r(); } }, 300); }), batas(8000)]);
+  jvHitungCache = null; jvLencana();
+  if (!$("#hal-jarvis").hidden) halJarvis();
+  jvMunculBriefing(false);
 }
 /* ---------- HARGA & VOL ----------
    Rentang tanggalnya SENDIRI, tidak ikut ANALISA FAVORIT: di sana bawaannya
@@ -7385,10 +7915,11 @@ function halVolume() {
 /* ================= navigasi & tema ================= */
 document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
   document.querySelectorAll("nav button").forEach(x => x.classList.toggle("aktif", x === b));
-  ["watchlist", "screener", "volume", "broker", "cari", "news", "data"].forEach(h =>
+  ["watchlist", "screener", "volume", "broker", "cari", "news", "jarvis", "data"].forEach(h =>
     $("#hal-" + h).hidden = (h !== b.dataset.hal));
   window.scrollTo(0, 0);
   if (b.dataset.hal === "news") halNews();
+  if (b.dataset.hal === "jarvis") { jvHitungCache = null; halJarvis(); jvLencana(); }
 });
 $("#tombolTema").onclick = () => {
   const t = document.documentElement.dataset.tema;
@@ -7416,7 +7947,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-11-37";
+const VERSI_APP = "2026-10-12-38";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -13914,7 +14445,8 @@ await muatDanTerapkan();
 gambarUlang();
 muatLK().then(() => halCari());
 muatNews(false).catch(() => {});
-sinkron(true).then(ada => { if (ada) gambarUlang(); });
+const jvSinkron = sinkron(true).then(ada => { if (ada) gambarUlang(); return ada; });
+jvMulai(jvSinkron);
 
 })();
 </script>
