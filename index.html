@@ -2300,22 +2300,45 @@ let lksCache = {}, lksSumber = null;
 
 function lksLabel(s) { return s === null || s === undefined ? "" : s >= 75 ? "Bagus" : s >= 60 ? "Sedang" : "Jelek"; }
 
+/* 11 Okt 2026 (audit): entri arus kas/laba rugi dipilih menurut RENTANG awal-akhir, bukan label jenis.
+   IDX kadang memuat entri ganda (MPRO/CBRE: label "FY" padahal 6 atau 18 bulan; DEWA: entri kosong).
+   Rentang 3/6/9/12 bulan dari awal tahun buku = TW1/TW2/TW3/FY. Entri yang isinya kosong dibuang.
+   Mata uang: kalau satu emiten mencampur IDR dan USD antar periode, semua diubah ke rupiah (kurs setelan)
+   supaya TTM dan pertumbuhan tidak menjumlah dolar dengan rupiah. */
+function lksBulan(awal, akhir) {
+  const a = new Date(awal + "T00:00:00Z"), b = new Date(akhir + "T00:00:00Z");
+  return (b - a) / 864e5 / 30.44;
+}
 function lksGabung(L) {
-  const m = {};
+  const m = {}, mus = {};
+  (L || []).forEach(p => { if (p.mata_uang) mus[p.mata_uang] = 1; });
+  const campur = Object.keys(mus).length > 1;
+  const kali = p => campur && p.mata_uang === "USD" ? kursUSD() : 1;
+  const isi = pos => Object.keys(pos || {}).some(k => pos[k] !== null && pos[k] !== undefined);
   (L || []).forEach(p => {
-    const x = m[p.akhir] || (m[p.akhir] = {akhir: p.akhir, jenis: null, flow: {}, bal: {}, mu: p.mata_uang});
-    if (p.awal === p.akhir) Object.assign(x.bal, p.pos);
-    else { Object.assign(x.flow, p.pos); x.jenis = p.jenis; }
+    if (!isi(p.pos)) return;
+    const x = m[p.akhir] || (m[p.akhir] = {akhir: p.akhir, jenis: null, flow: {}, bal: {}, mu: campur ? "IDR" : p.mata_uang, fbeda: 99});
+    const k = kali(p), conv = {};
+    Object.keys(p.pos).forEach(q => { const v = p.pos[q]; conv[q] = (v === null || v === undefined || q === "eps") ? v : v * k; });
+    if (p.awal === p.akhir) { Object.keys(conv).forEach(q => { if (conv[q] !== null && conv[q] !== undefined) x.bal[q] = conv[q]; }); return; }
+    const bln = lksBulan(p.awal, p.akhir);
+    if (bln < 2 || bln > 12.6) return;                        /* bukan 3/6/9/12 bulan: dibuang */
+    const tw = Math.round(bln / 3), beda = Math.abs(bln - tw * 3);
+    if (tw < 1 || tw > 4 || beda > 0.6) return;
+    if (beda < x.fbeda) { x.flow = conv; x.jenis = tw === 4 ? "FY" : "TW" + tw; x.fbeda = beda; x.awalArus = p.awal; }
   });
   return m;
 }
 function lksMundur(akhir, n) { return (parseInt(akhir.slice(0, 4), 10) - (n === undefined ? 1 : n)) + akhir.slice(4); }
+/* TTM: kumulatif periode ini + tahun buku penuh terakhir - kumulatif periode sama tahun lalu.
+   Tahun buku penuh = entri 12 bulan yang berakhir di antara (T - 1 tahun, T). Jadi tahun buku non-Desember ikut benar. */
 function lksTTM(m, akhir, pos) {
   const x = m[akhir];
   if (!x || x.flow[pos] === undefined || x.flow[pos] === null) return null;
   if (x.jenis === "FY") return x.flow[pos];
-  const y = parseInt(akhir.slice(0, 4), 10), fy = m[(y - 1) + "-12-31"], lalu = m[(y - 1) + akhir.slice(4)];
-  if (!fy || !lalu || fy.flow[pos] === undefined || lalu.flow[pos] === undefined) return null;
+  const lalu = m[lksMundur(akhir)];
+  const fy = Object.values(m).filter(e => e.jenis === "FY" && e.akhir > lalu?.akhir && e.akhir < akhir).sort((p, q) => p.akhir < q.akhir ? 1 : -1)[0];
+  if (!fy || !lalu || fy.flow[pos] === undefined || fy.flow[pos] === null || lalu.flow[pos] === undefined || lalu.flow[pos] === null) return null;
   return x.flow[pos] + fy.flow[pos] - lalu.flow[pos];
 }
 
@@ -2328,12 +2351,20 @@ function lksNilai(kode) {
   const T = {}, T1 = {};
   LKS_ALUR.forEach(p => { T[p] = lksTTM(m, a, p); T1[p] = lksTTM(m, a1, p); });
   const g = (n, o) => (n !== null && n !== undefined && o) ? (n - o) / Math.abs(o) * 100 : null;
-  const r = {akhir: a, jenis: m[a].jenis, mu: m[a].mu, bank: b.aset_lancar === undefined || b.aset_lancar === null};
-  const eq = b.ekuitas_induk || b.ekuitas, eq1 = b1.ekuitas_induk;
+  const pr = (LK.profil && LK.profil[kode]) || {};
+  /* lembaga keuangan (bank, asuransi, pembiayaan, sekuritas) = sektor G IDX; kalau sektornya tidak
+     tercatat, dikenali dari neraca tanpa aset lancar */
+  const tanpaLancar = b.aset_lancar === undefined || b.aset_lancar === null;
+  const keu = tanpaLancar && (pr.sektor ? /^G\./.test(pr.sektor) : true);   /* holding sektor G yang punya aset lancar dinilai seperti emiten biasa */
+  const r = {akhir: a, jenis: m[a].jenis, mu: m[a].mu, bank: keu, jenisKeu: (pr.subsektor || "").replace(/^G\d\.\s*/, "")};
+  /* ROE: laba milik induk dibagi ekuitas milik induk (pembilang dan penyebut sepadan) */
+  const eqI = v => (v.ekuitas_induk !== undefined && v.ekuitas_induk !== null) ? v.ekuitas_induk : v.ekuitas;
+  const eq = eqI(b), eq1 = eqI(b1);
   const li = T.laba_induk !== null ? T.laba_induk : T.laba_bersih;
   const li1 = T1.laba_induk !== null ? T1.laba_induk : T1.laba_bersih;
-  r.li = li;
+  r.li = li; r.li1 = li1;
   r.roe = (li !== null && eq > 0) ? (eq1 > 0 ? li / ((eq + eq1) / 2) : li / eq) * 100 : null;
+  r.pendAda = T.pendapatan !== null;
   r.gp = g(T.pendapatan, T1.pendapatan); r.gl = g(li, li1);
   r.npm = (T.laba_bersih !== null && T.pendapatan) ? T.laba_bersih / T.pendapatan * 100 : null;
   r.npm1 = (T1.laba_bersih !== null && T1.pendapatan) ? T1.laba_bersih / T1.pendapatan * 100 : null;
@@ -2343,47 +2374,68 @@ function lksNilai(kode) {
   r.fcf = (T.ak_operasi !== null && T.ak_investasi !== null) ? T.ak_operasi + T.ak_investasi : null;
   r.der = (b.liabilitas !== undefined && b.ekuitas > 0) ? b.liabilitas / b.ekuitas : null;
   r.cr = (b.aset_lancar && b.liabilitas_pendek) ? b.aset_lancar / b.liabilitas_pendek : null;
-  r.eq = b.ekuitas; r.eqNeg = b.ekuitas !== undefined && b.ekuitas !== null && b.ekuitas <= 0;
+  r.eq = (eq !== undefined && eq !== null && eq <= 0) ? eq : b.ekuitas;
+  r.eqNeg = (b.ekuitas !== undefined && b.ekuitas !== null && b.ekuitas <= 0) || (eq !== undefined && eq !== null && eq <= 0);
   let kons = 0, konsN = 0;
   for (let k = 0; k < 4; k++) { const v = lksTTM(m, lksMundur(a, k), "laba_bersih"); if (v !== null) { konsN++; if (v > 0) kons++; } }
   r.kons = kons; r.konsN = konsN;
   r.gPiut = g(b.piutang_usaha, b1.piutang_usaha);
   r.piutLari = r.gPiut !== null && r.gp !== null && r.gPiut - r.gp > 30 && (b.piutang_usaha || 0) > 0.1 * (T.pendapatan || 1e30);
-  const sub = (LK.profil && LK.profil[kode] && LK.profil[kode].subsektor) || "";
+  const sub = pr.subsektor || "";
   r.prop = /Real Estate|Propert/.test(sub);
   r.sub = sub;
   return r;
 }
 
+/* periode LK terbaru di seluruh emiten (untuk menandai LK yang sudah lama) */
+let lksTerbaru = null;
+function lksPeriodeTerbaru() {
+  if (lksTerbaru) return lksTerbaru;
+  const c = {};
+  Object.values(LK.data).forEach(L => { let mx = ""; L.forEach(p => { if (p.akhir > mx) mx = p.akhir; }); if (mx) c[mx] = (c[mx] || 0) + 1; });
+  /* periode yang sudah dimiliki minimal 30% emiten = periode terbaru yang "wajar" */
+  const n = Object.values(c).reduce((a, x) => a + x, 0);
+  lksTerbaru = Object.keys(c).sort().reverse().find(t => Object.keys(c).filter(u => u >= t).reduce((a, u) => a + c[u], 0) >= 0.3 * n) || "";
+  return lksTerbaru;
+}
+
 /* skor lengkap + rincian ukuran + tanda bahaya; disimpan sekali per emiten per isi LK */
 function lkSkor(kode) {
   if (!LK || !LK.data) return null;
-  if (lksSumber !== LK) { lksCache = {}; lksSumber = LK; }
+  if (lksSumber !== LK) { lksCache = {}; lksSumber = LK; lksTerbaru = null; }
   if (kode in lksCache) return lksCache[kode];
   const r = lksNilai(kode);
-  if (!r || r.roe === null) return (lksCache[kode] = null);
+  if (!r || r.li === null) return (lksCache[kode] = null);
   const f1 = x => x === null || x === undefined ? "-" : x.toFixed(1).replace(".", ",").replace("-", "−");
   const pc = x => x === null || x === undefined ? "-" : (x > 0 ? "+" : x < 0 ? "−" : "") + Math.abs(Math.round(x)) + "%";
   const cat = []; let s = 0;
   const tambah = (n, p, m, t) => { if (p !== null) s += p; cat.push({n, p, m, t, acu: LKS_ACU[n]}); };
+  const KEU = r.bank, tk = "tidak dinilai untuk lembaga keuangan";
   const roe = r.roe;
-  const pr = roe >= 15 ? 20 : roe >= 8 ? 12 : roe > 0 ? 5 : 0;
-  if (r.bank) tambah("Profitabilitas", pr * 2, 40, "ROE " + f1(roe) + "%");
-  else tambah("Profitabilitas", pr, 20, "ROE " + f1(roe) + "%");
-  const gp = r.gp, gl = r.gl;
-  tambah("Pertumbuhan", (gp !== null && gp >= 10 ? 10 : gp !== null && gp >= 0 ? 5 : 0) + (gl !== null && gl >= 10 ? 10 : gl !== null && gl >= 0 ? 5 : 0), 20,
-    "pendapatan " + pc(gp) + ", laba " + pc(gl) + " (setahun)");
-  if (r.bank) tambah("Kualitas laba", null, 20, "tidak dinilai untuk bank");
+  const pr = roe === null ? 0 : roe >= 15 ? 20 : roe >= 8 ? 12 : roe > 0 ? 5 : 0;
+  tambah("Profitabilitas", KEU ? pr * 2 : pr, KEU ? 40 : 20, roe === null ? "ROE tidak bisa dihitung (ekuitas negatif)" : "ROE " + f1(roe) + "%");
+  /* pertumbuhan laba: masih rugi = 0; dari rugi jadi untung = berbalik untung (5 poin, bukan penuh) */
+  const gl = r.gl, li = r.li, li1 = r.li1;
+  const pLaba = li === null || li <= 0 ? 0 : (li1 !== null && li1 <= 0) ? 5 : gl !== null && gl >= 10 ? 10 : gl !== null && gl >= 0 ? 5 : 0;
+  const tLaba = li !== null && li <= 0 ? "laba " + pc(gl) + " tapi masih rugi" : (li1 !== null && li1 <= 0 && li > 0) ? "laba berbalik untung" : "laba " + pc(gl);
+  if (r.pendAda) {
+    const gp = r.gp;
+    tambah("Pertumbuhan", (gp !== null && gp >= 10 ? 10 : gp !== null && gp >= 0 ? 5 : 0) + pLaba, 20, "pendapatan " + pc(gp) + ", " + tLaba + " (setahun)");
+  } else tambah("Pertumbuhan", 5 + pLaba, 20, tLaba + " (setahun); pendapatan tidak tersedia di data IDX, bagian pendapatan diberi nilai tengah 5");
+  if (KEU) tambah("Kualitas laba", null, 20, tk);
   else { const c = r.cfoNi; tambah("Kualitas laba", c !== null && c >= 1 ? 20 : c !== null && c >= 0.7 ? 12 : c !== null && c > 0 ? 4 : 0, 20,
     c !== null ? "arus kas operasi " + f1(c) + "× laba bersih" : "laba atau arus kas operasi negatif"); }
-  if (r.bank) tambah("Utang & likuiditas", null, 15, "tidak dinilai untuk bank");
-  else tambah("Utang & likuiditas", (r.der !== null && r.der <= 1 ? 10 : r.der !== null && r.der <= 2 ? 5 : 0) + (r.cr !== null && r.cr >= 1.5 ? 5 : r.cr !== null && r.cr >= 1 ? 2 : 0), 15,
-    "DER " + f1(r.der) + "×, rasio lancar " + f1(r.cr) + "×");
-  tambah("Konsistensi", r.bank ? [0, 3, 7, 12, 20][r.kons] : [0, 2, 4, 7, 10][r.kons], r.bank ? 20 : 10, "untung " + r.kons + " dari " + r.konsN + " tahun terakhir");
-  { const mg = r.npm !== null && r.npm1 !== null && r.npm >= r.npm1 && r.npm > 0 ? 2 : r.npm !== null && r.npm > 0 ? 1 : 0;
-  tambah("Arah margin", r.bank ? [0, 8, 20][mg] : [0, 4, 10][mg], r.bank ? 20 : 10,
-    "margin bersih " + f1(r.npm) + "% (tahun lalu " + f1(r.npm1) + "%)"); }
-  if (r.bank) tambah("Arus kas bebas", null, 5, "tidak dinilai untuk bank");
+  if (KEU) tambah("Utang & likuiditas", null, 15, tk);
+  else {
+    const pd = r.der !== null && r.der <= 1 ? 10 : r.der !== null && r.der <= 2 ? 5 : 0;
+    if (r.cr !== null) tambah("Utang & likuiditas", pd + (r.cr >= 1.5 ? 5 : r.cr >= 1 ? 2 : 0), 15, "DER " + f1(r.der) + "×, rasio lancar " + f1(r.cr) + "×");
+    else tambah("Utang & likuiditas", pd + 2, 15, "DER " + f1(r.der) + "×; rasio lancar tidak tersedia, diberi nilai tengah 2");
+  }
+  tambah("Konsistensi", KEU ? [0, 3, 7, 12, 20][r.kons] : [0, 2, 4, 7, 10][r.kons], KEU ? 20 : 10, "untung " + r.kons + " dari " + r.konsN + " tahun terakhir");
+  if (!r.pendAda) tambah("Arah margin", KEU ? 10 : 5, KEU ? 20 : 10, "pendapatan tidak tersedia di data IDX, diberi nilai tengah");
+  else { const mg = r.npm !== null && r.npm1 !== null && r.npm >= r.npm1 && r.npm > 0 ? 2 : r.npm !== null && r.npm > 0 ? 1 : 0;
+    tambah("Arah margin", KEU ? [0, 8, 20][mg] : [0, 4, 10][mg], KEU ? 20 : 10, "margin bersih " + f1(r.npm) + "% (tahun lalu " + f1(r.npm1) + "%)"); }
+  if (KEU) tambah("Arus kas bebas", null, 5, tk);
   else tambah("Arus kas bebas", r.fcf !== null && r.fcf > 0 ? 5 : 0, 5, r.fcf === null ? "-" : r.fcf > 0 ? "positif" : "negatif");
   /* tanda bahaya: [judul, angka bukti, arti] */
   const rpx = x => {
@@ -2393,26 +2445,28 @@ function lkSkor(kode) {
   const F = [];
   if (r.eqNeg) F.push(["Ekuitas negatif", "ekuitas " + rpx(r.eq),
     "Utang sudah lebih besar dari seluruh aset — secara buku modal pemegang saham habis. Risiko gagal bayar, rights issue, atau delisting."]);
-  if (!r.bank && r.cfo !== null && r.cfo < 0) F.push(["Arus kas operasi negatif", "arus kas operasi setahun " + rpx(r.cfo) + ", laba bersih " + rpx(r.laba),
+  if (!KEU && r.cfo !== null && r.cfo < 0) F.push(["Arus kas operasi negatif", "arus kas operasi setahun " + rpx(r.cfo) + ", laba bersih " + rpx(r.laba),
     "Kegiatan usaha justru menghabiskan uang. Kalau laba tetap tercatat positif, laba itu belum jadi uang tunai (misalnya masih berupa piutang atau persediaan); untuk menutupnya perusahaan bisa perlu utang baru." +
     (r.prop ? " Pada emiten properti ini sering karena membeli tanah untuk persediaan, jadi perlu dilihat apakah sekali-sekali atau terus-menerus." : "")]);
-  if (roe < 0) F.push(["Rugi", "laba milik induk setahun " + rpx(r.li), "Perusahaan merugi dalam 4 kuartal terakhir, sehingga modal tergerus."]);
+  if (li < 0) F.push(["Rugi", "laba milik induk setahun " + rpx(li), "Perusahaan merugi dalam 4 kuartal terakhir, sehingga modal tergerus."]);
   if (r.piutLari) F.push(["Piutang melonjak", "piutang usaha naik " + Math.round(r.gPiut) + "% setahun, sedangkan pendapatan " +
     (r.gp < 0 ? "turun " + Math.round(-r.gp) + "%" : "hanya naik " + Math.round(r.gp) + "%"),
     "Penjualan banyak yang belum dibayar pembeli. Bisa karena memberi kredit lebih longgar untuk mendongkrak penjualan, atau pembeli sulit bayar — laba ada di atas kertas tapi uangnya belum masuk."]);
-  if (!r.bank && r.der !== null && r.der > 3) F.push(["Utang besar", "DER " + f1(r.der) + "× (utang " + f1(r.der) + " kali modal)",
+  if (!KEU && r.der !== null && r.der > 3) F.push(["Utang besar", "DER " + f1(r.der) + "× (utang " + f1(r.der) + " kali modal)",
     "Utang lebih dari 3 kali modal sendiri. Beban bunga berat, dan kalau usaha melemah sedikit saja perusahaan bisa kesulitan bayar."]);
   const maks = cat.reduce((a, c) => a + (c.p === null ? 0 : c.m), 0);
   let skor = Math.round(s * 100 / maks);
   if (F.length && skor > 59) skor = 59;
   const label = lksLabel(skor);
+  const lama = r.akhir < lksPeriodeTerbaru();
   const kuat = cat.filter(c => c.p !== null && c.p >= c.m * 0.99).map(c => c.n.toLowerCase());
   const lemah = cat.filter(c => c.p !== null && c.p <= c.m * 0.3).map(c => c.n.toLowerCase());
   let kal = "LK " + label.toLowerCase() + " (" + skor + "/100).";
   if (kuat.length) kal += " Kuat di " + kuat.join(", ") + ".";
   if (lemah.length) kal += " Lemah di " + lemah.join(", ") + ".";
   if (F.length) kal += " Waspada: " + F.map(f => f[0].toLowerCase()).join("; ") + ".";
-  return (lksCache[kode] = {skor, label, kal, cat, F, r});
+  if (lama) kal += " LK terakhir yang tersedia per " + r.akhir + " (sudah lama).";
+  return (lksCache[kode] = {skor, label, kal, cat, F, r, maks, lama});
 }
 
 /* lencana kecil Bagus/Sedang/Jelek (dipakai tabel & kartu) */
@@ -2442,7 +2496,7 @@ function panelKesimpulanLK(kode) {
   kp.appendChild(el("div", "lk-angka " + k.label, String(k.skor)));
   const kn = el("div");
   const j = el("div"); j.appendChild(el("b", null, k.label));
-  j.appendChild(el("span", "lk-sub", " · LK " + r.jenis + " " + r.akhir.slice(0, 4) + (r.bank ? " · bank" : "") + (r.sub ? " · " + r.sub : "")));
+  j.appendChild(el("span", "lk-sub", " · LK " + r.jenis + " " + r.akhir.slice(0, 4) + (r.bank ? " · lembaga keuangan" : "") + (r.sub ? " · " + r.sub : "")));
   kn.appendChild(j); kn.appendChild(el("div", "lk-kal", k.kal.replace(/^LK [a-z]+ \(\d+\/100\)\. ?/, "")));
   kp.appendChild(kn); p.appendChild(kp);
   const lg = el("div", "lk-leg");
@@ -2463,8 +2517,10 @@ function panelKesimpulanLK(kode) {
     d.appendChild(el("div", "lk-fx", f[2])); p.appendChild(d);
   });
   if (k.F.length) p.appendChild(el("div", "bantu", "Karena ada tanda bahaya, skor dibatasi paling tinggi 59 (Jelek) walaupun ukuran lain bagus."));
+  if (k.maks < 100) p.appendChild(el("div", "bantu", "Sebagian pos tidak tersedia di data LK IDX emiten ini, jadi skor dihitung dari " + k.maks + " poin yang bisa dinilai lalu diubah ke skala 100."));
+  if (k.lama) p.appendChild(el("div", "lk-flag", "\u26a0 LK terakhir yang tersedia untuk " + kode + " per " + r.akhir + " \u2014 sudah lama; kesimpulan ini belum mencerminkan kinerja terbaru."));
   p.appendChild(el("div", "bantu", "Dihitung dari LK terakhir (laba rugi & arus kas = 4 kuartal terakhir, neraca = saldo akhir). " +
-    "Total poin 100. Bank dinilai dari ROE (40), pertumbuhan (20), konsistensi (20), dan margin (20), juga total 100. Skor menilai kesehatan perusahaan, bukan murah/mahalnya saham dan bukan sinyal harga." +
+    "Total poin 100. Lembaga keuangan (bank, asuransi, pembiayaan, sekuritas) dinilai dari ROE (40), pertumbuhan (20), konsistensi (20), dan margin (20), juga total 100. Skor menilai kesehatan perusahaan, bukan murah/mahalnya saham dan bukan sinyal harga." +
     (r.mu === "USD" ? " Emiten melapor dalam dolar; rupiah di atas memakai kurs " + kursUSD().toLocaleString("id-ID") + "." : "")));
   return p;
 }
@@ -5322,6 +5378,7 @@ async function muatNews(paksa) {
   nwSedang = true;
   try {
     NEWS = await ambilGudang("news.json"); nwAmbil = Date.now(); nwGagal = "";
+    setTimeout(() => { terapkanKursNews(); }, 0);
     /* keterbukaan informasi IDX: dikirim dari laptop (ki_idx.py) ke data/ki.json, karena
        idx.co.id memblokir server GitHub. Boleh tidak ada - berita lain tetap tampil. */
     try {
@@ -7243,7 +7300,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-11-34";
+const VERSI_APP = "2026-10-11-36";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -7877,6 +7934,22 @@ function kursUSD() {
 function simpanKurs(n) {
   kursTersimpan = n;
   try { localStorage.setItem("titen-kurs", String(n)); } catch (e) {}
+}
+/* 11 Okt 2026: kurs USD otomatis dari kurs USD/IDR di news.json (menu NEWS, Yahoo Finance).
+   Disimpan di HP, jadi kalau news belum termuat dipakai kurs terakhir yang pernah diambil.
+   Kalau berubah > 0,3%, angka yang bergantung pada kurs (fundamental emiten dolar, skor LK) dihitung ulang. */
+let kursOtoWaktu = 0;
+try { kursOtoWaktu = parseInt(localStorage.getItem("titen-kurs-waktu") || "0", 10) || 0; } catch (e) {}
+async function terapkanKursNews() {
+  const k = NEWS && NEWS.kurs, h = k && parseFloat(k.harga);
+  if (!(h >= 8000 && h <= 40000)) return;
+  try { localStorage.setItem("titen-kurs-waktu", String(k.waktu || 0)); } catch (e) {}
+  kursOtoWaktu = k.waktu || 0;
+  const lama = kursUSD();
+  if (Math.abs(h - lama) / lama <= 0.003) return;
+  simpanKurs(Math.round(h));
+  try { lksSumber = null; lksTerbaru = null; } catch (e) {}
+  try { catatanImpor = []; await muatDanTerapkan(); gambarUlang(); } catch (e) {}
 }
 
 /* pos yang dihitung sebagai utang berbunga */
@@ -8839,17 +8912,11 @@ function halDataImpor(w) {
   lp.appendChild(lb);
 
   const kursBaris = el("div", "bantu");
-  kursBaris.innerHTML = "Kurs USD untuk emiten yang melapor dalam dolar:";
+  kursBaris.textContent = "Kurs USD untuk emiten yang melapor dalam dolar: Rp " + kursUSD().toLocaleString("id-ID") +
+    (kursOtoWaktu ? " \u2014 otomatis dari kurs USD/IDR di menu NEWS (Yahoo Finance, " +
+      new Date(kursOtoWaktu * 1000).toLocaleString("id-ID", {day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"}) + ")"
+      : " \u2014 akan diperbarui otomatis dari kurs USD/IDR di menu NEWS begitu datanya termuat");
   lp.appendChild(kursBaris);
-  const kursInp = el("input"); kursInp.type = "number"; kursInp.value = kursUSD();
-  kursInp.className = "cari"; kursInp.step = "1"; kursInp.min = "1";
-  kursInp.onchange = async () => {
-    const n = parseFloat(kursInp.value);
-    if (!isFinite(n) || n <= 0) { kursInp.value = kursUSD(); return; }
-    simpanKurs(n);
-    catatanImpor = []; await muatDanTerapkan(); gambarUlang();
-  };
-  lp.appendChild(kursInp);
 
   if (kodeLK.length) {
     const hapusLK = el("button", "tambah lawan", "Hapus semua LK");
@@ -11949,7 +12016,7 @@ function panelKeystats(kode, periode) {
   if (periode[0].mata_uang === "USD")
     p.appendChild(el("div", "bantu",
       "Emiten ini melapor dalam dolar; angka sudah dikalikan kurs " +
-      kursUSD().toLocaleString("id-ID") + " yang kamu setel di tab PERBARUI."));
+      kursUSD().toLocaleString("id-ID") + ", otomatis dari kurs USD/IDR di menu NEWS."));
   return p;
 }
 
@@ -13730,6 +13797,7 @@ async function sinkron(diam) {
 await muatDanTerapkan();
 gambarUlang();
 muatLK().then(() => halCari());
+muatNews(false).catch(() => {});
 sinkron(true).then(ada => { if (ada) gambarUlang(); });
 
 })();
