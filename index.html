@@ -584,6 +584,7 @@ tr.pt-dicoret td{opacity:.6} tr.pt-dicoret .kode{text-decoration:line-through}
 .pt-ket.ganda{background:#2f7d4f;color:#fff}.pt-ket.beli{background:rgba(47,125,79,.16);color:var(--naik)}
 .pt-ket.pantau{background:var(--surface-2);color:var(--ink-2)}.pt-ket.tunggu{background:rgba(230,180,0,.18);color:#8a6500}
 .pt-ket.jual{background:var(--turun-bg);color:var(--turun)}
+.rek-bv{margin-left:12px;white-space:nowrap}
 .lk-bd{display:inline-block;font-size:11px;font-weight:800;border-radius:5px;padding:2px 7px;white-space:nowrap}
 .lk-bd.Bagus{background:var(--naik-bg);color:var(--naik)}.lk-bd.Sedang{background:rgba(230,170,0,.16);color:#a87400}
 .lk-bd.Jelek{background:var(--turun-bg);color:var(--turun)}.lk-bd.kosong{color:var(--ink-3)}
@@ -3868,6 +3869,12 @@ function rekSisi(kode, pos, kelas, judul) {
       nn.title = "Pindah sisi: dari " +
                  (p.awal >= 0 ? "memegang" : "minus") + " jadi " +
                  (p.posisi >= 0 ? "memegang" : "minus");
+    }
+    /* 11 Okt 2026: value posisi (lot x 100 x harga rata-rata posisi) di kanan total lot, huruf sama besar */
+    if (Math.round(p.posisi) && p.aPos > 0) {
+      const vb = el("span", "rek-bv", tanda + rpSingkat(Math.abs(p.posisi) * LOT * p.aPos));
+      vb.title = "Value posisi = " + lotSingkat(Math.round(Math.abs(p.posisi))) + " lot \u00d7 100 \u00d7 harga rata-rata " + hargaAvg(p.aPos);
+      nn.appendChild(vb);
     }
     if (Math.round(p.posisi)) nn.appendChild(el("span", "rek-av", "(" + hargaAvg(p.aPos) + ")"));
     b.appendChild(kk); b.appendChild(pp); b.appendChild(nn);
@@ -7227,7 +7234,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-10-31";
+const VERSI_APP = "2026-10-11-32";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
