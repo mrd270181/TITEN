@@ -584,6 +584,18 @@ tr.pt-dicoret td{opacity:.6} tr.pt-dicoret .kode{text-decoration:line-through}
 .pt-ket.ganda{background:#2f7d4f;color:#fff}.pt-ket.beli{background:rgba(47,125,79,.16);color:var(--naik)}
 .pt-ket.pantau{background:var(--surface-2);color:var(--ink-2)}.pt-ket.tunggu{background:rgba(230,180,0,.18);color:#8a6500}
 .pt-ket.jual{background:var(--turun-bg);color:var(--turun)}
+.rek-news.aktif{outline:2px solid var(--merek);outline-offset:-2px}
+.rek-nw-hit{display:flex;gap:8px;font-size:12px;font-weight:800}.rek-nw-hit .naik{color:var(--naik)}.rek-nw-hit .turun{color:var(--turun)}.rek-nw-net{color:var(--ink-3)}
+.rek-nw-saring{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}.rek-nw-saring .aktif{background:var(--merek);color:#fff}
+.rek-nwl{display:flex;flex-direction:column;gap:6px}
+.rek-nwi{display:flex;gap:8px;align-items:flex-start;padding:7px 9px;border-radius:8px;background:var(--surface-2);text-decoration:none;color:inherit;font-size:12.5px}
+.rek-nwi>b{font-size:10.5px;padding:1px 6px;border-radius:5px;white-space:nowrap;margin-top:1px}
+.rek-nwi .pos{background:var(--naik-bg);color:var(--naik)}.rek-nwi .neg{background:var(--turun-bg);color:var(--turun)}
+.rek-nwi .net{background:var(--surface-1);color:var(--ink-3)}.rek-nwi .idx{background:#1f4e8c;color:#fff}
+.rek-nwm{font-size:10.5px;color:var(--ink-3);margin-top:2px}
+.lk-ring{margin-top:10px;border:1px solid var(--garis);border-left:3px solid var(--merek);border-radius:8px;padding:8px 11px;background:var(--surface-2);max-width:760px}
+.lk-ring h3{margin:0 0 5px;font-size:12.5px}.lk-ring p{margin:0 0 5px;font-size:12.5px;line-height:1.5}
+.lk-ring p.st{font-size:11.5px;color:var(--ink-2)}.lk-ring p.lama{color:var(--turun);font-weight:600}
 .rek-bl,.rek-bv{display:inline-block;min-width:66px;text-align:right;white-space:nowrap}.rek-bv{margin-left:10px}
 .rek-bh{margin-top:2px;padding-bottom:2px;border-bottom:1px solid var(--garis)}
 .rek-bh .rek-bl,.rek-bh .rek-bv{font-size:10px;font-weight:700;color:var(--ink-3);letter-spacing:.2px}
@@ -2368,7 +2380,7 @@ function lksNilai(kode) {
   r.gp = g(T.pendapatan, T1.pendapatan); r.gl = g(li, li1);
   r.npm = (T.laba_bersih !== null && T.pendapatan) ? T.laba_bersih / T.pendapatan * 100 : null;
   r.npm1 = (T1.laba_bersih !== null && T1.pendapatan) ? T1.laba_bersih / T1.pendapatan * 100 : null;
-  r.laba = T.laba_bersih;
+  r.laba = T.laba_bersih; r.pend = T.pendapatan;
   r.cfoNi = (T.ak_operasi !== null && T.laba_bersih > 0) ? T.ak_operasi / T.laba_bersih : null;
   r.cfo = T.ak_operasi;
   r.fcf = (T.ak_operasi !== null && T.ak_investasi !== null) ? T.ak_operasi + T.ak_investasi : null;
@@ -2512,6 +2524,11 @@ function panelKesimpulanLK(kode) {
     const t = el("span", "lk-t", c.t); t.appendChild(el("br")); t.appendChild(el("span", "lk-acu", c.acu)); g.appendChild(t);
   });
   p.appendChild(g);
+  /* ringkasan garis besar */
+  { const rs = lksRingkasan(kode);
+    if (rs) { const b = el("div", "lk-ring"); const h = el("h3", null, "Ringkasan LK " + kode + " \u00b7 ");
+      h.appendChild(el("span", "lk-bd " + k.label, k.label + " (" + k.skor + "/100)")); b.appendChild(h);
+      rs.forEach((t, i) => b.appendChild(el("p", i === rs.length - 1 ? (k.lama ? "st lama" : "st") : null, t))); p.appendChild(b); } }
   k.F.forEach(f => {
     const d = el("div", "lk-flag"); d.appendChild(el("b", null, "⚠ " + f[0])); d.appendChild(document.createTextNode(" — " + f[1]));
     d.appendChild(el("div", "lk-fx", f[2])); p.appendChild(d);
@@ -2530,6 +2547,103 @@ function bukaCariLK(kode) {
   cariKode = kode; cariSub = "keystats"; try { cariTutup = true; } catch (e) {}
   document.querySelector('nav button[data-hal="cari"]').click();
   halCari();
+}
+
+/* 11 Okt 2026: ringkasan garis besar LK (2-4 kalimat) untuk panel Kesimpulan LK */
+const LKS_BULAN = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+function lksTglPendek(t) { return parseInt(t.slice(8, 10), 10) + " " + LKS_BULAN[parseInt(t.slice(5, 7), 10) - 1] + " " + t.slice(0, 4); }
+function lksRingkasan(kode) {
+  const k = lkSkor(kode); if (!k) return null;
+  const r = k.r, f1 = x => x.toFixed(1).replace(".", ",").replace("-", "\u2212"), pc = x => x > 200 ? "naik " + Math.round(x / 100 + 1) + " kali lipat" : (x >= 0 ? "naik " : "turun ") + Math.abs(Math.round(x)) + "%";
+  const rp = x => { let v = Math.abs(x) / 1e9 * (r.mu === "USD" ? kursUSD() : 1);
+    return v >= 1000 ? "Rp " + (v / 1000).toFixed(1).replace(".", ",") + " T" : "Rp " + Math.round(v).toLocaleString("id-ID") + " M"; };
+  const kal = [];
+  /* 1. untung/rugi + pertumbuhan */
+  if (r.li !== null) {
+    let s = r.li >= 0 ? "Laba bersih setahun terakhir " + rp(r.li) : "Rugi setahun terakhir " + rp(r.li);
+    if (r.li > 0 && r.li1 !== null && r.li1 <= 0) s += ", berbalik dari rugi tahun lalu";
+    else if (r.gl !== null && r.li > 0) s += " (" + pc(r.gl) + " dari setahun sebelumnya)";
+    if (r.pend) s += "; pendapatan " + rp(r.pend) + (r.gp !== null ? " (" + pc(r.gp) + ")" : "");
+    kal.push(s + ".");
+  }
+  /* 2. profitabilitas & utang */
+  const b = [];
+  if (r.roe !== null) b.push("ROE " + f1(r.roe) + "% " + (r.roe >= 15 ? "(tinggi)" : r.roe >= 8 ? "(cukup)" : r.roe > 0 ? "(rendah)" : "(negatif)"));
+  if (!r.bank && r.der !== null) b.push("DER " + f1(r.der) + "× " + (r.der <= 1 ? "(utang aman)" : r.der <= 2 ? "(utang sedang)" : r.der <= 3 ? "(utang tinggi)" : "(utang sangat tinggi)"));
+  if (!r.bank && r.cfo !== null && r.cfo < 0) b.push("arus kas operasi minus");
+  else if (!r.bank && r.cfoNi !== null) b.push(r.cfoNi >= 1 ? "laba didukung arus kas" : r.cfoNi >= 0.7 ? "arus kas sedikit di bawah laba" : "arus kas jauh di bawah laba");
+  if (r.npm !== null) b.push("margin bersih " + f1(r.npm) + "%" + (r.npm1 !== null ? (r.npm >= r.npm1 ? " (membaik)" : " (menurun)") : ""));
+  if (b.length) kal.push(b.join(", ").replace(/^./, c => c.toUpperCase()) + ".");
+  /* 3. kesimpulan */
+  const inti = k.label === "Bagus" ? "Secara keseluruhan keuangannya sehat" : k.label === "Sedang" ? "Secara keseluruhan cukup, ada yang perlu dipantau" : "Secara keseluruhan lemah";
+  kal.push(inti + (k.F.length ? " — waspada " + k.F.map(f => f[0].toLowerCase()).join(", ") : "") + ".");
+  /* 4. status laporan */
+  const terbaru = lksPeriodeTerbaru();
+  let st = "Berdasarkan LK " + r.jenis + " " + r.akhir.slice(0, 4) + " (s/d " + lksTglPendek(r.akhir) + ").";
+  if (!k.lama) { const y = parseInt(r.akhir.slice(0, 4), 10), mo = parseInt(r.akhir.slice(5, 7), 10), nm = mo === 12 ? 3 : mo + 3, ny = mo === 12 ? y + 1 : y;
+    const nj = nm === 12 ? "tahunan " + ny : "TW" + (nm / 3) + " " + ny;
+    st += " LK berikutnya (" + nj + ") biasanya terbit " + (nm === 12 ? "akhir Maret " + (ny + 1) : "akhir " + ["", "", "", "", "April", "", "", "Juli", "", "", "Oktober", "", ""][nm + 1]) + "; skor ikut berubah otomatis begitu terbit."; }
+  if (k.lama) st += " Emiten ini BELUM melaporkan LK periode terbaru (s/d " + lksTglPendek(terbaru) + ") padahal sebagian besar emiten sudah — penilaian memakai laporan lama, jadi bisa sudah tidak mencerminkan kondisi sekarang.";
+  kal.push(st);
+  return kal;
+}
+
+/* 11 Okt 2026: kotak NEWS di Rekomendasi - berita media + keterbukaan informasi IDX untuk emiten terpilih,
+   7 hari terakhir. Sumbernya NEWS.item (news.json + ki.json yang sudah digabung muatNews). */
+const REK_NEWS_HARI = 7;
+let rekNewsBuka = false, rekNewsSaring = "semua";
+function rekNewsDaftar(em) {
+  if (!NEWS || !NEWS.item) return null;
+  const batas = Date.now() / 1000 - REK_NEWS_HARI * 86400;
+  return NEWS.item.filter(x => x.w >= batas && (x.e || []).indexOf(em) >= 0).sort((a, b) => b.w - a.w);
+}
+function rekKartuNews(em) {
+  const L = rekNewsDaftar(em);
+  const k = el("div", "rek-k rek-news" + (rekNewsBuka ? " aktif" : ""));
+  k.appendChild(el("div", "rek-kj", "NEWS · " + REK_NEWS_HARI + " HARI"));
+  if (!L) {
+    k.appendChild(el("div", "rek-kn", "–")); k.appendChild(el("div", "rek-kk", nwGagal ? "berita gagal dimuat" : "memuat berita…"));
+    if (!nwSedang && !nwGagal) muatNews(false).then(() => halScreener()).catch(() => {});
+    return k;
+  }
+  const np = L.filter(x => !x.x && x.n > 0).length, nn = L.filter(x => !x.x && x.n < 0).length, ni = L.filter(x => x.x).length;
+  const nt = L.length - np - nn - ni;
+  k.appendChild(el("div", "rek-kn", L.length + " berita"));
+  const h = el("div", "rek-nw-hit");
+  h.appendChild(el("span", "naik", "▲" + np)); h.appendChild(el("span", "turun", "▼" + nn)); h.appendChild(el("span", "rek-nw-net", "●" + nt));
+  k.appendChild(h);
+  k.appendChild(el("div", "rek-kk", ni + " keterbukaan IDX"));
+  k.title = "Ketuk untuk " + (rekNewsBuka ? "menutup" : "membuka") + " daftar berita " + em;
+  k.style.cursor = "pointer";
+  k.onclick = () => { rekNewsBuka = !rekNewsBuka; rekNewsSaring = "semua"; halScreener(); };
+  return k;
+}
+function rekPanelNews(em) {
+  const L = rekNewsDaftar(em) || [];
+  const p = el("div", "rek-ng rek-nwp");
+  const j = el("h2", null, "Berita " + em + " · " + REK_NEWS_HARI + " hari terakhir"); p.appendChild(j);
+  const np = L.filter(x => !x.x && x.n > 0).length, nn = L.filter(x => !x.x && x.n < 0).length, ni = L.filter(x => x.x).length;
+  const s = el("div", "rek-nw-saring");
+  [["semua", "Semua " + L.length], ["pos", "Positif " + np], ["neg", "Negatif " + nn], ["idx", "Keterbukaan IDX " + ni]].forEach(([kk, t]) => {
+    const b = el("button", "kecil" + (rekNewsSaring === kk ? " aktif" : ""), t);
+    b.onclick = () => { rekNewsSaring = kk; halScreener(); }; s.appendChild(b); });
+  p.appendChild(s);
+  const T = L.filter(x => rekNewsSaring === "semua" || (rekNewsSaring === "pos" && !x.x && x.n > 0) || (rekNewsSaring === "neg" && !x.x && x.n < 0) || (rekNewsSaring === "idx" && x.x));
+  const d = el("div", "rek-nwl");
+  if (!T.length) d.appendChild(el("div", "bantu", "Tidak ada berita " + em + (rekNewsSaring === "semua" ? "" : " untuk saringan ini") + " dalam " + REK_NEWS_HARI + " hari terakhir."));
+  T.forEach(x => {
+    const a = el("a", "rek-nwi"); a.href = x.u; a.target = "_blank"; a.rel = "noopener";
+    const kl = x.x ? "idx" : x.n > 0 ? "pos" : x.n < 0 ? "neg" : "net";
+    a.appendChild(el("b", kl, x.x ? "IDX" : x.n > 0 ? "Positif" : x.n < 0 ? "Negatif" : "Netral"));
+    const isi = el("div"); isi.appendChild(document.createTextNode(x.t));
+    const wk = new Date(x.w * 1000);
+    isi.appendChild(el("div", "rek-nwm", (x.s || "") + " · " + wk.toLocaleString("id-ID", {day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit"})));
+    a.appendChild(isi); d.appendChild(a);
+  });
+  p.appendChild(d);
+  p.appendChild(el("div", "bantu", "Berita media dari Google Berita dan keterbukaan informasi resmi IDX (label biru, membuka PDF di idx.co.id) yang menyebut " + em +
+    ". Positif/negatif ditebak dari kata di judul, jadi kadang meleset — baca judulnya. Sama dengan data menu NEWS."));
+  return p;
 }
 /* ---------- HARGA & VOL ----------
    Rentang tanggalnya SENDIRI, tidak ikut ANALISA FAVORIT: di sana bawaannya
@@ -4100,7 +4214,9 @@ function panelRekomendasi(w) {
     kl.title = q ? q.kal + " Ketuk untuk melihat rinciannya di menu CARI." : "";
     if (q) { kl.style.cursor = "pointer"; kl.onclick = () => { if (typeof bukaCariLK === "function") bukaCariLK(rek.em); }; }
     kartu.appendChild(kl); lkPastikan(halScreener); }
+  kartu.appendChild(rekKartuNews(rek.em));
   p.appendChild(kartu);
+  if (rekNewsBuka) p.appendChild(rekPanelNews(rek.em));
 
   /* ---- % NET TERHADAP GROSS: batang panjang sama dengan menu BROKER > %NET > RASIO ---- */
   {
@@ -7300,7 +7416,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-11-36";
+const VERSI_APP = "2026-10-11-37";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
