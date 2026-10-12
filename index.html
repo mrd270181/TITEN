@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>TITEN VEKTOR</title>
-<meta name="theme-color" content="#127a2c">
+<meta name="theme-color" content="#4b2a8a">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="TITEN">
@@ -14,30 +14,33 @@
 <style>
 :root{
   color-scheme: light;
-  --surface-0:#f2f4f2; --surface-1:#fcfcfb; --surface-2:#e9ede9;
-  --ink-1:#0b0b0b; --ink-2:#52514e; --ink-3:#83837d;
-  --garis:#dfe4df;
-  --merek:#127a2c; --merek-tua:#0d5a20; --merek-muda:#e6f2e8;
+  --surface-0:#f6f4fb; --surface-1:#ffffff; --surface-2:#efebf8;
+  --ink-1:#1f1a2e; --ink-2:#5b5570; --ink-3:#8d87a3;
+  --garis:#e2daf3;
+  --merek:#6a3fb5; --merek-tua:#4b2a8a; --merek-muda:#efe9fb;
+  --oranye:#f26a2e; --oranye-tua:#d9531a; --oranye-muda:#fff0e8; --ungu-gelap:#2e1a5c;
   --naik:#0ca30c; --turun:#d03b3b; --datar:#83837d;
   --naik-bg:#e6f5e6; --turun-bg:#fbeaea;
 }
 @media (prefers-color-scheme: dark){
   :root:where(:not([data-tema="terang"])){
     color-scheme: dark;
-    --surface-0:#121211; --surface-1:#1a1a19; --surface-2:#242423;
-    --ink-1:#ffffff; --ink-2:#c3c2b7; --ink-3:#8f8e86;
-    --garis:#33332f;
-    --merek:#3fae5c; --merek-tua:#2b8f45; --merek-muda:#1d2c20;
+    --surface-0:#15112a; --surface-1:#1e1838; --surface-2:#2a2247;
+    --ink-1:#ffffff; --ink-2:#c9c1e3; --ink-3:#9a91b8;
+    --garis:#362b63;
+    --merek:#7b55cc; --merek-tua:#c9b5ff; --merek-muda:#2a2150;
+    --oranye:#f47a42; --oranye-tua:#ff9a66; --oranye-muda:#3a2418;
     --naik:#0ca30c; --turun:#d03b3b; --datar:#8f8e86;
     --naik-bg:#16281a; --turun-bg:#2c1a1a;
   }
 }
 :root[data-tema="gelap"]{
   color-scheme: dark;
-  --surface-0:#121211; --surface-1:#1a1a19; --surface-2:#242423;
-  --ink-1:#ffffff; --ink-2:#c3c2b7; --ink-3:#8f8e86;
-  --garis:#33332f;
-  --merek:#3fae5c; --merek-tua:#2b8f45; --merek-muda:#1d2c20;
+  --surface-0:#15112a; --surface-1:#1e1838; --surface-2:#2a2247;
+  --ink-1:#ffffff; --ink-2:#c9c1e3; --ink-3:#9a91b8;
+  --garis:#362b63;
+  --merek:#7b55cc; --merek-tua:#c9b5ff; --merek-muda:#2a2150;
+  --oranye:#f47a42; --oranye-tua:#ff9a66; --oranye-muda:#3a2418;
   --naik:#0ca30c; --turun:#d03b3b; --datar:#8f8e86;
   --naik-bg:#16281a; --turun-bg:#2c1a1a;
 }
@@ -618,18 +621,18 @@ tr.pt-dicoret td{opacity:.6} tr.pt-dicoret .kode{text-decoration:line-through}
 .lk-flag{margin-top:8px;padding:6px 8px;border-radius:6px;background:var(--turun-bg);color:var(--turun);font-size:11.5px}
 .lk-fx{color:var(--ink-2);margin-top:3px;font-size:11px}
 .jv-reaktor{display:inline-block;width:46px;height:46px;border-radius:50%;flex:none;cursor:pointer;
-  background:radial-gradient(circle,#e8fbff 0 14%,#33d6ff 15% 30%,#0b3b52 31% 46%,#33d6ff 47% 51%,transparent 52%);box-shadow:0 0 14px #33d6ff88}
-.jv-reaktor.besar{width:58px;height:58px}.jv-reaktor.kecil{width:30px;height:30px;box-shadow:0 0 8px #33d6ffaa}
+  background:radial-gradient(circle,#fff 0 14%,#ffb08a 15% 30%,#5a2d12 31% 46%,#f26a2e 47% 51%,transparent 52%);box-shadow:0 0 14px #f26a2e88}
+.jv-reaktor.besar{width:58px;height:58px}.jv-reaktor.kecil{width:30px;height:30px;box-shadow:0 0 8px #f26a2eaa}
 .jv-reaktor.bicara{animation:jvNadi 1s infinite}
-@keyframes jvNadi{50%{box-shadow:0 0 30px #33d6ffee;transform:scale(1.07)}}
+@keyframes jvNadi{50%{box-shadow:0 0 30px #f26a2eee;transform:scale(1.07)}}
 .jv-kepala{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-.jv-jd{flex:1;min-width:160px}.jv-nama{font-weight:800;letter-spacing:1.5px;color:#0aa5cc;font-size:15px}
+.jv-jd{flex:1;min-width:160px}.jv-nama{font-weight:800;letter-spacing:1.5px;color:var(--merek-tua);font-size:15px}
 .jv-tbl-tombol{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
-.jv-utama{background:#0aa5cc;color:#fff;border:0;border-radius:999px;padding:7px 14px;font-weight:800;cursor:pointer;font-family:inherit}
-.jv-ucap{border-left:3px solid #33d6ff;background:var(--surface-2);border-radius:6px;padding:9px 11px;font-size:14px;line-height:1.55}
+.jv-utama{background:var(--merek);color:#fff;border:0;border-radius:999px;padding:7px 14px;font-weight:800;cursor:pointer;font-family:inherit}
+.jv-ucap{border-left:3px solid var(--oranye);background:var(--surface-2);border-radius:6px;padding:9px 11px;font-size:14px;line-height:1.55}
 .jv-tanya-b{display:flex;gap:6px;align-items:center}
 .jv-tanya-b input{flex:1;min-width:0;padding:8px 12px;border-radius:999px;border:1px solid var(--garis);background:var(--surface-1);color:var(--ink-1);font-family:inherit;font-size:13px}
-.jv-mik{background:#0aa5cc;color:#fff;border:0;border-radius:999px;padding:8px 12px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit}
+.jv-mik{background:var(--oranye);color:#fff;border:0;border-radius:999px;padding:8px 12px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit}
 .jv-mik.dengar{background:var(--turun);animation:jvNadi 1s infinite}
 .jv-contoh{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
 .jv-chip{border:1px solid var(--garis);background:var(--surface-2);color:var(--ink-2);border-radius:999px;padding:3px 10px;font-size:12px;cursor:pointer;font-family:inherit}
@@ -640,19 +643,19 @@ tr.pt-dicoret td{opacity:.6} tr.pt-dicoret .kode{text-decoration:line-through}
 .jv-al:first-of-type{border-top:0}.jv-al>div:nth-child(2){flex:1;min-width:0;font-size:13px}
 .jv-ik{flex:none;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:12px}
 .jv-ik.m{background:var(--turun-bg);color:var(--turun)}.jv-ik.h{background:var(--naik-bg);color:var(--naik)}
-.jv-ik.k{background:rgba(230,170,0,.18);color:#a87400}.jv-ik.c{background:rgba(10,165,204,.15);color:#0a8fb0}
+.jv-ik.k{background:rgba(230,170,0,.18);color:#a87400}.jv-ik.c{background:var(--merek-muda);color:var(--merek-tua)}
 .jv-link{font-size:12px}.jv-kd{cursor:pointer;text-decoration:underline dotted}
 .jv-tbl{max-height:55vh}.jv-set{display:block;margin:4px 0;font-size:13px}.jv-set input[type=checkbox]{width:auto;margin:0 6px 0 0;vertical-align:middle}.jv-set select{margin-left:4px;max-width:260px}
 .jv-pojok{position:fixed;right:14px;bottom:calc(74px + env(safe-area-inset-bottom));z-index:40;width:52px;height:52px;border-radius:50%;
-  border:1px solid #0b3b52;background:#06101a;display:grid;place-items:center;cursor:pointer;box-shadow:0 3px 12px rgba(0,0,0,.35);padding:0}
+  border:1px solid #4b2a8a;background:#2e1a5c;display:grid;place-items:center;cursor:pointer;box-shadow:0 3px 12px rgba(0,0,0,.35);padding:0}
 .jv-badge{position:absolute;top:-4px;right:-4px;background:var(--turun);color:#fff;border-radius:999px;font-size:11px;font-weight:800;padding:1px 6px;min-width:18px}
 .jv-panel{position:fixed;right:12px;bottom:calc(134px + env(safe-area-inset-bottom));z-index:41;width:min(380px,calc(100vw - 24px));max-height:65vh;overflow:auto;
   background:var(--surface-1);border:1px solid var(--garis);border-radius:12px;padding:10px;box-shadow:0 8px 28px rgba(0,0,0,.3)}
-.jv-panel-j{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;color:#0aa5cc;letter-spacing:1.5px}
+.jv-panel-j{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;color:var(--merek-tua);letter-spacing:1.5px}
 .jv-panel .jv-tbl-tombol{margin-bottom:8px}
 .jv-modal{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.45);display:grid;place-items:center;padding:16px}
 .jv-modal-k{background:var(--surface-1);border:1px solid var(--garis);border-radius:14px;padding:14px;width:min(560px,100%);max-height:85vh;overflow:auto;display:flex;flex-direction:column;gap:10px}
-nav button.jv-ada svg{stroke:#0aa5cc}
+nav button.jv-ada svg{stroke:var(--oranye)}
 .pt-tgl-h{display:block;font-size:9.5px;font-weight:400;opacity:.85}
 .ph-tag{font-size:10px;font-weight:700;color:#d9a441;border:1px solid #d9a441;border-radius:5px;padding:0 5px}
 .ph-kol td:nth-child(2),.ph-kol th:nth-child(2){text-align:left}
@@ -747,6 +750,43 @@ tfoot td{border-top:2px solid var(--garis);font-weight:800;background:var(--surf
 #barisVersi button{
   background:#fff; color:var(--merek); border:0; border-radius:8px;
   padding:7px 12px; font:700 12px/1 inherit; letter-spacing:.04em; flex:0 0 auto;
+}
+/* ===== 12 Okt 2026: tema ungu-oranye-putih (hanya warna & letak menu) ===== */
+header{background:var(--surface-1);color:var(--merek-tua);border-bottom:3px solid var(--oranye);box-shadow:none}
+header button{background:var(--merek-muda);color:var(--merek-tua)}
+header img{box-shadow:0 0 0 2px var(--oranye)}
+nav{background:var(--ungu-gelap,#2e1a5c);border-top:3px solid var(--oranye)}
+nav button{color:#cbbdf0}
+nav button.aktif{color:#fff}
+nav button.aktif svg{stroke:var(--oranye)}
+.sub-tab{flex-wrap:wrap;gap:2px;border-bottom:1px solid var(--garis);background:var(--surface-1);border-radius:10px 10px 0 0;padding:0 4px}
+.sub-tab button{flex:0 1 auto;border:0;border-bottom:3px solid transparent;border-radius:0;background:none;color:var(--ink-2);padding:11px 10px 9px;margin-bottom:-1px;font-weight:700}
+.sub-tab button:hover{color:var(--merek)}
+.sub-tab button.aktif{background:none;color:var(--merek-tua);border-color:transparent;border-bottom-color:var(--oranye)}
+.sub-tab.lima button{flex:0 1 auto}
+.sub-tab~.sub-tab,.ph-sub-tab{border:0;background:none;gap:6px;padding:0}
+.sub-tab~.sub-tab button,.ph-sub-tab button{border:1px solid var(--garis);border-radius:999px;padding:7px 12px;margin:0}
+.sub-tab~.sub-tab button.aktif,.ph-sub-tab button.aktif{background:var(--oranye-muda);color:var(--oranye-tua);border-color:var(--oranye)}
+.sub-tab.nw-beku{background:var(--surface-0)}
+.tambah{background:var(--oranye)}
+.pt-mf-u{background:var(--oranye)}
+.tambah.lawan{background:var(--surface-2);color:var(--ink-2)}
+tbody tr:hover{background:var(--oranye-muda)}
+:root[data-tema="gelap"] .kode,:root[data-tema="gelap"] .em-b{color:#c9b5ff}
+@media (prefers-color-scheme:dark){:root:where(:not([data-tema="terang"])) .kode,:root:where(:not([data-tema="terang"])) .em-b{color:#c9b5ff}}
+/* laptop: menu pindah ke kiri, berjajar ke bawah (gaya Stockbit) */
+@media (min-width:900px){
+  body{padding-bottom:0;padding-left:88px}
+  nav{top:0;bottom:0;left:0;right:auto;width:88px;flex-direction:column;justify-content:flex-start;
+      border-top:0;padding:12px 0 0;background:linear-gradient(180deg,#4b2a8a,#2e1a5c)}
+  nav::before{content:"T";display:grid;place-items:center;width:42px;height:42px;margin:0 auto 12px;border-radius:12px;
+      background:var(--oranye);color:#fff;font-weight:900;font-size:18px;box-shadow:0 3px 10px rgba(0,0,0,.3)}
+  nav button{flex:0 0 auto;padding:11px 2px;border-left:3px solid transparent;font-size:10px}
+  nav button:hover{background:rgba(255,255,255,.08);color:#fff}
+  nav button.aktif{background:rgba(255,255,255,.12);border-left-color:var(--oranye)}
+  #barisVersi{left:88px;bottom:0}
+  .jv-pojok{bottom:18px}
+  .jv-panel{bottom:80px}
 }
 </style>
 </head>
@@ -7947,7 +7987,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-12-38";
+const VERSI_APP = "2026-10-12-39";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -11006,7 +11046,7 @@ function batangRasio(net, gross) {
                     "margin:8px 0 4px;background:var(--surface-2)";
   const pn = gross ? net / gross * 100 : 0;
   const kiri = el("div", null, pn >= 12 ? pn.toFixed(1).replace(".", ",") + "%" : "");
-  kiri.style.cssText = "width:" + pn.toFixed(2) + "%;background:var(--merek);color:#fff;" +
+  kiri.style.cssText = "width:" + pn.toFixed(2) + "%;background:var(--naik);color:#fff;" +
     "font-size:11px;display:flex;align-items:center;justify-content:center";
   const kanan = el("div", null, (100 - pn) >= 12
     ? (100 - pn).toFixed(1).replace(".", ",") + "%" : "");
