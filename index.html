@@ -2032,7 +2032,9 @@ function panelRadar(w) {
     "harga naik hari itu (hanya sinyal pertama dalam 20 hari bursa). Harga sudah disesuaikan stock split. " +
     "Ciri (dari analisa top-50 kenaikan 6 bulan): ① kapitalisasi < Rp1 T · ② rentang harga 60 hari ≥ 50% · " +
     "③ masih ≥ 20% di bawah puncak 1 tahun. Tier A = 3 ciri, B = 2, C = 0–1. " +
-    "Naik 5h sblm = kenaikan harga 5 hari bursa sebelum sinyal; ⚠ = lebih dari 50% (sinyal terlambat: dari semua sinyal " +
+    "Naik 5 hari sebelum sinyal = kenaikan harga dari penutupan 5 hari bursa sebelum sinyal sampai penutupan hari sinyal " +
+    "(contoh STRK: 2 Okt 52 → 9 Okt 83 = +60%). Angkanya selalu + (naik) dan tidak berubah sesudah hari sinyal; " +
+    "⚠ merah = naik lebih dari 50% (sinyal terlambat, BUKAN harga turun — harga turun terlihat di kolom % sejak sinyal dengan tanda −). Dari semua sinyal " +
     "Apr 2025–Okt 2026, 58% sempat jatuh 15% dalam 20 hari, dibanding 16% kalau naiknya di bawah 15%). " +
     "Lonjakan value = value hari sinyal ÷ median value 60 hari sebelumnya. " +
     "Broker = 3 broker net beli terbesar (lot, REGULER) hari sinyal — hanya emiten yang punya data broker. " +
@@ -2075,14 +2077,21 @@ function rdTabel(baris) {
   const nilai = {k: x => x.k * 1e6 + (x.iT || 0), t: x => x.t, em: x => x.em, lk: x => { const q = lkSkor(x.em); return q ? q.skor : -1; },
     r5: x => x.r5, c: x => x.c, kini: x => x.kini, s: x => x.s, lj: x => x.lj === null ? -1 : x.lj, n: x => x.n,
     mc: x => x.mc === null ? 1e18 : x.mc, rg: x => x.rg, dp: x => x.dp === null ? 1e9 : x.dp};
-  const KOL = [["k", "Tier"], ["t", "Tgl sinyal"], ["em", "Emiten"], ["lk", "LK"], ["r5", "Naik 5h sblm"], ["c", "Harga sinyal"], ["kini", "Harga kini"],
+  const KOL = [["k", "Tier"], ["t", "Tgl sinyal"], ["em", "Emiten"], ["lk", "LK"], ["r5", "Naik 5 hari sebelum sinyal"], ["c", "Harga sinyal"], ["kini", "Harga kini"],
     ["s", "% sejak sinyal"], ["lj", "Lonjakan value"], ["n", "Value hari sinyal"], ["mc", "Kapitalisasi"],
     ["rg", "Rentang 60h"], ["dp", "Dari puncak 1 th"], ["", "Ciri ✓"], ["", "Broker net beli"]];
   KOL.forEach(([k, j]) => {
     const kiri = k === "t" || k === "em" || !k;
     const th = el("th", kiri ? "rd-kiri" : k === "lk" || k === "k" ? "rd-tengah" : "num", j + (rdUrut.k === k && k ? (rdUrut.a < 0 ? " ▼" : " ▲") : ""));
+    if (k === "r5") {
+      /* judul panjang dipecah dua baris supaya kolom tidak melebar */
+      th.textContent = "";
+      th.appendChild(document.createTextNode("Naik 5 hari"));
+      th.appendChild(el("br"));
+      th.appendChild(document.createTextNode("sebelum sinyal" + (rdUrut.k === k ? (rdUrut.a < 0 ? " \u25bc" : " \u25b2") : "")));
+    }
     if (k) {
-      th.style.cursor = "pointer"; th.title = "Urutkan menurut " + j;
+      th.style.cursor = "pointer"; th.title = k === "r5" ? "Kenaikan harga dari penutupan 5 hari bursa sebelum sinyal sampai penutupan hari sinyal. Selalu +; \u26a0 = lebih dari 50% (sinyal terlambat). Ketuk untuk mengurutkan" : "Urutkan menurut " + j;
       th.onclick = () => {
         if (rdUrut.k === k) rdUrut.a = -rdUrut.a;
         else rdUrut = {k, a: k === "em" ? 1 : -1};
@@ -8215,7 +8224,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-14-3";
+const VERSI_APP = "2026-10-14-4";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
