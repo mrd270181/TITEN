@@ -670,6 +670,7 @@ nav button.jv-ada svg{stroke:var(--oranye)}
 .rd-ciri i{font-style:normal;display:inline-block;width:17px;text-align:center;border-radius:4px;margin-right:2px;font-size:12px}
 .rd-ciri i.y{background:var(--naik-bg);color:var(--naik)}.rd-ciri i.n{background:var(--surface-2);color:var(--ink-3);opacity:.6}
 .rd-tabel td.rd-kosong{color:var(--ink-3)}
+.rd-tabel td.rd-telat{color:var(--turun);font-weight:800;background:var(--turun-bg)}
 .rd-awas{color:var(--turun);margin-top:6px}
 .rd-contoh{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-top:8px}
 .rd-contoh>div{border:1px solid var(--garis);border-radius:10px;padding:10px;font-size:12px;cursor:pointer}
@@ -1972,7 +1973,7 @@ function hitungRadar() {
       const med = nn.length >= 30 ? (nn.length % 2 ? nn[(nn.length - 1) / 2] : (nn[nn.length / 2 - 1] + nn[nn.length / 2]) / 2) : null;
       const rg = mx / mn - 1, dp = pk ? x.c / pk - 1 : null;
       const ciri = [x.mc !== null && x.mc < 1e12, rg >= 0.5, dp !== null && dp <= -0.2];
-      sinyal.push({em: k, t: x.t, c: x.c, n: x.n, mc: x.mc, rg: rg * 100, dp: dp === null ? null : dp * 100,
+      sinyal.push({em: k, t: x.t, c: x.c, n: x.n, r5: (x.c / D[i - 5].c - 1) * 100, mc: x.mc, rg: rg * 100, dp: dp === null ? null : dp * 100,
         lj: med > 0 ? x.n / med : null, ciri, k: ciri.filter(Boolean).length});
     }
   });
@@ -2031,6 +2032,8 @@ function panelRadar(w) {
     "harga naik hari itu (hanya sinyal pertama dalam 20 hari bursa). Harga sudah disesuaikan stock split. " +
     "Ciri (dari analisa top-50 kenaikan 6 bulan): ① kapitalisasi < Rp1 T · ② rentang harga 60 hari ≥ 50% · " +
     "③ masih ≥ 20% di bawah puncak 1 tahun. Tier A = 3 ciri, B = 2, C = 0–1. " +
+    "Naik 5h sblm = kenaikan harga 5 hari bursa sebelum sinyal; ⚠ = lebih dari 50% (sinyal terlambat: dari semua sinyal " +
+    "Apr 2025–Okt 2026, 58% sempat jatuh 15% dalam 20 hari, dibanding 16% kalau naiknya di bawah 15%). " +
     "Lonjakan value = value hari sinyal ÷ median value 60 hari sebelumnya. " +
     "Broker = 3 broker net beli terbesar (lot, REGULER) hari sinyal — hanya emiten yang punya data broker. " +
     "LK = kesimpulan laporan keuangan (Bagus 75–100, Sedang 60–74, Jelek < 60). " +
@@ -2070,9 +2073,9 @@ function rdTabel(baris) {
   const bungkus = el("div", "tbl-bungkus tbl-kunci rd-tabel");
   const t = el("table"), thead = el("thead"), trh = el("tr");
   const nilai = {k: x => x.k * 1e6 + (x.iT || 0), t: x => x.t, em: x => x.em, lk: x => { const q = lkSkor(x.em); return q ? q.skor : -1; },
-    c: x => x.c, kini: x => x.kini, s: x => x.s, lj: x => x.lj === null ? -1 : x.lj, n: x => x.n,
+    r5: x => x.r5, c: x => x.c, kini: x => x.kini, s: x => x.s, lj: x => x.lj === null ? -1 : x.lj, n: x => x.n,
     mc: x => x.mc === null ? 1e18 : x.mc, rg: x => x.rg, dp: x => x.dp === null ? 1e9 : x.dp};
-  const KOL = [["k", "Tier"], ["t", "Tgl sinyal"], ["em", "Emiten"], ["lk", "LK"], ["c", "Harga sinyal"], ["kini", "Harga kini"],
+  const KOL = [["k", "Tier"], ["t", "Tgl sinyal"], ["em", "Emiten"], ["lk", "LK"], ["r5", "Naik 5h sblm"], ["c", "Harga sinyal"], ["kini", "Harga kini"],
     ["s", "% sejak sinyal"], ["lj", "Lonjakan value"], ["n", "Value hari sinyal"], ["mc", "Kapitalisasi"],
     ["rg", "Rentang 60h"], ["dp", "Dari puncak 1 th"], ["", "Ciri ✓"], ["", "Broker net beli"]];
   KOL.forEach(([k, j]) => {
@@ -2103,6 +2106,11 @@ function rdTabel(baris) {
     const cE = el("td", "rd-kiri"); cE.appendChild(el("span", "kode", s.em));
     cE.appendChild(el("span", "nm", (DATA.nama && DATA.nama[s.em]) || "")); tr.appendChild(cE);
     const cL = el("td", "rd-tengah"); cL.appendChild(lkLencana(s.em)); tr.appendChild(cL);
+    /* sudah naik > 50% dalam 5 hari sebelum sinyal = sinyal terlambat: dari semua sinyal
+       Apr 2025-Okt 2026, 58% sempat jatuh 15% dalam 20 hari (median -9%), vs 16% kalau < 15% */
+    const c5 = el("td", "num" + (s.r5 > 50 ? " rd-telat" : ""), (s.r5 > 0 ? "+" : s.r5 < 0 ? "−" : "") + nf(Math.abs(s.r5)) + "%" + (s.r5 > 50 ? " ⚠" : ""));
+    if (s.r5 > 50) c5.title = "Sudah naik >50% dalam 5 hari sebelum sinyal — sinyal terlambat, risiko dibuang tinggi";
+    tr.appendChild(c5);
     tr.appendChild(el("td", "num", nf(s.c)));
     tr.appendChild(el("td", "num", nf(s.kini)));
     tr.appendChild(el("td", "num " + arah(s.s).k, (s.s > 0 ? "+" : s.s < 0 ? "−" : "") + nf(Math.abs(s.s), 1) + "%"));
@@ -8207,7 +8215,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-14-2";
+const VERSI_APP = "2026-10-14-3";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
