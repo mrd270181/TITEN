@@ -659,6 +659,7 @@ nav button.jv-ada svg{stroke:var(--oranye)}
 .pt-tgl-h{display:block;font-size:9.5px;font-weight:400;opacity:.85}
 .ph-tag{font-size:10px;font-weight:700;color:#d9a441;border:1px solid #d9a441;border-radius:5px;padding:0 5px}
 .ph-kol td:nth-child(2),.ph-kol th:nth-child(2){text-align:left}
+.ph-kol td.ph-lk,.ph-kol th.ph-lk{text-align:center;padding-left:4px;padding-right:4px}
 .ph-kol td.no,.ph-kol th:first-child{text-align:center;color:var(--ink-3);padding:6px 3px;width:26px}
 input.bk-kode{width:86px;flex:0 0 auto;font-size:18px;font-weight:800;letter-spacing:2px;
   text-align:center;text-transform:uppercase}
@@ -6892,6 +6893,9 @@ function panelPersenHarga(w, mode) {
   p.appendChild(el("div", "bantu",
     "%Harga = penutupan hari terakhir rentang dibanding penutupan SEBELUM hari pertama " +
     "rentang (sama dengan TOT. %HARGA di Rekomendasi), sudah disesuaikan stock split. " +
+    "LK = kesimpulan laporan keuangan terakhir (sama dengan Rekomendasi & Potensi 3 Hari): " +
+    "Bagus skor 75–100, Sedang 60–74, Jelek di bawah 60; ⚠ = ada tanda bahaya; – = LK belum cukup untuk dinilai; " +
+    "sentuh lama untuk melihat skornya, ketuk judul LK untuk mengurutkan menurut skor. " +
     "Avg = total value ÷ total volume sepanjang rentang. Lot, Value dan Net Foreign " +
     "dijumlah sepanjang rentang; Net Foreign dalam lot (+ = asing net beli). " +
     "Emiten yang tidak bertransaksi sama sekali di rentang ini tidak ikut. " +
@@ -6994,14 +6998,17 @@ function phTabel(baris, judul, arahKelas, kunciUrut, tanpaKunci) {
   const u = phUrut[kunciUrut];
   const rkKey = kunciUrut === "t" ? "rkT" : "rkN";
   const nilai = {rk: x => x[rkKey], em: x => x.em, pct: x => x.pct, avg: x => x.avg,
-                 lot: x => x.v, val: x => x.n, nf: x => x.nf};
-  [["rk", "#"], ["em", "Emiten"], ["pct", "%Harga"], ["avg", "Avg"], ["lot", "Lot"],
+                 lot: x => x.v, val: x => x.n, nf: x => x.nf,
+                 lk: x => { const q = lkSkor(x.em); return q ? q.skor : -1; }};
+  /* kolom LK: kalau lk.json belum termuat, muat lalu gambar ulang halaman sekali */
+  lkPastikan(() => { if (subVol === "persen") halVolume(); });
+  [["rk", "#"], ["em", "Emiten"], ["lk", "LK"], ["pct", "%Harga"], ["avg", "Avg"], ["lot", "Lot"],
    ["val", "Value"], ["nf", "Net Foreign"]].forEach(([k, j]) => {
-    const th = el("th", k === "em" || k === "rk" ? null : "num",
+    const th = el("th", k === "em" || k === "rk" ? null : k === "lk" ? "ph-lk" : "num",
       j + (u.k === k ? (u.a < 0 ? " \u25bc" : " \u25b2") : ""));
     if (!tanpaKunci) {
       th.style.cursor = "pointer";
-      th.title = "Urutkan menurut " + j;
+      th.title = "Urutkan menurut " + (k === "lk" ? "skor LK" : j);
       th.onclick = () => {
         if (u.k === k) u.a = -u.a;
         else { u.k = k; u.a = (k === "em" || k === "rk") ? 1 : -1; }
@@ -7034,6 +7041,9 @@ function phTabel(baris, judul, arahKelas, kunciUrut, tanpaKunci) {
     c0.appendChild(el("span", "nm", (DATA.nama && DATA.nama[x.em]) || ""));
     if (phPorsi && phPorsi[x.em]) c0.appendChild(lencanaPorsi(phPorsi[x.em]));
     tr.appendChild(c0);
+    const cL = el("td", "ph-lk");
+    cL.appendChild(lkLencana(x.em));
+    tr.appendChild(cL);
     const a = arah(x.pct);
     const cP = el("td", "num " + a.k, a.t + rekPersen(x.pct, 1));
     cP.appendChild(el("span", "nm ph-sub", rp(x.awal) + " → " + rp(x.c)));
@@ -7047,7 +7057,7 @@ function phTabel(baris, judul, arahKelas, kunciUrut, tanpaKunci) {
   });
   if (!baris.length) {
     const tr = el("tr"); const td = el("td", null, "Tidak ada emiten.");
-    td.colSpan = 7; tr.appendChild(td); tbody.appendChild(tr);
+    td.colSpan = 8; tr.appendChild(td); tbody.appendChild(tr);
   }
   t.appendChild(tbody);
   bungkus.appendChild(t); bung.appendChild(bungkus);
@@ -7987,7 +7997,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-12-39";
+const VERSI_APP = "2026-10-14-1";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
