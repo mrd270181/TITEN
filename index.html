@@ -659,6 +659,21 @@ nav button.jv-ada svg{stroke:var(--oranye)}
 .pt-tgl-h{display:block;font-size:9.5px;font-weight:400;opacity:.85}
 .ph-tag{font-size:10px;font-weight:700;color:#d9a441;border:1px solid #d9a441;border-radius:5px;padding:0 5px}
 .ph-kol td:nth-child(2),.ph-kol th:nth-child(2){text-align:left}
+.rd-ring b.rd-or{color:var(--oranye)}
+.rd-tabel td,.rd-tabel th{white-space:nowrap}
+.rd-tabel td.rd-tengah,.rd-tabel th.rd-tengah{text-align:center}
+.rd-tabel td.rd-kiri,.rd-tabel th.rd-kiri{text-align:left}
+.rd-saklar button{white-space:nowrap;padding-left:12px;padding-right:12px}
+.rd-tabel td .kode{display:block;font-weight:800}.rd-tabel td .nm{display:block;font-size:10.5px;color:var(--ink-3);max-width:130px;overflow:hidden;text-overflow:ellipsis}
+.rd-tier{display:inline-block;font-weight:800;font-size:11px;border-radius:5px;padding:2px 7px}
+.rd-tier.A{background:var(--oranye);color:#fff}.rd-tier.B{background:var(--oranye-muda);color:var(--oranye-tua)}.rd-tier.C{background:var(--surface-2);color:var(--ink-3)}
+.rd-ciri i{font-style:normal;display:inline-block;width:17px;text-align:center;border-radius:4px;margin-right:2px;font-size:12px}
+.rd-ciri i.y{background:var(--naik-bg);color:var(--naik)}.rd-ciri i.n{background:var(--surface-2);color:var(--ink-3);opacity:.6}
+.rd-tabel td.rd-kosong{color:var(--ink-3)}
+.rd-awas{color:var(--turun);margin-top:6px}
+.rd-contoh{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-top:8px}
+.rd-contoh>div{border:1px solid var(--garis);border-radius:10px;padding:10px;font-size:12px;cursor:pointer}
+.rd-contoh>div>b{font-size:15px}
 .ph-kol td.ph-lk,.ph-kol th.ph-lk{text-align:center;padding-left:4px;padding-right:4px}
 .ph-kol td.no,.ph-kol th:first-child{text-align:center;color:var(--ink-3);padding:6px 3px;width:26px}
 input.bk-kode{width:86px;flex:0 0 auto;font-size:18px;font-weight:800;letter-spacing:2px;
@@ -1915,6 +1930,200 @@ function hitungPotensi(tglSinyal) {
   });
   return {semesta, sesudah: tgl.length - 1 - i, tglNanti: [1, 2, 3].map(n => tgl[i + n] || null), tglLalu: tgl[i - 1] || null};
 }
+/* ================= SCREENER > RADAR BREAKOUT =================
+   Hasil analisa top-50 kenaikan harga Jun/Apr-Okt 2026 (14 Okt 2026).
+   SINYAL = penutupan > tertinggi 60 hari bursa sebelumnya, volume >= 3x rata-rata
+   50 hari sebelumnya (min. 40 hari ada), value hari itu >= Rp1 M, harga naik hari
+   itu; hanya sinyal PERTAMA dalam 20 hari bursa. Harga & volume dari daftarHari
+   (sudah disesuaikan split). CIRI: (1) kapitalisasi < Rp1 T (harga mentah x
+   saham tercatat), (2) rentang 60 hari (maks/min-1) >= 50%, (3) >= 20% di bawah
+   puncak 250 hari (min. 120 hari data). Tier A = 3 ciri, B = 2, C = 0-1.
+   Hasil uji 6 bulan: ~1 dari 12 sinyal naik > 50%, 65% berakhir minus - ini
+   daftar PANTAUAN, bukan tanda beli. Rekam jejak dihitung ulang dari data HP. */
+let rdHari = 10, rdTier = 0, rdMin = 1e9, rdUrut = {k: "k", a: -1}, rdCache = null;
+function hitungRadar() {
+  const tgl = [...new Set(daftarHari.map(r => r.tgl))].filter(Boolean).sort();
+  const kunci = tgl.length + "|" + tgl[tgl.length - 1] + "|" + daftarHari.length;
+  if (rdCache && rdCache.kunci === kunci) return rdCache;
+  const iT = {}; tgl.forEach((t, i) => iT[t] = i);
+  const perTgl = {};
+  daftarHari.forEach(r => { if (r.tgl && !perTgl[r.tgl]) perTgl[r.tgl] = r.baris || {}; });
+  const deret = {};
+  tgl.forEach(t => { const b = perTgl[t];
+    Object.keys(b).forEach(k => { const x = b[k]; if (!x || !(x.c > 0)) return;
+      (deret[k] || (deret[k] = [])).push({t, c: x.c, v: x.v || 0, n: x.n || 0,
+        mc: x.ls > 0 ? x.c * (x.adj || 1) * x.ls : null}); }); });
+  const sinyal = [], akhirEm = {};
+  Object.keys(deret).forEach(k => {
+    const D = deret[k]; akhirEm[k] = D[D.length - 1];
+    let lalu = -1e9;   /* indeks kejadian terakhir (sinyal mentah) */
+    for (let i = 60; i < D.length; i++) {
+      const x = D[i];
+      if (!(x.c > D[i - 1].c) || x.n < 1e9) continue;
+      let hi = 0; for (let j = i - 60; j < i; j++) if (D[j].c > hi) hi = D[j].c;
+      if (!(x.c > hi)) continue;
+      let sv = 0, nv = 0; for (let j = Math.max(0, i - 50); j < i; j++) { sv += D[j].v; nv++; }
+      if (nv < 40 || !(x.v >= 3 * sv / nv)) continue;
+      const pertama = i - lalu > 20; lalu = i;
+      if (!pertama) continue;
+      let mx = 0, mn = Infinity; for (let j = i - 59; j <= i; j++) { if (D[j].c > mx) mx = D[j].c; if (D[j].c < mn) mn = D[j].c; }
+      let pk = null; if (i >= 119) { pk = 0; for (let j = Math.max(0, i - 249); j <= i; j++) if (D[j].c > pk) pk = D[j].c; }
+      const nn = D.slice(Math.max(0, i - 60), i).map(y => y.n).sort((a, b) => a - b);
+      const med = nn.length >= 30 ? (nn.length % 2 ? nn[(nn.length - 1) / 2] : (nn[nn.length / 2 - 1] + nn[nn.length / 2]) / 2) : null;
+      const rg = mx / mn - 1, dp = pk ? x.c / pk - 1 : null;
+      const ciri = [x.mc !== null && x.mc < 1e12, rg >= 0.5, dp !== null && dp <= -0.2];
+      sinyal.push({em: k, t: x.t, c: x.c, n: x.n, mc: x.mc, rg: rg * 100, dp: dp === null ? null : dp * 100,
+        lj: med > 0 ? x.n / med : null, ciri, k: ciri.filter(Boolean).length});
+    }
+  });
+  sinyal.forEach(s => { const a = akhirEm[s.em]; s.kini = a.c; s.s = (a.c / s.c - 1) * 100; s.iT = iT[s.t]; });
+  return (rdCache = {kunci, tgl, sinyal});
+}
+/* 3 broker net beli terbesar (lot, REGULER) satu emiten satu tanggal */
+function rdBroker(em, t) {
+  const net = {};
+  ((semuaTrx().REG) || []).forEach(r => { if (r.em === em && r.tgl === t) net[r.br] = (net[r.br] || 0) + r.beli - r.jual; });
+  const top = Object.keys(net).filter(b => net[b] > 0).sort((a, b) => net[b] - net[a]).slice(0, 3);
+  return top.length ? top : null;
+}
+function panelRadar(w) {
+  const p = el("div", "panel");
+  p.appendChild(el("h2", null, "Radar breakout — sinyal " + rdHari + " hari bursa terakhir"));
+  lkPastikan(() => { if (subScr === "radar") halScreener(); });
+  const R = hitungRadar(), nT = R.tgl.length;
+  if (nT < 70) { p.appendChild(el("div", "bantu", "Riwayat harga di HP belum cukup (perlu minimal 70 hari bursa).")); w.appendChild(p); return; }
+  const batas = R.tgl[Math.max(0, nT - rdHari)];
+  const kini = R.sinyal.filter(s => s.t >= batas && s.n >= rdMin);
+  const tampil = kini.filter(s => s.k >= rdTier);
+  /* rekam jejak: sinyal yang sudah berumur >= 20 hari bursa */
+  const lama = R.sinyal.filter(s => nT - 1 - s.iT >= 20);
+  const pct = f => lama.length ? Math.round(100 * lama.filter(f).length / lama.length) : null;
+  const rg = el("div", "nw-ring rd-ring");
+  const kotak = (isi, ket, kelas) => { const d = el("div"); d.appendChild(el("b", kelas, isi)); d.appendChild(el("span", null, ket)); rg.appendChild(d); };
+  kotak(String(kini.length), "sinyal " + rdHari + " hari terakhir");
+  kotak(String(kini.filter(s => s.k >= 3).length), "Tier A (cocok 3 ciri)", "rd-or");
+  const p50 = pct(s => s.s > 50);
+  kotak(p50 === null ? "–" : (p50 ? "1 dari " + Math.max(1, Math.round(100 / p50)) : "0"), "sinyal lalu yang naik >50% (" + p50 + "%)");
+  kotak(pct(s => s.s < 0) === null ? "–" : pct(s => s.s < 0) + "%", "sinyal lalu yang berakhir minus", "turun");
+  p.appendChild(rg);
+
+  const alat = el("div", "alat ph-alat");
+  const lR = el("label", "bantu", "Rentang: "), sR = el("select", "fa-min");
+  [[10, "10 hari bursa"], [20, "20 hari bursa"], [60, "60 hari bursa"]].forEach(([v, t]) => {
+    const o = el("option", null, t); o.value = v; if (rdHari === v) o.selected = true; sR.appendChild(o); });
+  sR.onchange = () => { rdHari = +sR.value; halScreener(); };
+  lR.appendChild(sR); alat.appendChild(lR);
+  const sk = el("div", "saklar rd-saklar");
+  [[0, "Semua"], [3, "Tier A"], [2, "A + B"]].forEach(([v, j]) => {
+    const b = el("button", rdTier === v ? "aktif" : null, j);
+    b.onclick = () => { rdTier = v; halScreener(); }; sk.appendChild(b); });
+  alat.appendChild(sk);
+  const lM = el("label", "bantu", "Value min.: "), sM = el("select", "fa-min");
+  [[1e9, "Rp1 M/hari"], [5e9, "Rp5 M/hari"], [1e10, "Rp10 M/hari"]].forEach(([v, t]) => {
+    const o = el("option", null, t); o.value = v; if (rdMin === v) o.selected = true; sM.appendChild(o); });
+  sM.onchange = () => { rdMin = +sM.value; halScreener(); };
+  lM.appendChild(sM); alat.appendChild(lM);
+  p.appendChild(alat);
+  p.appendChild(rdTabel(tampil));
+
+  p.appendChild(el("div", "bantu",
+    "Sinyal = penutupan menembus harga tertinggi 60 hari bursa, volume ≥ 3× rata-rata 50 hari, value ≥ Rp1 M, " +
+    "harga naik hari itu (hanya sinyal pertama dalam 20 hari bursa). Harga sudah disesuaikan stock split. " +
+    "Ciri (dari analisa top-50 kenaikan 6 bulan): ① kapitalisasi < Rp1 T · ② rentang harga 60 hari ≥ 50% · " +
+    "③ masih ≥ 20% di bawah puncak 1 tahun. Tier A = 3 ciri, B = 2, C = 0–1. " +
+    "Lonjakan value = value hari sinyal ÷ median value 60 hari sebelumnya. " +
+    "Broker = 3 broker net beli terbesar (lot, REGULER) hari sinyal — hanya emiten yang punya data broker. " +
+    "LK = kesimpulan laporan keuangan (Bagus 75–100, Sedang 60–74, Jelek < 60). " +
+    "Ketuk judul kolom untuk mengurutkan; ketuk baris untuk membuka Rekomendasi emiten itu dari tanggal sinyal."));
+  p.appendChild(el("div", "bantu rd-awas",
+    "Peringatan: rekam jejak di atas dihitung dari " + lama.length + " sinyal sejak " + (R.tgl[60] ? tglID(R.tgl[60]) : "–") +
+    " (dicek sampai " + tglID(R.tgl[nT - 1]) + "). Kebanyakan sinyal gagal; radar ini daftar PANTAUAN, bukan tanda beli — siapkan batas rugi."));
+  w.appendChild(p);
+
+  /* rekam jejak: 3 terbaik dan 1 terburuk, supaya yang gagal juga terlihat */
+  const p2 = el("div", "panel");
+  p2.appendChild(el("h2", null, "Rekam jejak — contoh sinyal lalu"));
+  p2.appendChild(el("div", "bantu", "Sinyal berumur ≥ 20 hari bursa, value ≥ Rp1 M. Yang berhasil dan yang gagal sama-sama ditampilkan."));
+  /* satu emiten cukup sekali: ALKA bisa punya tiga sinyal yang semuanya teratas */
+  const sdh = {}, urutS = lama.slice().sort((a, b) => b.s - a.s).filter(x => !sdh[x.em] && (sdh[x.em] = 1));
+  const terburuk = lama.slice().sort((a, b) => a.s - b.s)[0];
+  const contoh = urutS.slice(0, 3).concat(urutS.length > 3 && terburuk ? [terburuk] : []);
+  const kt = el("div", "rd-contoh");
+  contoh.forEach(s => {
+    const d = el("div", "klik");
+    const j = el("div"); j.appendChild(el("b", null, s.em)); j.appendChild(document.createTextNode(" · " + tglID(s.t)));
+    d.appendChild(j);
+    d.appendChild(el("div", null, nf(s.c) + " → " + nf(s.kini)));
+    d.appendChild(el("b", s.s >= 0 ? "naik" : "turun", (s.s >= 0 ? "+" : "−") + nf(Math.abs(s.s)) + "%"));
+    d.onclick = () => rdBuka(s);
+    kt.appendChild(d);
+  });
+  if (!contoh.length) kt.appendChild(el("div", "bantu", "Belum ada sinyal yang cukup umur."));
+  p2.appendChild(kt);
+  w.appendChild(p2);
+}
+function rdBuka(s) {
+  rek.em = s.em; rek.dari = s.t; rek.sampai = "";
+  subScr = "rekomendasi"; halScreener();
+}
+function rdTabel(baris) {
+  const bungkus = el("div", "tbl-bungkus tbl-kunci rd-tabel");
+  const t = el("table"), thead = el("thead"), trh = el("tr");
+  const nilai = {k: x => x.k * 1e6 + (x.iT || 0), t: x => x.t, em: x => x.em, lk: x => { const q = lkSkor(x.em); return q ? q.skor : -1; },
+    c: x => x.c, kini: x => x.kini, s: x => x.s, lj: x => x.lj === null ? -1 : x.lj, n: x => x.n,
+    mc: x => x.mc === null ? 1e18 : x.mc, rg: x => x.rg, dp: x => x.dp === null ? 1e9 : x.dp};
+  const KOL = [["k", "Tier"], ["t", "Tgl sinyal"], ["em", "Emiten"], ["lk", "LK"], ["c", "Harga sinyal"], ["kini", "Harga kini"],
+    ["s", "% sejak sinyal"], ["lj", "Lonjakan value"], ["n", "Value hari sinyal"], ["mc", "Kapitalisasi"],
+    ["rg", "Rentang 60h"], ["dp", "Dari puncak 1 th"], ["", "Ciri ✓"], ["", "Broker net beli"]];
+  KOL.forEach(([k, j]) => {
+    const kiri = k === "t" || k === "em" || !k;
+    const th = el("th", kiri ? "rd-kiri" : k === "lk" || k === "k" ? "rd-tengah" : "num", j + (rdUrut.k === k && k ? (rdUrut.a < 0 ? " ▼" : " ▲") : ""));
+    if (k) {
+      th.style.cursor = "pointer"; th.title = "Urutkan menurut " + j;
+      th.onclick = () => {
+        if (rdUrut.k === k) rdUrut.a = -rdUrut.a;
+        else rdUrut = {k, a: k === "em" ? 1 : -1};
+        bungkus.replaceWith(rdTabel(baris));
+      };
+    }
+    trh.appendChild(th);
+  });
+  thead.appendChild(trh); t.appendChild(thead);
+  const tb = el("tbody"), f = nilai[rdUrut.k] || nilai.k;
+  baris.slice().sort((a, b) => {
+    const x = f(a), y = f(b);
+    return ((typeof x === "string" ? x.localeCompare(y) : x - y) * rdUrut.a) || (a.t < b.t ? 1 : a.t > b.t ? -1 : 0);
+  }).forEach(s => {
+    const tr = el("tr", "klik");
+    tr.title = "Buka Rekomendasi " + s.em + " sejak " + tglID(s.t);
+    tr.onclick = () => rdBuka(s);
+    const tier = s.k >= 3 ? "A" : s.k === 2 ? "B" : "C";
+    const c0 = el("td", "rd-tengah"); c0.appendChild(el("span", "rd-tier " + tier, tier)); tr.appendChild(c0);
+    tr.appendChild(el("td", "rd-kiri", s.t.slice(8) + "/" + s.t.slice(5, 7)));
+    const cE = el("td", "rd-kiri"); cE.appendChild(el("span", "kode", s.em));
+    cE.appendChild(el("span", "nm", (DATA.nama && DATA.nama[s.em]) || "")); tr.appendChild(cE);
+    const cL = el("td", "rd-tengah"); cL.appendChild(lkLencana(s.em)); tr.appendChild(cL);
+    tr.appendChild(el("td", "num", nf(s.c)));
+    tr.appendChild(el("td", "num", nf(s.kini)));
+    tr.appendChild(el("td", "num " + arah(s.s).k, (s.s > 0 ? "+" : s.s < 0 ? "−" : "") + nf(Math.abs(s.s), 1) + "%"));
+    tr.appendChild(el("td", "num", s.lj === null ? "–" : nf(s.lj, 1) + "×"));
+    tr.appendChild(el("td", "num", rpSingkat(s.n)));
+    tr.appendChild(el("td", "num", s.mc === null ? "–" : rpSingkat(s.mc)));
+    tr.appendChild(el("td", "num", nf(s.rg) + "%"));
+    tr.appendChild(el("td", "num", s.dp === null ? "–" : (s.dp < 0 ? "−" : "") + nf(Math.abs(s.dp)) + "%"));
+    const cC = el("td", "rd-ciri rd-kiri");
+    ["①", "②", "③"].forEach((g, i) => cC.appendChild(el("i", s.ciri[i] ? "y" : "n", g)));
+    cC.title = "① kapitalisasi < Rp1 T · ② rentang 60 hari ≥ 50% · ③ ≥ 20% di bawah puncak 1 tahun";
+    tr.appendChild(cC);
+    const br = rdBroker(s.em, s.t);
+    tr.appendChild(el("td", br ? "rd-kiri" : "rd-kiri rd-kosong", br ? br.join(" · ") : "–"));
+    tb.appendChild(tr);
+  });
+  if (!baris.length) { const tr = el("tr"), td = el("td", null, "Tidak ada sinyal di rentang ini."); td.colSpan = KOL.length; tr.appendChild(td); tb.appendChild(tr); }
+  t.appendChild(tb); bungkus.appendChild(t);
+  return bungkus;
+}
+
 function panelPotensi(w) {
   const p = el("div", "panel");
   p.appendChild(el("h2", null, "Potensi 3 hari — asing net beli + lonjakan volume"));
@@ -5486,7 +5695,7 @@ function halScreener() {
   const tab = el("div", "sub-tab lima");
   [["saringan", "KRITERIA SARINGAN"], ["favorit", "ANALISA FAVORIT"],
    ["rekomendasi", "REKOMENDASI"], ["forakum", "FOREIGN AKUM"],
-   ["brkakum", "BROKER AKUM"], ["hargavol", "HARGA & VOL"], ["potensi", "POTENSI 3 HARI"]]
+   ["brkakum", "BROKER AKUM"], ["hargavol", "HARGA & VOL"], ["potensi", "POTENSI 3 HARI"], ["radar", "RADAR BREAKOUT"]]
     .forEach(([k, judul]) => {
       const b = el("button", subScr === k ? "aktif" : null, judul);
       b.onclick = () => { subScr = k; halScreener(); };
@@ -5499,6 +5708,7 @@ function halScreener() {
   if (subScr === "brkakum") { panelBrokerAkum(w); return; }
   if (subScr === "hargavol") { panelHargaVol(w); return; }
   if (subScr === "potensi") { panelPotensi(w); return; }
+  if (subScr === "radar") { panelRadar(w); return; }
 
   const p = el("div", "panel");
   p.appendChild(el("h2", null, "Kriteria saringan"));
@@ -7997,7 +8207,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-14-1";
+const VERSI_APP = "2026-10-14-2";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
