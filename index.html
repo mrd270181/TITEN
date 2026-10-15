@@ -2825,12 +2825,20 @@ function lkSkor(kode) {
   const BERAT_LK = ["Ekuitas negatif", "Rugi"];
   F.forEach(f => { f[3] = BERAT_LK.indexOf(f[0]) >= 0; });
   const ringan = F.filter(f => !f[3]), berat = F.filter(f => f[3]);
+  /* 15 Okt 2026 (keputusan user): aturan baru hanya boleh MENAIKKAN skor dibanding aturan lama
+     (tanda apa pun -> maks 59), tidak menurunkan. Emiten lemah bertanda banyak tidak dipotong
+     sampai mendekati 0 - labelnya toh sudah Jelek. */
+  const skorLama = F.length ? Math.min(asli, 59) : asli;
   const sesudahRingan = Math.max(0, asli - 10 * ringan.length);
-  let skor = berat.length && sesudahRingan > 59 ? 59 : sesudahRingan;
+  const skorBaru = berat.length && sesudahRingan > 59 ? 59 : sesudahRingan;
+  let skor = Math.max(skorLama, skorBaru);
+  const nm = L => L.map(f => f[0].toLowerCase()).join(", ");
   let rinci = "skor asli " + asli;
-  if (ringan.length) rinci += " \u2212 " + (10 * ringan.length) + " (" + ringan.map(f => f[0].toLowerCase()).join(", ") + ", bahaya ringan)";
-  if (berat.length) rinci += sesudahRingan > 59 ? " \u2192 dibatasi 59 (" + berat.map(f => f[0].toLowerCase()).join(", ") + ", bahaya berat)"
-    : " (" + berat.map(f => f[0].toLowerCase()).join(", ") + ", bahaya berat: skor sudah di bawah 59)";
+  if (F.length) {
+    if (skor === skorBaru && ringan.length && !berat.length) rinci += " \u2212 " + (asli - skor) + " (" + nm(ringan) + ", bahaya ringan)";
+    else if (skor < asli) rinci += " \u2192 dibatasi 59 (" + nm(F) + ")";
+    else rinci += " (" + nm(F) + " \u2014 skor asli sudah 59 atau kurang, tidak dipotong lagi)";
+  }
   rinci += " = " + skor;
   const label = lksLabel(skor);
   const lama = r.akhir < lksPeriodeTerbaru();
@@ -2879,8 +2887,9 @@ function panelKesimpulanLK(kode) {
     const rc = el("div", "lk-rinci");
     const baris = (a, b, kls) => { const d = el("div", kls || null); d.appendChild(el("span", null, a)); d.appendChild(el("b", null, b)); rc.appendChild(d); };
     baris("Skor asli (tanpa potongan tanda bahaya)", String(k.asli));
-    k.F.filter(f => !f[3]).forEach(f => baris("\u26a0 " + f[0] + " \u00b7 bahaya ringan", "\u221210", "lk-rinci-potong"));
-    k.F.filter(f => f[3]).forEach(f => baris("\u26a0 " + f[0] + " \u00b7 bahaya berat", "maks 59", "lk-rinci-potong"));
+    k.F.forEach(f => baris("\u26a0 " + f[0] + " \u00b7 bahaya " + (f[3] ? "berat" : "ringan"), "", "lk-rinci-potong"));
+    const dk = k.skor - k.asli;
+    baris("Pengaruh tanda bahaya", dk ? "\u2212" + (-dk) : "0 (skor asli sudah 59 atau kurang)", "lk-rinci-potong");
     baris("Skor akhir", k.skor + " (" + k.label + " \u26a0)", "lk-rinci-akhir");
     p.appendChild(rc);
   }
@@ -2904,12 +2913,13 @@ function panelKesimpulanLK(kode) {
       rs.forEach((t, i) => b.appendChild(el("p", i === rs.length - 1 ? (k.lama ? "st lama" : "st") : null, t))); p.appendChild(b); } }
   k.F.forEach(f => {
     const d = el("div", "lk-flag"); d.appendChild(el("b", null, "⚠ " + f[0]));
-    d.appendChild(el("span", "lk-flag-jenis " + (f[3] ? "berat" : "ringan"), f[3] ? "bahaya berat \u00b7 skor maks 59" : "bahaya ringan \u00b7 \u221210 poin"));
+    d.appendChild(el("span", "lk-flag-jenis " + (f[3] ? "berat" : "ringan"), f[3] ? "bahaya berat" : "bahaya ringan"));
     d.appendChild(document.createTextNode(" — " + f[1]));
     d.appendChild(el("div", "lk-fx", f[2])); p.appendChild(d);
   });
   if (k.F.length) p.appendChild(el("div", "bantu", "Tanda bahaya BERAT (ekuitas negatif, rugi) membatasi skor paling tinggi 59 (Jelek) walaupun ukuran lain bagus. " +
-    "Tanda bahaya RINGAN (utang besar, piutang melonjak, arus kas operasi negatif) memotong 10 poin per tanda; tanda \u26a0 tetap tampil."));
+    "Tanda bahaya RINGAN (utang besar, piutang melonjak, arus kas operasi negatif) memotong 10 poin per tanda, tetapi skor tidak pernah " +
+    "lebih rendah dari aturan lama (skor asli, paling tinggi 59) \u2014 jadi emiten yang skor aslinya sudah 59 atau kurang tidak dipotong lagi. Tanda \u26a0 tetap tampil."));
   if (k.maks < 100) p.appendChild(el("div", "bantu", "Sebagian pos tidak tersedia di data LK IDX emiten ini, jadi skor dihitung dari " + k.maks + " poin yang bisa dinilai lalu diubah ke skala 100."));
   if (k.lama) p.appendChild(el("div", "lk-flag", "\u26a0 LK terakhir yang tersedia untuk " + kode + " per " + r.akhir + " \u2014 sudah lama; kesimpulan ini belum mencerminkan kinerja terbaru."));
   p.appendChild(el("div", "bantu", "Dihitung dari LK terakhir (laba rugi & arus kas = 4 kuartal terakhir, neraca = saldo akhir). " +
@@ -8293,7 +8303,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-15-5";
+const VERSI_APP = "2026-10-15-6";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
