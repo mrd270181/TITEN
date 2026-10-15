@@ -610,6 +610,11 @@ tr.pt-dicoret td{opacity:.6} tr.pt-dicoret .kode{text-decoration:line-through}
 .pt-hpc{font-size:.85em;font-weight:600}
 .rek-kn.lk-kn.Bagus{color:var(--naik)}.rek-kn.lk-kn.Sedang{color:#a87400}.rek-kn.lk-kn.Jelek{color:var(--turun)}
 .lk-kepala{display:flex;align-items:center;gap:12px}
+.lk-rinci{margin:10px 0 4px;border:1px solid var(--garis);border-radius:9px;padding:8px 10px;font-size:12.5px;background:var(--surface-2)}
+.lk-rinci>div{display:flex;justify-content:space-between;gap:10px;padding:3px 0}
+.lk-rinci-potong{color:var(--oranye-tua)}.lk-rinci-akhir{border-top:1px solid var(--garis);margin-top:3px;padding-top:6px!important}
+.lk-flag-jenis{display:inline-block;font-size:10.5px;font-weight:700;border-radius:4px;padding:1px 6px;margin-left:6px}
+.lk-flag-jenis.berat{background:var(--turun-bg);color:var(--turun)}.lk-flag-jenis.ringan{background:var(--oranye-muda);color:var(--oranye-tua)}
 .lk-angka{font-size:30px;font-weight:800;min-width:56px;text-align:center;border-radius:10px;padding:4px 6px}
 .lk-angka.Bagus{color:var(--naik);background:var(--naik-bg)}.lk-angka.Sedang{color:#a87400;background:rgba(230,170,0,.16)}.lk-angka.Jelek{color:var(--turun);background:var(--turun-bg)}
 .lk-sub{color:var(--ink-3);font-size:11px}.lk-kal{font-size:12.5px}
@@ -2647,7 +2652,7 @@ function pbPanel(K, tgl, adaMF) {
    Konsistensi 10, Arah margin 10, Arus kas bebas 5 = 100.
    Bank: Profitabilitas 40, Pertumbuhan 20, Konsistensi 20, Arah margin 20 = 100. Ukuran yang tidak
    dinilai (bank) dibuang lalu skornya diubah ke skala 0-100.
-   Tanda bahaya -> skor paling tinggi 59. Label: >= 75 Bagus, 60-74 Sedang, < 60 Jelek.
+   Tanda bahaya berat -> skor paling tinggi 59, ringan -> -10 poin per tanda (15 Okt 2026). Label: >= 75 Bagus, 60-74 Sedang, < 60 Jelek.
    Batas angka = patokan umum analis, BUKAN hasil uji daya ramal harga. */
 const LKS_ACU = {"Profitabilitas": "bagus jika ROE ≥ 15%", "Pertumbuhan": "bagus jika pendapatan & laba naik ≥ 10%",
   "Kualitas laba": "bagus jika arus kas operasi ≥ laba bersih", "Utang & likuiditas": "bagus jika DER ≤ 1× dan rasio lancar ≥ 1,5×",
@@ -2812,8 +2817,21 @@ function lkSkor(kode) {
   if (!KEU && r.der !== null && r.der > 3) F.push(["Utang besar", "DER " + f1(r.der) + "× (utang " + f1(r.der) + " kali modal)",
     "Utang lebih dari 3 kali modal sendiri. Beban bunga berat, dan kalau usaha melemah sedikit saja perusahaan bisa kesulitan bayar."]);
   const maks = cat.reduce((a, c) => a + (c.p === null ? 0 : c.m), 0);
-  let skor = Math.round(s * 100 / maks);
-  if (F.length && skor > 59) skor = 59;
+  /* 15 Okt 2026: tanda bahaya dibagi dua. BERAT (ekuitas negatif, rugi) -> skor paling tinggi 59.
+     RINGAN (utang besar, piutang melonjak, arus kas operasi negatif) -> -10 poin per tanda.
+     Dulu tanda apa pun langsung membatasi 59, sehingga emiten kuat dengan satu tanda ringan (PTRO,
+     BREN) sama dengan emiten bertanda banyak. Skor asli (tanpa potongan) disimpan untuk rincian. */
+  const asli = Math.round(s * 100 / maks);
+  const BERAT_LK = ["Ekuitas negatif", "Rugi"];
+  F.forEach(f => { f[3] = BERAT_LK.indexOf(f[0]) >= 0; });
+  const ringan = F.filter(f => !f[3]), berat = F.filter(f => f[3]);
+  const sesudahRingan = Math.max(0, asli - 10 * ringan.length);
+  let skor = berat.length && sesudahRingan > 59 ? 59 : sesudahRingan;
+  let rinci = "skor asli " + asli;
+  if (ringan.length) rinci += " \u2212 " + (10 * ringan.length) + " (" + ringan.map(f => f[0].toLowerCase()).join(", ") + ", bahaya ringan)";
+  if (berat.length) rinci += sesudahRingan > 59 ? " \u2192 dibatasi 59 (" + berat.map(f => f[0].toLowerCase()).join(", ") + ", bahaya berat)"
+    : " (" + berat.map(f => f[0].toLowerCase()).join(", ") + ", bahaya berat: skor sudah di bawah 59)";
+  rinci += " = " + skor;
   const label = lksLabel(skor);
   const lama = r.akhir < lksPeriodeTerbaru();
   const kuat = cat.filter(c => c.p !== null && c.p >= c.m * 0.99).map(c => c.n.toLowerCase());
@@ -2823,7 +2841,7 @@ function lkSkor(kode) {
   if (lemah.length) kal += " Lemah di " + lemah.join(", ") + ".";
   if (F.length) kal += " Waspada: " + F.map(f => f[0].toLowerCase()).join("; ") + ".";
   if (lama) kal += " LK terakhir yang tersedia per " + r.akhir + " (sudah lama).";
-  return (lksCache[kode] = {skor, label, kal, cat, F, r, maks, lama});
+  return (lksCache[kode] = {skor, label, kal, cat, F, r, maks, lama, asli, rinci});
 }
 
 /* lencana kecil Bagus/Sedang/Jelek (dipakai tabel & kartu) */
@@ -2831,7 +2849,7 @@ function lkLencana(kode) {
   const k = lkSkor(kode);
   if (!k) { const s = el("span", "lk-bd kosong", "–"); s.title = LK ? "LK belum cukup untuk dinilai" : "lk.json belum termuat"; return s; }
   const s = el("span", "lk-bd " + k.label, k.label + (k.F.length ? " ⚠" : ""));
-  s.title = "Skor LK " + k.skor + "/100 · " + k.kal;
+  s.title = "Skor LK " + k.skor + "/100" + (k.F.length ? " · " + k.rinci : "") + " · " + k.kal;
   return s;
 }
 /* tabel yang memakai skor LK: kalau lk.json belum termuat, muat lalu gambar ulang sekali */
@@ -2856,6 +2874,16 @@ function panelKesimpulanLK(kode) {
   j.appendChild(el("span", "lk-sub", " · LK " + r.jenis + " " + r.akhir.slice(0, 4) + (r.bank ? " · lembaga keuangan" : "") + (r.sub ? " · " + r.sub : "")));
   kn.appendChild(j); kn.appendChild(el("div", "lk-kal", k.kal.replace(/^LK [a-z]+ \(\d+\/100\)\. ?/, "")));
   kp.appendChild(kn); p.appendChild(kp);
+  /* rincian skor: asli -> potongan tanda bahaya -> akhir (hanya kalau ada tanda bahaya) */
+  if (k.F.length) {
+    const rc = el("div", "lk-rinci");
+    const baris = (a, b, kls) => { const d = el("div", kls || null); d.appendChild(el("span", null, a)); d.appendChild(el("b", null, b)); rc.appendChild(d); };
+    baris("Skor asli (tanpa potongan tanda bahaya)", String(k.asli));
+    k.F.filter(f => !f[3]).forEach(f => baris("\u26a0 " + f[0] + " \u00b7 bahaya ringan", "\u221210", "lk-rinci-potong"));
+    k.F.filter(f => f[3]).forEach(f => baris("\u26a0 " + f[0] + " \u00b7 bahaya berat", "maks 59", "lk-rinci-potong"));
+    baris("Skor akhir", k.skor + " (" + k.label + " \u26a0)", "lk-rinci-akhir");
+    p.appendChild(rc);
+  }
   const lg = el("div", "lk-leg");
   [["Bagus", "75–100 Bagus"], ["Sedang", "60–74 Sedang"], ["Jelek", "di bawah 60 Jelek"]].forEach(([c, t]) =>
     lg.appendChild(el("span", "lk-bd " + c + (k.label === c ? " on" : ""), t)));
@@ -2875,10 +2903,13 @@ function panelKesimpulanLK(kode) {
       h.appendChild(el("span", "lk-bd " + k.label, k.label + " (" + k.skor + "/100)")); b.appendChild(h);
       rs.forEach((t, i) => b.appendChild(el("p", i === rs.length - 1 ? (k.lama ? "st lama" : "st") : null, t))); p.appendChild(b); } }
   k.F.forEach(f => {
-    const d = el("div", "lk-flag"); d.appendChild(el("b", null, "⚠ " + f[0])); d.appendChild(document.createTextNode(" — " + f[1]));
+    const d = el("div", "lk-flag"); d.appendChild(el("b", null, "⚠ " + f[0]));
+    d.appendChild(el("span", "lk-flag-jenis " + (f[3] ? "berat" : "ringan"), f[3] ? "bahaya berat \u00b7 skor maks 59" : "bahaya ringan \u00b7 \u221210 poin"));
+    d.appendChild(document.createTextNode(" — " + f[1]));
     d.appendChild(el("div", "lk-fx", f[2])); p.appendChild(d);
   });
-  if (k.F.length) p.appendChild(el("div", "bantu", "Karena ada tanda bahaya, skor dibatasi paling tinggi 59 (Jelek) walaupun ukuran lain bagus."));
+  if (k.F.length) p.appendChild(el("div", "bantu", "Tanda bahaya BERAT (ekuitas negatif, rugi) membatasi skor paling tinggi 59 (Jelek) walaupun ukuran lain bagus. " +
+    "Tanda bahaya RINGAN (utang besar, piutang melonjak, arus kas operasi negatif) memotong 10 poin per tanda; tanda \u26a0 tetap tampil."));
   if (k.maks < 100) p.appendChild(el("div", "bantu", "Sebagian pos tidak tersedia di data LK IDX emiten ini, jadi skor dihitung dari " + k.maks + " poin yang bisa dinilai lalu diubah ke skala 100."));
   if (k.lama) p.appendChild(el("div", "lk-flag", "\u26a0 LK terakhir yang tersedia untuk " + kode + " per " + r.akhir + " \u2014 sudah lama; kesimpulan ini belum mencerminkan kinerja terbaru."));
   p.appendChild(el("div", "bantu", "Dihitung dari LK terakhir (laba rugi & arus kas = 4 kuartal terakhir, neraca = saldo akhir). " +
@@ -8262,7 +8293,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-15-4";
+const VERSI_APP = "2026-10-15-5";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
