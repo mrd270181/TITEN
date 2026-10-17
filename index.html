@@ -8351,7 +8351,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-17-1";
+const VERSI_APP = "2026-10-17-2";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -14353,38 +14353,73 @@ function gambarChart(kan, d, ket) {
   tulisInfo(null);
 }
 
-/* ---- BANDING: emiten ini vs beberapa emiten lain ---- */
-let cariBanding = [];            /* kode pembanding pilihan user */
+/* ---- BANDING: daftar emiten pilihan user sendiri ----
+   17 Okt 2026 (keputusan user): emiten yang sedang dibuka di CARI TIDAK otomatis ikut.
+   Daftar berdiri sendiri dan tersimpan di HP sampai dihapus. */
+let cariBanding = (() => { try { const v = JSON.parse(localStorage.getItem("titenBanding") || "[]");
+  return Array.isArray(v) ? v.filter(x => typeof x === "string").slice(0, 8) : []; } catch (e) { return []; } })();
+const BANDING_MAKS = 8;
+function simpanBanding() { try { localStorage.setItem("titenBanding", JSON.stringify(cariBanding)); } catch (e) {} }
 
 function panelBanding(kode, periode) {
   const p = el("div", "panel");
   p.appendChild(el("h2", null, "Banding"));
+  cariBanding = cariBanding.filter(k => barisScr[k]);
 
+  const tambahKode = v => {
+    v = String(v || "").trim().toUpperCase();
+    if (!v || !barisScr[v] || cariBanding.indexOf(v) >= 0 || cariBanding.length >= BANDING_MAKS) return false;
+    cariBanding.push(v); simpanBanding(); halCari(); return true;
+  };
   const alat = el("div", "alat");
   const inp = el("input", "cari");
-  inp.placeholder = "Ketik kode emiten pembanding";
+  inp.placeholder = cariBanding.length >= BANDING_MAKS ? "Maksimal " + BANDING_MAKS + " emiten"
+    : "Ketik kode/nama emiten untuk dibandingkan";
   inp.autocapitalize = "characters";
-  inp.onchange = () => {
-    const v = inp.value.trim().toUpperCase();
-    if (v && v !== kode && cariBanding.indexOf(v) < 0 && barisScr[v]) {
-      cariBanding.push(v); halCari();
-    } else if (v) { inp.value = ""; }
+  inp.disabled = cariBanding.length >= BANDING_MAKS;
+  const saran = el("div");
+  inp.oninput = () => {
+    saran.innerHTML = "";
+    const q = inp.value.trim().toUpperCase();
+    if (!q) return;
+    DATA.scr.filter(b => cariBanding.indexOf(b[0]) < 0 &&
+        (String(b[0]).indexOf(q) === 0 || String(b[1] || "").toUpperCase().indexOf(q) >= 0))
+      .slice(0, 8).forEach(b => {
+        const t = el("button", "tambah", b[0] + " — " + (b[1] || ""));
+        t.style.display = "block"; t.style.width = "100%"; t.style.textAlign = "left";
+        t.onclick = () => tambahKode(b[0]);
+        saran.appendChild(t);
+      });
   };
+  inp.onkeydown = e => { if (e.key === "Enter" && !tambahKode(inp.value)) inp.select(); };
   alat.appendChild(inp);
   p.appendChild(alat);
+  p.appendChild(saran);
 
   if (cariBanding.length) {
     const baris = el("div", "alat");
     cariBanding.forEach(k => {
       const b = el("button", "aktif", k + " ×");
       b.style.padding = "5px 10px"; b.style.fontSize = "12px";
-      b.onclick = () => { cariBanding = cariBanding.filter(x => x !== k); halCari(); };
+      b.onclick = () => { cariBanding = cariBanding.filter(x => x !== k); simpanBanding(); halCari(); };
       baris.appendChild(b);
     });
+    if (cariBanding.length > 1) {
+      const hapus = el("button", null, "Kosongkan");
+      hapus.style.padding = "5px 10px"; hapus.style.fontSize = "12px";
+      hapus.onclick = () => { cariBanding = []; simpanBanding(); halCari(); };
+      baris.appendChild(hapus);
+    }
     p.appendChild(baris);
   }
+  if (!cariBanding.length) {
+    p.appendChild(el("div", "bantu", "Belum ada emiten yang dibandingkan. Ketik kode di kotak atas, " +
+      "mis. BUMI lalu BRMS (sampai " + BANDING_MAKS + " emiten). Emiten yang sedang dibuka (" + kode +
+      ") tidak ikut kecuali ditambahkan sendiri. Daftar ini tersimpan sampai dihapus."));
+    return p;
+  }
 
-  const kolom = [kode].concat(cariBanding);
+  const kolom = cariBanding.slice();
   const isi = {}, nv = {}, bank = {};
   kolom.forEach(k => {
     const per = kolomPeriode(k, cariMode === "QALL" ? "TTM" : cariMode, 1);
@@ -14527,6 +14562,13 @@ function panelAksi(kode) {
 function halCari() {
   const w = $("#hal-cari"); if (!w) return;
   w.innerHTML = "";
+  /* 17 Okt 2026: CARI langsung membuka emiten terakhir (tersimpan di HP), bawaan BBCA */
+  if (!cariKode) {
+    let t = ""; try { t = localStorage.getItem("titenCariKode") || ""; } catch (e) {}
+    cariKode = barisScr[t] ? t : (barisScr.BBCA ? "BBCA" : "");
+    if (cariKode) cariTutup = true;
+  }
+  if (cariKode) { try { localStorage.setItem("titenCariKode", cariKode); } catch (e) {} }
 
   /* ---- kotak pencarian ---- */
   const pc = el("div", "panel");
@@ -14543,7 +14585,7 @@ function halCari() {
     hasil.innerHTML = "";
     if (cariTutup) return;
     const q = cariTeks.trim().toUpperCase();
-    if (!q) { hasil.appendChild(el("div", "bantu", "Ketik minimal satu huruf.")); return; }
+    if (!q) { if (!cariKode) hasil.appendChild(el("div", "bantu", "Ketik minimal satu huruf.")); return; }
     const cocok = DATA.scr
       .filter(b => String(b[0]).indexOf(q) === 0 || String(b[1]).toUpperCase().indexOf(q) >= 0)
       .slice(0, 25);
