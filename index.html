@@ -604,6 +604,16 @@ tr.pt-dicoret td{opacity:.6} tr.pt-dicoret .kode{text-decoration:line-through}
 .rek-bh .rek-bl,.rek-bh .rek-bv{font-size:10px;font-weight:700;color:var(--ink-3);letter-spacing:.2px}
 .lk-bd{display:inline-block;font-size:11px;font-weight:800;border-radius:5px;padding:2px 7px;white-space:nowrap}
 .lk-bd.Bagus{background:var(--naik-bg);color:var(--naik)}.lk-bd.Sedang{background:rgba(230,170,0,.16);color:#a87400}
+.bd-bungkus{overflow:auto;max-height:70vh;border:1px solid var(--garis);border-radius:8px}
+.bd-tabel{border-collapse:separate;border-spacing:0;width:100%}
+.bd-tabel th{position:sticky;top:0;z-index:2;background:var(--surface-1)}
+.bd-tabel th:first-child,.bd-tabel td:first-child{position:sticky;left:0;z-index:1;background:var(--surface-1);text-align:left}
+.bd-tabel th:first-child{z-index:3}
+.bd-tabel td,.bd-tabel th{text-align:right;white-space:nowrap}
+.bd-tabel tr.bd-grup td{font-size:11px;font-weight:800;letter-spacing:.05em;color:#a87400;text-align:left;padding-top:10px}
+.bd-ket{display:block;font-size:10px;font-weight:400;opacity:.65;white-space:normal;max-width:220px}
+.bd-tabel td.bd-baik{color:var(--naik);background:var(--naik-bg);font-weight:700}
+.bd-tabel td.bd-buruk{color:var(--turun)}
 .lk-bd.Jelek{background:var(--turun-bg);color:var(--turun)}.lk-bd.kosong{color:var(--ink-3)}
 .lk-bd.on{outline:2px solid currentColor}
 .pt-lk{text-align:left}
@@ -1522,6 +1532,42 @@ function mfSimpan(semua) {
   t.slice(0, Math.max(0, t.length - 120)).forEach(k => delete semua[k]);   /* simpan 120 hari terakhir */
   try { localStorage.setItem("titenMF", JSON.stringify(semua)); } catch (e) { mfPesan = "Gagal menyimpan di HP: " + e.message; }
 }
+/* 15 Okt 2026: MF1 dari server (data/mf1.json, ditulis unggah_mf.py di laptop dari rekap
+   mf1-YYYY-MM-DD.txt) supaya laptop, PC, dan HP melihat MF1 yang sama. Bentuk:
+   {dibuat, tanggal: {"2026-10-15": {pasar: nf|null, baris: [[kode, nf, lot|null], ...]}}}.
+   Baris server dicatat st "manual" + src "server": menggantikan hasil OCR untuk kode yang sama,
+   tapi KALAH dari ketikan manual di perangkat ini. Diambil paling sering tiap 5 menit. */
+let mfSrvWaktu = 0, mfSrvJalan = false, mfSrvInfo = "";
+async function mfSinkronServer() {
+  if (mfSrvJalan || Date.now() - mfSrvWaktu < 5 * 60 * 1000) return false;
+  mfSrvJalan = true;
+  try {
+    const J = await ambilGudang("mf1.json");
+    mfSrvWaktu = Date.now();
+    const waktu = Date.parse(J.dibuat || "") || 0;
+    const semua = mfMuat(); let berubah = false, n = 0;
+    Object.keys(J.tanggal || {}).forEach(t => {
+      const sv = J.tanggal[t] || {}; const baris = sv.baris || [];
+      const lokal = semua[t] || {baris: [], beli: {}};
+      const tanda = JSON.stringify(baris);
+      if (lokal.srv === tanda) { n += baris.length; return; }      /* sudah sama dengan server */
+      const kodeSrv = new Set(baris.map(b => b[0]));
+      /* buang baris server lama dan hasil OCR untuk kode yang ada di server; ketikan manual lokal tetap */
+      const tetap = lokal.baris.filter(r => r.src !== "server" && !(r.st !== "manual" && r.em && kodeSrv.has(r.em)));
+      const manualLokal = new Set(tetap.filter(r => r.st === "manual" && r.em).map(r => r.em));
+      const dariSrv = baris.filter(b => !manualLokal.has(b[0])).map(b =>
+        ({ocr: b[0], em: b[0], nf: b[1], lot: b[2] === undefined ? null : b[2], tersirat: null, st: "manual", src: "server", waktu}));
+      lokal.baris = mfGabung(tetap.concat(dariSrv));
+      if (sv.pasar !== null && sv.pasar !== undefined && !(lokal.pasar && lokal.pasar.manual)) lokal.pasar = {nf: sv.pasar};
+      lokal.srv = tanda; if (!lokal.beli) lokal.beli = {};
+      semua[t] = lokal; berubah = true; n += baris.length;
+    });
+    if (berubah) mfSimpan(semua);
+    mfSrvInfo = Object.keys(J.tanggal || {}).length ? "MF1 server: " + Object.keys(J.tanggal).length + " tanggal" : "";
+    return berubah;
+  } catch (e) { mfSrvWaktu = Date.now(); return false; }   /* belum ada mf1.json di server: diam saja */
+  finally { mfSrvJalan = false; }
+}
 function mfHariIni() {
   try { return new Date().toLocaleDateString("sv-SE", {timeZone: "Asia/Jakarta"}); }
   catch (e) { return new Date().toISOString().slice(0, 10); }
@@ -2205,6 +2251,8 @@ function panelPotensi(w) {
   bT.title = "Sinyal untuk MF hari ini (atau hari bursa berikutnya kalau hari ini libur)";
   rt.appendChild(bT);
   p.appendChild(rt);
+  /* MF1 dari server: kalau ada yang baru, halaman digambar ulang sekali */
+  mfSinkronServer().then(ub => { if (ub && subScr === "potensi") halScreener(); });
   const H = hitungPotensi(ptTgl);
   if (!H) { p.appendChild(el("div", "bantu", "Riwayat harga di HP belum cukup (perlu minimal 60 hari bursa).")); w.appendChild(p); return; }
   /* pilihan emiten (ketik kode atau pilih dari daftar) */
@@ -8303,7 +8351,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-15-6";
+const VERSI_APP = "2026-10-17-1";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -14337,54 +14385,114 @@ function panelBanding(kode, periode) {
   }
 
   const kolom = [kode].concat(cariBanding);
-  const BARIS = [
-    ["Pendapatan", d => d.pendapatan, "M"],
-    ["Laba kotor", d => d.laba_kotor, "M"],
-    ["Laba bersih", d => d.laba_bersih, "M"],
-    ["Marjin kotor", d => bagi(d.laba_kotor, d.pendapatan) * 100, "%"],
-    ["Marjin bersih", d => bagi(d.laba_bersih, d.pendapatan) * 100, "%"],
-    ["Return on Equity", d => bagi(d.laba_bersih, d.ekuitas) * 100, "%"],
-    ["Return on Assets", d => bagi(d.laba_bersih, d.aset) * 100, "%"],
-    ["Current Ratio", d => bagi(d.aset_lancar, d.liabilitas_pendek), ""],
-    ["Quick Ratio", d => bagi(d.aset_lancar - (d.persediaan || 0), d.liabilitas_pendek), ""],
-    ["Debt to Equity", d => bagi(d.liabilitas, d.ekuitas), ""],
-    ["Arus kas operasi", d => d.ak_operasi, "M"],
-  ];
-
-  const isi = {};
+  const isi = {}, nv = {}, bank = {};
   kolom.forEach(k => {
     const per = kolomPeriode(k, cariMode === "QALL" ? "TTM" : cariMode, 1);
     isi[k] = (per && per.length) ? (per[per.length - 1].pos || {}) : {};
+    let r = null;
+    try { r = (LK && LK.data && LK.data[k]) ? lksNilai(k) : null; } catch (e) { r = null; }
+    nv[k] = r; bank[k] = !!(r && r.bank);
   });
+  const sc = (k, m) => barisScr[k] ? ambilM(barisScr[k], m) : null;
+  const tAkhir = DATA.tgl && DATA.tgl.length ? DATA.tgl[DATA.tgl.length - 1] : null;
+  /* 17 Okt 2026: BANDING dikelompokkan + valuasi. arah: -1 terkecil terbaik, 1 terbesar terbaik,
+     0 tidak diwarnai. nonBank: kosong untuk bank (simpanan nasabah tercatat utang, rasionya menyesatkan).
+     positif: hanya nilai > 0 yang ikut lomba "terbaik" (PER/PBV negatif = rugi / ekuitas minus). */
+  const GRUP = [
+    ["VALUASI", tAkhir ? "harga tutup " + tglID(tAkhir) : "harga tutup terakhir", [
+      {n: "Harga", f: k => sc(k, "Harga penutupan"), s: "rp"},
+      {n: "Market cap", ket: "Rp miliar", f: k => sc(k, "Kapitalisasi pasar (Rp miliar)"), s: "rp"},
+      {n: "PER", ket: "harga ÷ laba per saham · makin kecil makin murah", f: k => sc(k, "PER (x)"), s: "x", arah: -1, positif: true},
+      {n: "PBV", ket: "harga ÷ nilai buku per saham", f: k => sc(k, "PBV (x)"), s: "x", arah: -1, positif: true},
+      {n: "EV/EBITDA", ket: "ikut menghitung utang · makin kecil makin murah", f: k => sc(k, "EV/EBITDA (x)"), s: "x", arah: -1, positif: true, nonBank: true},
+    ]],
+    ["PROFITABILITAS", NAMA_MODE[cariMode] || cariMode, [
+      {n: "Return on Equity", f: k => bagi(isi[k].laba_bersih, isi[k].ekuitas) * 100, s: "%", arah: 1},
+      {n: "Return on Assets", f: k => bagi(isi[k].laba_bersih, isi[k].aset) * 100, s: "%", arah: 1},
+      {n: "Marjin kotor", f: k => bagi(isi[k].laba_kotor, isi[k].pendapatan) * 100, s: "%", arah: 1},
+      {n: "Marjin bersih", f: k => bagi(isi[k].laba_bersih, isi[k].pendapatan) * 100, s: "%", arah: 1},
+    ]],
+    ["PERTUMBUHAN", "TTM dibanding TTM setahun sebelumnya", [
+      {n: "Pertumbuhan pendapatan", f: k => nv[k] ? nv[k].gp : null, s: "g", arah: 1},
+      {n: "Pertumbuhan laba", ket: "laba milik induk", f: k => nv[k] ? nv[k].gl : null, s: "g", arah: 1},
+    ]],
+    ["KESEHATAN", "", [
+      {n: "Debt to Equity (DER)", f: k => bagi(isi[k].liabilitas, isi[k].ekuitas), s: "", arah: -1, positif: true, nonBank: true},
+      {n: "Net DER", ket: "(utang − kas) ÷ ekuitas · minus = kas lebih besar dari utang", f: k => sc(k, "Net DER (x)"), s: "", arah: -1, nonBank: true},
+      {n: "Current Ratio", f: k => bagi(isi[k].aset_lancar, isi[k].liabilitas_pendek), s: "", arah: 1, nonBank: true},
+      {n: "Quick Ratio", f: k => bagi(isi[k].aset_lancar - (isi[k].persediaan || 0), isi[k].liabilitas_pendek), s: "", arah: 1, nonBank: true},
+    ]],
+    ["UKURAN", "Rp miliar", [
+      {n: "Pendapatan", f: k => isi[k].pendapatan, s: "M"},
+      {n: "Laba kotor", f: k => isi[k].laba_kotor, s: "M"},
+      {n: "Laba bersih", f: k => isi[k].laba_bersih, s: "M"},
+      {n: "Arus kas operasi", f: k => isi[k].ak_operasi, s: "M"},
+    ]],
+    ["RINGKAS", "", [
+      {n: "Skor LK", lk: true},
+      {n: "Free float", f: k => sc(k, "Free float (%)"), s: "ff"},
+    ]],
+  ];
+  const d2 = (v, n) => v.toLocaleString("id-ID", {minimumFractionDigits: n, maximumFractionDigits: n}).replace(/^-/, "\u2212");
+  const fmt = (v, s) => s === "M" ? rp(Math.round(v / 1e9))
+    : s === "rp" ? rp(Math.round(v))
+    : s === "%" ? d2(v, 2) + "%"
+    : s === "ff" ? d2(v, 1) + "%"
+    : s === "g" ? (v > 0 ? "+" : v < 0 ? "−" : "") + rp(Math.abs(Math.round(v))) + "%"
+    : s === "x" ? d2(v, Math.abs(v) < 10 ? 2 : 1).replace(/,?0+$/, m => m.startsWith(",") && m.length > 2 ? "" : m) + "x"
+    : d2(v, 2);
 
-  const t = el("table");
+  const t = el("table", "bd-tabel");
   const th = el("tr");
   th.appendChild(el("th", null, "Pos"));
   kolom.forEach(k => th.appendChild(el("th", null, k)));
   t.appendChild(th);
-  BARIS.forEach(([nama, hitung, satuan]) => {
-    const tr = el("tr");
-    tr.appendChild(el("td", null, nama));
-    kolom.forEach(k => {
-      let v;
-      try { v = hitung(isi[k] || {}); } catch (e) { v = null; }
-      const teks = (v === null || v === undefined || !isFinite(v)) ? "—"
-        : satuan === "M" ? rp(Math.round(v / 1e9))
-        : satuan === "%" ? v.toFixed(2) + "%"
-        : v.toFixed(2);
-      tr.appendChild(el("td", null, teks));
+  GRUP.forEach(([judul, sub, baris]) => {
+    const tg = el("tr", "bd-grup");
+    const tdg = el("td", null, judul + (sub ? " · " + sub : ""));
+    tdg.colSpan = kolom.length + 1;
+    tg.appendChild(tdg); t.appendChild(tg);
+    baris.forEach(b => {
+      const tr = el("tr");
+      const td0 = el("td", null, b.n);
+      if (b.ket) td0.appendChild(el("span", "bd-ket", b.ket));
+      tr.appendChild(td0);
+      if (b.lk) {
+        kolom.forEach(k => { const td = el("td"); td.appendChild(lkLencana(k)); tr.appendChild(td); });
+        t.appendChild(tr); return;
+      }
+      const nilai = kolom.map(k => {
+        if (b.nonBank && bank[k]) return {bank: true};
+        let v; try { v = b.f(k); } catch (e) { v = null; }
+        return {v: (v === null || v === undefined || !isFinite(v)) ? null : v};
+      });
+      let terbaik = null;
+      if (b.arah) {
+        const ikut = nilai.map(x => x.v).filter(v => v !== null && v !== undefined && (!b.positif || v > 0));
+        if (ikut.length >= 2 && Math.max(...ikut) !== Math.min(...ikut)) terbaik = b.arah > 0 ? Math.max(...ikut) : Math.min(...ikut);
+      }
+      nilai.forEach(x => {
+        const td = el("td", null, x.bank ? "—" : x.v === null ? "—" : fmt(x.v, b.s));
+        if (x.bank) td.title = "Tidak dipakai untuk bank/lembaga keuangan";
+        else if (x.v !== null && terbaik !== null && x.v === terbaik) td.className = "bd-baik";
+        else if (x.v !== null && b.s === "g" && x.v < 0) td.className = "bd-buruk";
+        tr.appendChild(td);
+      });
+      t.appendChild(tr);
     });
-    t.appendChild(tr);
   });
-  const bungkus = el("div");
-  bungkus.style.overflowX = "auto";
+  lkPastikan(halCari);
+  const bungkus = el("div", "bd-bungkus");
   bungkus.appendChild(t);
   p.appendChild(bungkus);
   p.appendChild(el("div", "bantu",
-    "Angka bertanda M dalam miliar rupiah, memakai periode " +
-    (NAMA_MODE[cariMode] || cariMode) + " yang dipilih di atas. " +
-    "Kolom rata-rata industri dan sektor belum ada — perlu perhitungan median " +
-    "seluruh emiten sesektor, menyusul."));
+    "Hijau = terbaik di baris itu (PER, PBV, EV/EBITDA, DER, Net DER: terkecil; ROE, marjin, " +
+    "pertumbuhan, Current/Quick Ratio: terbesar). PER/PBV negatif (rugi atau ekuitas minus) tidak ikut " +
+    "dinilai. Merah = pertumbuhan minus. Valuasi memakai harga tutup terakhir; profitabilitas, kesehatan, " +
+    "dan ukuran memakai periode " + (NAMA_MODE[cariMode] || cariMode) + " yang dipilih di atas; " +
+    "pertumbuhan selalu TTM. Untuk bank dan lembaga keuangan, DER, Net DER, Current/Quick Ratio, dan " +
+    "EV/EBITDA ditulis \u201c\u2014\u201d karena simpanan nasabah tercatat sebagai utang; bandingkan bank lewat PBV, ROE, PER. " +
+    "Dividend yield belum ada karena TITEN belum punya data dividen."));
   return p;
 }
 
