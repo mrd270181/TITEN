@@ -3208,7 +3208,7 @@ function lksRingkasan(kode) {
 /* 20 Okt 2026: kotak OPINI AUDITOR di Rekomendasi. Sumber utama data/opini.json (opini_lk.py:
    LK TAHUNAN terbaru tiap emiten - LK triwulan tidak diaudit, opininya kosong). Cadangan:
    LK.profil[em].opini (sering kosong/tertimpa LK triwulan). 4 jenis opini SPAP. */
-let OPINI = null, opSedang = false, opGagal = false, rekOpBuka = false;
+let OPINI = null, OPINI_DIBUAT = "", opSedang = false, opGagal = false, rekOpBuka = false;
 const OP_JENIS = {
   WTM: {n: "Wajar Tanpa Modifikasian", k: "op-hijau", s: "laporan disajikan wajar dalam semua hal material — paling baik"},
   WDP: {n: "Wajar Dengan Pengecualian", k: "op-kuning", s: "wajar, KECUALI pos tertentu yang salah saji atau tidak bisa diperiksa — waspada"},
@@ -3225,9 +3225,10 @@ function opKode(t) {
 function muatOpini() {
   if (OPINI || opSedang || opGagal) return;
   opSedang = true;
-  ambilGudang("opini.json").then(j => { OPINI = (j && j.emiten) || {}; })
+  ambilGudang("opini.json").then(j => { OPINI = (j && j.emiten) || {}; OPINI_DIBUAT = (j && j.dibuat) || ""; })
     .catch(() => { opGagal = true; })
-    .finally(() => { opSedang = false; if (subScr === "rekomendasi") halScreener(); });
+    .finally(() => { opSedang = false; if (subScr === "rekomendasi") halScreener();
+      const hd = document.querySelector("#hal-data"); if (hd && !hd.hidden && typeof halData === "function") halData(); });
 }
 function opiniEmiten(em) {
   if (OPINI && OPINI[em]) return OPINI[em];
@@ -6643,11 +6644,13 @@ function rpSingkat(v) {
   return Math.round(v).toLocaleString("id-ID");
 }
 function pakaiFcaGudang() {
-  if (!fcaGudang || !fcaGudang.aktif) return;
+  /* 20 Okt 2026: fcaGudang TIDAK lagi dikosongkan sesudah dipakai - halaman PERBARUI membacanya
+     untuk baris FCA (dulu tampil "BELUM TERCATAT" begitu REKOMENDASI/SCALPING dibuka) */
+  if (!fcaGudang || !fcaGudang.aktif || fcaGudang.dipakai) return;
   FCA = fcaGudang.aktif;
   if (fcaGudang.kriteria && Object.keys(fcaGudang.kriteria).length) FCA_KRIT = fcaGudang.kriteria;
   if (fcaGudang.per) FCA_PER = fcaGudang.per;
-  fcaGudang = null;
+  fcaGudang.dipakai = true;
 }
 /* Nilai satu emiten pada tanggal t: pakai rekaman hari itu, atau hari bursa
    terakhir sebelumnya (maks 10 hari) kalau emiten tidak ada di tanggal itu.
@@ -8620,7 +8623,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-20-3";
+const VERSI_APP = "2026-10-20-4";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -9946,6 +9949,20 @@ function udBaris() {
     status: F && F.per ? (udUmurHari(F.per) <= 45 ? "ok" : "lama") : "cek",
     cara: "Chrome \u2192 idx.co.id \u2192 Perusahaan Tercatat \u2192 Efek Pada Papan Pemantauan Khusus, unduh " +
       "berkas Excel-nya, simpan ke masuk tanpa ganti nama, lalu jalankan <b>harian.bat</b> (langkah 10). " + CARA_UNGGAH});
+
+  /* 20 Okt 2026: opini auditor (opini_lk.py, langkah [6d] otomatis.bat) */
+  muatOpini();
+  { const ad = OPINI ? Object.values(OPINI) : [], th = ad.reduce((m, x) => Math.max(m, x.th || 0), 0);
+    const hit = k => ad.filter(x => x.opini === k).length;
+    tambah("Bulanan", {nama: "Opini auditor", sub: "LK tahunan diaudit", tgl: OPINI_DIBUAT ? OPINI_DIBUAT.slice(0, 10) : "",
+      per: th ? "LK tahunan " + th : "–",
+      unggah: OPINI_DIBUAT ? "diperbarui " + udTgl(OPINI_DIBUAT.slice(0, 10)) : "",
+      cakupan: ad.length ? nf(ad.length) + " emiten · WTM " + hit("WTM") + " · WDP " + hit("WDP") +
+        " · TW " + hit("TW") + " · TMP " + hit("TMP") : "",
+      sumber: "IDX LK tahunan → opini_lk.py", jadwal: "otomatis",
+      status: ad.length ? "ok" : (opSedang ? "cek" : "mati"),
+      cara: "Otomatis tiap jadwal (otomatis.bat langkah [6d]): LK tahunan baru di folder masuk dibaca opini auditornya. " +
+        "Manual: <b>python opini_lk.py</b> di D:\\TITEN."}); }
 
   const lmP = lm["profil.json"];
   const tP = lmP ? new Date(lmP + 7 * 3600e3).toISOString().slice(0, 10) : null;
