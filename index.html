@@ -1014,6 +1014,10 @@ const GUDANG = "data/";
 const PAPAN_GUDANG = ["REG", "NEGO", "TUNAI"];   /* urutannya sama dengan kamus.pasar */
 const BULAN_HARGA = 13;          /* harga: 13 bulan terakhir (cukup untuk 260 hari bursa) */
 const BULAN_BROKER_AWAL = 2;     /* broker: 2 bulan terakhir waktu pertama kali dibuka */
+/* 20 Okt 2026: cutoff saldo awal REGULER/NEGO dimundurkan ke 31 Des 2025 (pindah_cutoff_janmei.py).
+   Posisi broker = saldo awal + SEMUA transaksi sesudah cutoff, jadi bulan sejak ini WAJIB
+   diunduh, berapa pun pilihan "Tambah 1 bulan riwayat broker". */
+const BROKER_SEJAK = "2026-01";
 
 let DATA = null;                 /* isi awal-lk.json */
 let BRK = null;                  /* daftar emiten/broker + saldo awal, dari kamus.json */
@@ -8616,7 +8620,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-20-2";
+const VERSI_APP = "2026-10-20-3";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -10069,8 +10073,10 @@ function halDataImpor(w) {
   const bs = el("div", "bantu");
   bs.innerHTML = "Seluruh data app ini ada di server, tidak ada yang menyatu di dalam app. " +
     "Tiap app dibuka, yang diunduh cuma tanggal yang belum ada di HP ini: " +
-    "harga sampai " + BULAN_HARGA + " bulan terakhir, transaksi broker " +
-    bulanBroker + " bulan terakhir.";
+    "harga sampai " + BULAN_HARGA + " bulan terakhir, transaksi broker sejak " +
+    tglID(BROKER_SEJAK + "-01") + " " + BROKER_SEJAK.slice(0, 4) +
+    " (wajib, karena saldo awal broker per 31 Des 2025)" +
+    (bulanBroker > 0 ? " atau " + bulanBroker + " bulan terakhir bila lebih panjang." : ".");
   ps.appendChild(bs);
   const st = el("div", "bantu", statusSinkron); st.id = "statusSinkron";
   st.style.color = "var(--ink-2)";
@@ -15027,6 +15033,7 @@ async function sinkron(diam) {
       return new Set(semua.slice(-jml));
     };
     const bolehBrk = batasiBulan(man.tanggal_broker, bulanBroker);
+    (man.tanggal_broker || []).forEach(t => { const b = bulanDari(t); if (b >= BROKER_SEJAK) bolehBrk.add(b); });
     const bolehHrg = batasiBulan(man.tanggal_harga, BULAN_HARGA);
 
     const adaBrk = new Set();
