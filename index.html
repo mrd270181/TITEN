@@ -588,6 +588,14 @@ tr.pt-dicoret td{opacity:.6} tr.pt-dicoret .kode{text-decoration:line-through}
 .pt-ket.pantau{background:var(--surface-2);color:var(--ink-2)}.pt-ket.tunggu{background:rgba(230,180,0,.18);color:#8a6500}
 .pt-ket.jual{background:var(--turun-bg);color:var(--turun)}
 .rek-news.aktif{outline:2px solid var(--merek);outline-offset:-2px}
+.pr-blok{margin-top:14px}.pr-judul{font-size:12px;letter-spacing:.05em;text-transform:uppercase;margin:0 0 6px;color:var(--ink-2)}
+.pr-tabel{width:100%;border-collapse:collapse;font-size:12.5px}.pr-tabel th,.pr-tabel td{padding:5px 7px;border-bottom:1px solid var(--garis);text-align:left;vertical-align:top}
+.pr-tabel th.num,.pr-tabel td.num{text-align:right;white-space:nowrap}
+.dv-tabel tr.dv-pilih td{background:rgba(244,124,60,.10)}
+.dv-tabel td.klik{cursor:pointer}
+.dv-tg{display:inline-block;font-size:10px;font-weight:800;border-radius:4px;padding:1px 6px;white-space:nowrap}
+.dv-tg.dekat{background:rgba(230,170,0,.16);color:#a87400}.dv-tg.akan{background:var(--naik-bg);color:var(--naik)}
+.dv-tg.lewat{background:var(--surface-2);color:var(--ink-3)}.dv-tg.cek{background:var(--turun-bg);color:var(--turun)}
 .rek-fca{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;padding:8px 10px;border-radius:9px;
   background:var(--turun-bg);border:1px solid var(--turun);color:var(--turun);font-size:12.5px;font-weight:600}
 .rek-fca-tg{background:var(--turun);color:#fff;border-radius:5px;padding:2px 9px;font-size:13px;letter-spacing:.06em}
@@ -8623,7 +8631,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-20-4";
+const VERSI_APP = "2026-10-20-8";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -9949,6 +9957,22 @@ function udBaris() {
     status: F && F.per ? (udUmurHari(F.per) <= 45 ? "ok" : "lama") : "cek",
     cara: "Chrome \u2192 idx.co.id \u2192 Perusahaan Tercatat \u2192 Efek Pada Papan Pemantauan Khusus, unduh " +
       "berkas Excel-nya, simpan ke masuk tanpa ganti nama, lalu jalankan <b>harian.bat</b> (langkah 10). " + CARA_UNGGAH});
+
+  /* 20 Okt 2026: jadwal dividen (dividen_idx.py) */
+  muatDividen();
+  { const J = DIVIDEN ? (DIVIDEN.jadwal || []) : [], h = dvHariIni();
+    const tAkhir = J.map(r => r.umum).filter(Boolean).sort().pop() || "";
+    const dekat = J.filter(r => r.cum && r.cum >= h && dvSelisih(r.cum, h) <= 7).length;
+    tambah("Harian", {nama: "Jadwal dividen", sub: "dividen tunai sejak 2025", tgl: tAkhir,
+      per: tAkhir ? udTgl(tAkhir) : "\u2013",
+      unggah: DIVIDEN && DIVIDEN.dibuat ? "diperbarui " + udTgl(DIVIDEN.dibuat.slice(0, 10)) : "",
+      cakupan: J.length ? nf(J.length) + " jadwal \u00b7 " + nf(new Set(J.map(r => r.e)).size) + " emiten" +
+        (dekat ? " \u00b7 " + dekat + " cum \u2264 7 hari" : "") +
+        (J.filter(r => r.cek).length ? " \u00b7 " + J.filter(r => r.cek).length + " cek PDF" : "") : "",
+      sumber: "Keterbukaan informasi IDX \u2192 dividen_idx.py", jadwal: "tiap hari bursa",
+      status: !J.length ? (dvSedang ? "cek" : "mati") : (DIVIDEN.dibuat && udUmurHari(DIVIDEN.dibuat.slice(0, 10)) <= 3 ? "ok" : "lama"),
+      cara: "Di laptop: <b>python dividen_idx.py</b> (ambil pengumuman jadwal dividen baru dari IDX, baca PDF-nya, kirim " +
+        "data/dividen.json). Pengumuman yang sudah pernah dibaca tidak diunduh ulang. Hasilnya tampil di CARI \u203a DIVIDEN."}); }
 
   /* 20 Okt 2026: opini auditor (opini_lk.py, langkah [6d] otomatis.bat) */
   muatOpini();
@@ -13359,9 +13383,32 @@ function panelKeystats(kode, periode) {
   return p;
 }
 
+/* 20 Okt 2026: profil rinci IDX (profil_rinci.py -> data/profil_rinci.json): NPWP, fax,
+   sekretaris, direksi, komisaris, komite audit, anak perusahaan, riwayat KAP */
+let PROFIL_RINCI = null, prSedang = false, prGagal = false;
+function muatProfilRinci() {
+  if (PROFIL_RINCI || prSedang || prGagal) return;
+  prSedang = true;
+  ambilGudang("profil_rinci.json").then(j => { PROFIL_RINCI = j || {data: {}}; })
+    .catch(() => { prGagal = true; })
+    .finally(() => { prSedang = false; if (cariSub === "profil") halCari(); });
+}
+function prTabel(judul, kolom, baris) {
+  const w = el("div", "pr-blok");
+  w.appendChild(el("h3", "pr-judul", judul));
+  const bungkus = el("div", "tbl-bungkus");
+  const t = el("table", "pr-tabel"), tr0 = el("tr");
+  kolom.forEach(([k, kelas]) => tr0.appendChild(el("th", kelas || null, k)));
+  t.appendChild(tr0);
+  baris.forEach(r => { const tr = el("tr"); r.forEach((v, i) => tr.appendChild(el("td", (kolom[i] || [])[1] || null, v))); t.appendChild(tr); });
+  bungkus.appendChild(t); w.appendChild(bungkus);
+  return w;
+}
 function panelProfil(kode, periode) {
   const p = el("div", "panel");
   p.appendChild(el("h2", null, "Profil"));
+  muatProfilRinci();
+  const rinci = (PROFIL_RINCI && PROFIL_RINCI.data && PROFIL_RINCI.data[kode]) || null;
   const baris = [];
   const ix = (PROFIL && PROFIL.data && PROFIL.data[kode]) || null;
   if (ix && ix.kegiatan) {
@@ -13372,12 +13419,19 @@ function panelProfil(kode, periode) {
   }
   const pr = (LK && LK.profil && LK.profil[kode]) || null;
   if (ix) {
-    [["nama", "Nama perusahaan"], ["tgl_catat", "Tanggal pencatatan"], ["papan", "Papan"],
+    [["nama", "Nama perusahaan"], ["tgl_catat", "Listing date (tanggal pencatatan)"], ["papan", "Papan"],
      ["situs", "Situs"], ["alamat", "Alamat"], ["telepon", "Telepon"], ["email", "Email"],
      ["bae", "Biro Administrasi Efek"]].forEach(([k, label]) => {
-      if (ix[k]) baris.push([label, String(ix[k]).replace(/\n/g, ", ")]);
+      if (ix[k]) baris.push([label, k === "tgl_catat" ? lksTglPendek(String(ix[k]).slice(0, 10)) : String(ix[k]).replace(/\n/g, ", ")]);
     });
   }
+  if (rinci) {
+    if (rinci.npwp) baris.push(["NPWP", rinci.npwp]);
+    if (rinci.fax) baris.push(["Fax", rinci.fax]);
+  }
+  { const ff = barisScr[kode] ? ambilM(barisScr[kode], "Free float (%)") : null;
+    if (ff !== null && ff !== undefined) baris.push(["Free float", (ff * 100).toFixed(2).replace(".", ",") + "%"]); }   /* metrik pct = pecahan */
+  baris.push(["IPO price \u00b7 amount \u00b7 shares \u00b7 underwriter", "belum ada sumber data"]);
   if (pr) {
     [["sektor", "Sektor"], ["subsektor", "Subsektor"],
      ["industri", "Industri"], ["subindustri", "Subindustri"],
@@ -13410,8 +13464,25 @@ function panelProfil(kode, periode) {
     tr.appendChild(td); t.appendChild(tr);
   });
   p.appendChild(t);
+  if (rinci) {
+    if (rinci.sek && rinci.sek.length) p.appendChild(prTabel("Sekretaris perusahaan", [["Nama"], ["Telepon"], ["Email"]], rinci.sek));
+    if (rinci.dir && rinci.dir.length) p.appendChild(prTabel("Direksi", [["Nama"], ["Jabatan"]], rinci.dir));
+    if (rinci.kom && rinci.kom.length) p.appendChild(prTabel("Dewan komisaris", [["Nama"], ["Jabatan"], ["Independen"]],
+      rinci.kom.map(r => [r[0], r[1], r[2] ? "Ya" : "\u2013"])));
+    if (rinci.ka && rinci.ka.length) p.appendChild(prTabel("Komite audit", [["Jabatan"], ["Nama"]], rinci.ka));
+    if (rinci.anak && rinci.anak.length) p.appendChild(prTabel("Anak perusahaan",
+      [["Nama"], ["Bidang usaha"], ["Lokasi"], ["Milik", "num"], ["Total aset", "num"], ["Status"], ["Komersial"]],
+      rinci.anak.map(r => [r[0], r[1], r[2], r[3] !== null && r[3] !== undefined ? nf(r[3], 2) + "%" : "\u2013",
+        r[4] ? (r[5] && r[5] !== "IDR" ? r[5] + " " : "") + rpSingkat(r[4]) : "\u2013", r[6] || "\u2013", r[7] && r[7] !== "0" ? r[7] : "\u2013"])));
+    if (rinci.kap && rinci.kap.length) p.appendChild(prTabel("Riwayat auditor (KAP)", [["Tahun buku"], ["KAP"], ["Partner"]],
+      rinci.kap.map(r => [r[0] ? String(r[0]) : "\u2013", r[1], r[2] || "\u2013"])));
+  } else {
+    p.appendChild(el("div", "bantu", prSedang ? "Memuat profil rinci\u2026" :
+      "Profil rinci (NPWP, fax, sekretaris, direksi, komisaris, anak perusahaan, KAP) belum ada di server \u2014 jalankan profil_rinci.py di laptop."));
+  }
   p.appendChild(el("div", "bantu", ix
-    ? "Kegiatan usaha dan kontak dari profil perusahaan tercatat IDX; sektor, auditor, " +
+    ? "IPO price, IPO amount, IPO shares, dan underwriter tidak tersedia di profil IDX \u2014 sumbernya (e-IPO / prospektus) sedang dijajaki. " +
+      "Kegiatan usaha dan kontak dari profil perusahaan tercatat IDX; sektor, auditor, " +
       "dan opini dari lembar informasi umum laporan keuangan."
     : "Keterangan di atas diambil dari lembar informasi umum laporan keuangan IDX."));
   return p;
@@ -14753,7 +14824,7 @@ function panelBanding(kode, periode) {
     ]],
     ["RINGKAS", "", [
       {n: "Skor LK", lk: true},
-      {n: "Free float", f: k => sc(k, "Free float (%)"), s: "ff"},
+      {n: "Free float", f: k => { const v = sc(k, "Free float (%)"); return v === null ? null : v * 100; }, s: "ff"},   /* pecahan -> % */
     ]],
   ];
   const d2 = (v, n) => v.toLocaleString("id-ID", {minimumFractionDigits: n, maximumFractionDigits: n}).replace(/^-/, "\u2212");
@@ -14825,25 +14896,225 @@ function bagi(a, b) {
   return a / b;
 }
 
+/* ---- DIVIDEN (20 Okt 2026): jadwal dividen tunai SEMUA emiten sejak 1 Jan 2025 ----
+   Sumber data/dividen.json dari dividen_idx.py (PDF pengumuman jadwal dividen di keterbukaan
+   informasi IDX). Emiten yang sedang dibuka di CARI diwarnai. Judul kolom beku & bisa diurutkan
+   dua arah (ketuk sekali terbesar dulu, ketuk lagi terkecil dulu). */
+let DIVIDEN = null, dvSedang = false, dvGagal = false;
+let dvSaring = "semua", dvTahun = "", dvCari = "", dvUrut = {k: "cum", a: -1};
+function muatDividen() {
+  if (DIVIDEN || dvSedang || dvGagal) return;
+  dvSedang = true;
+  ambilGudang("dividen.json").then(j => { DIVIDEN = j || {jadwal: []}; })
+    .catch(() => { dvGagal = true; })
+    .finally(() => { dvSedang = false; if (cariSub === "dividen") halCari();
+      const hd = document.querySelector("#hal-data"); if (hd && !hd.hidden && typeof halData === "function") halData(); });
+}
+const dvHariIni = () => new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10);
+const dvSelisih = (a, b) => Math.round((Date.parse(a) - Date.parse(b)) / 864e5);
+function dvStatus(r) {
+  const h = dvHariIni();
+  if (r.cek || !r.cum) return {k: "cek", t: "cek PDF", u: 0};
+  if (r.cum >= h) { const n = dvSelisih(r.cum, h);
+    return n <= 7 ? {k: "dekat", t: n === 0 ? "cum HARI INI" : "cum " + n + " hari lagi", u: 3} : {k: "akan", t: "akan datang", u: 2}; }
+  if (r.bayar && r.bayar >= h) return {k: "akan", t: "menunggu bayar", u: 1};
+  return {k: "lewat", t: "sudah dibayar", u: 0};
+}
+function panelDividen(kode) {
+  const p = el("div", "panel");
+  p.appendChild(el("h2", null, "Dividen — semua emiten sejak 1 Jan 2025"));
+  muatDividen();
+  if (!DIVIDEN) {
+    p.appendChild(el("div", "bantu", dvGagal ? "data/dividen.json belum ada di server. Jalankan di laptop: python dividen_idx.py"
+      : "Memuat jadwal dividen…"));
+    return p;
+  }
+  const harga = k => barisScr[k] ? ambilM(barisScr[k], "Harga penutupan") : null;
+  const semua = (DIVIDEN.jadwal || []).map(r => {
+    const h = harga(r.e), st = dvStatus(r);
+    return Object.assign({}, r, {st, yl: r.rp && h ? r.rp / h * 100 : null, th: (r.cum || r.umum || "").slice(0, 4)});
+  });
+  const h0 = dvHariIni();
+  const rg = el("div", "nw-ring rd-ring");
+  const kotak = (isi, ket, kelas) => { const d = el("div"); d.appendChild(el("b", kelas, isi)); d.appendChild(el("span", null, ket)); rg.appendChild(d); };
+  kotak(nf(semua.length), "jadwal dividen tunai");
+  kotak(nf(new Set(semua.map(r => r.e)).size), "emiten membagi dividen");
+  kotak(String(semua.filter(r => r.st.k === "dekat").length), "cum dividen ≤ 7 hari lagi", "rd-or");
+  if (kode) kotak(semua.filter(r => r.e === kode).length + "×", kode + " membagi dividen sejak 2025", "naik");
+  p.appendChild(rg);
+
+  const alat = el("div", "alat ph-alat");
+  const sk = el("div", "saklar rd-saklar");
+  [["semua", "Semua"], ["akan", "Akan datang"], ["dekat", "Cum ≤ 7 hari"]].concat(kode ? [["ini", kode + " saja"]] : [])
+    .forEach(([v, j]) => { const b = el("button", dvSaring === v ? "aktif" : null, j);
+      b.onclick = () => { dvSaring = v; halCari(); }; sk.appendChild(b); });
+  alat.appendChild(sk);
+  const lT = el("label", "bantu", "Tahun: "), sT = el("select", "fa-min");
+  [["", "Semua"]].concat([...new Set(semua.map(r => r.th).filter(Boolean))].sort().reverse().map(t => [t, t]))
+    .forEach(([v, t]) => { const o = el("option", null, t); o.value = v; if (dvTahun === v) o.selected = true; sT.appendChild(o); });
+  sT.onchange = () => { dvTahun = sT.value; halCari(); };
+  lT.appendChild(sT); alat.appendChild(lT);
+  const iC = el("input", "cari"); iC.placeholder = "Cari kode…"; iC.value = dvCari; iC.style.maxWidth = "140px";
+  iC.autocapitalize = "characters";
+  iC.oninput = () => { dvCari = iC.value.trim().toUpperCase(); const t = p.querySelector(".dv-tabel"); if (t) t.replaceWith(dvTabel(saring(), kode)); };
+  alat.appendChild(iC);
+  p.appendChild(alat);
+
+  const saring = () => semua.filter(r =>
+    (dvSaring === "semua" || (dvSaring === "akan" && (r.st.k === "akan" || r.st.k === "dekat")) ||
+     (dvSaring === "dekat" && r.st.k === "dekat") || (dvSaring === "ini" && r.e === kode)) &&
+    (!dvTahun || r.th === dvTahun) && (!dvCari || r.e.indexOf(dvCari) === 0));
+  p.appendChild(dvTabel(saring(), kode));
+  p.appendChild(el("div", "bantu",
+    "Cum = hari terakhir membeli supaya dapat dividen · Ex = mulai hari itu membeli sudah TIDAK dapat · " +
+    "Recording = tanggal daftar pemegang saham yang berhak · Bayar = dividen masuk rekening. Tanggal pasar reguler & negosiasi; " +
+    "tanggal pasar tunai ada di keterangan saat baris disentuh lama. Yield = Rp per saham ÷ harga tutup terakhir (bukan harga saat pengumuman). " +
+    "“cek PDF” = tanggal tidak terbaca otomatis dari PDF — ketuk “buka”. Ketuk judul kolom untuk mengurutkan " +
+    "(sekali: terbesar/terbaru dulu, sekali lagi: terkecil/terlama dulu); ketuk kode untuk membuka emiten itu. " +
+    "Sumber: pengumuman jadwal dividen di keterbukaan informasi IDX" + (DIVIDEN.dibuat ? ", diperbarui " + lksTglPendek(DIVIDEN.dibuat.slice(0, 10)) : "") + "."));
+  return p;
+}
+function dvTabel(baris, kode) {
+  const bungkus = el("div", "tbl-bungkus tbl-kunci rd-tabel dv-tabel");
+  const t = el("table"), thead = el("thead"), trh = el("tr");
+  const tg = x => x ? lksTglPendek(x) : "–";
+  const KOL = [["e", "Emiten", ""], ["jenis", "Jenis", ""], ["rp", "Rp / saham", ""], ["yl", "Yield", "÷ harga tutup kini"],
+    ["cum", "Cum", "reguler & nego"], ["ex", "Ex", "reguler & nego"], ["rec", "Recording", "daftar pemegang"],
+    ["bayar", "Bayar", ""], ["st", "Status", ""], ["", "PDF", ""]];
+  const nilai = (r, k) => k === "st" ? r.st.u * 1e4 - (r.cum ? dvSelisih(r.cum, "2025-01-01") : 0) * (r.st.u >= 2 ? 1 : -1) / 1e3 : r[k];
+  KOL.forEach(([k, j, sub]) => {
+    const num = k === "rp" || k === "yl";
+    const th = el("th", num ? "num" : "rd-kiri", j + (dvUrut.k === k && k ? (dvUrut.a < 0 ? " ▼" : " ▲") : ""));
+    if (sub) th.appendChild(el("span", "rd-subjudul", sub));
+    if (k) {
+      th.style.cursor = "pointer";
+      th.title = "Urutkan menurut " + j + " (ketuk lagi untuk membalik urutan)";
+      th.onclick = () => {
+        if (dvUrut.k === k) dvUrut.a = -dvUrut.a; else dvUrut = {k, a: k === "e" || k === "jenis" ? 1 : -1};
+        bungkus.replaceWith(dvTabel(baris, kode));
+      };
+    }
+    trh.appendChild(th);
+  });
+  thead.appendChild(trh); t.appendChild(thead);
+  const tb = el("tbody");
+  baris.slice().sort((a, b) => {
+    const x = nilai(a, dvUrut.k), y = nilai(b, dvUrut.k);
+    if (x === y) return (a.cum || a.umum || "") < (b.cum || b.umum || "") ? 1 : -1;
+    if (x === null || x === undefined || x === "") return 1;        /* yang kosong selalu di bawah */
+    if (y === null || y === undefined || y === "") return -1;
+    return (typeof x === "string" ? x.localeCompare(y) : x - y) * dvUrut.a;
+  }).forEach(r => {
+    const tr = el("tr", r.e === kode ? "dv-pilih" : null);
+    tr.title = r.judul + (r.cum_tn ? "\nPasar tunai: cum " + tg(r.cum_tn) + ", ex " + tg(r.ex_tn) : "") + "\nDiumumkan " + tg(r.umum);
+    const cE = el("td", "rd-kiri klik"); cE.appendChild(el("span", "kode", r.e));
+    cE.appendChild(el("span", "nm", (DATA.nama && DATA.nama[r.e]) || ""));
+    cE.onclick = () => { cariKode = r.e; cariTutup = true; halCari(); window.scrollTo(0, 0); };
+    tr.appendChild(cE);
+    tr.appendChild(el("td", "rd-kiri", r.jenis || "–"));
+    tr.appendChild(el("td", "num", r.rp ? nf(r.rp, r.rp % 1 ? (r.rp < 10 ? 2 : 1) : 0) : "–"));
+    tr.appendChild(el("td", "num" + (r.yl ? " naik" : ""), r.yl ? nf(r.yl, 1) + "%" : "–"));
+    ["cum", "ex", "rec", "bayar"].forEach(k => tr.appendChild(el("td", "rd-kiri", tg(r[k]))));
+    const cS = el("td", "rd-kiri"); cS.appendChild(el("span", "dv-tg " + r.st.k, r.st.t)); tr.appendChild(cS);
+    const cP = el("td", "rd-kiri");
+    if (r.pdf) { const a = el("a", null, "buka"); a.href = r.pdf; a.target = "_blank"; a.rel = "noopener"; cP.appendChild(a); }
+    else cP.textContent = "–";
+    tr.appendChild(cP);
+    tb.appendChild(tr);
+  });
+  if (!baris.length) { const tr = el("tr"), td = el("td", null, "Tidak ada jadwal dividen yang cocok."); td.colSpan = KOL.length; tr.appendChild(td); tb.appendChild(tr); }
+  t.appendChild(tb); bungkus.appendChild(t);
+  return bungkus;
+}
+
 /* ---- AKSI KORPORASI: belum ada sumber datanya ---- */
+/* ---- AKSI KORPORASI (20 Okt 2026): dividen (dividen.json) + stock split / reverse split /
+   penyesuaian harga lain yang dideteksi dari harga & jumlah saham tercatat (SPLIT_EV). Right
+   issue, warrant, bonus belum punya sumber khusus - tampil sebagai "penyesuaian harga lain". */
+let akSaring = "semua", akUrut = {k: "tgl", a: -1};
+const AK_SPLIT_LAMA = {PTRO: [["2025-01-03", 10]], CUAN: [["2025-07-15", 10]]};   /* sebelum riwayat harga di HP */
+function aksiBaris(kode) {
+  const L = [];
+  (DIVIDEN && DIVIDEN.jadwal || []).filter(r => r.e === kode).forEach(r => {
+    L.push({tgl: r.cum || r.umum, jenis: "Dividen" + (r.jenis ? " " + r.jenis : ""), g: "dividen",
+      rinci: r.rp ? "Rp " + nf(r.rp, r.rp % 1 ? 1 : 0) + " / saham" : "lihat PDF",
+      cum: r.cum, ex: r.ex, rec: r.rec, bayar: r.bayar, st: dvStatus(r), pdf: r.pdf, umum: r.umum});
+  });
+  const ev = (SPLIT_EV[kode] || []).map(e => [e.tgl, e.r, e.split]);
+  (AK_SPLIT_LAMA[kode] || []).forEach(([t, r]) => { if (!ev.some(e => e[0] === t)) ev.push([t, r, true]); });
+  ev.forEach(([t, r, sp]) => {
+    const rev = r < 1, g = !sp && Math.abs(r - 1) < 0.8 ? "lain" : rev ? "reverse" : "split";
+    const rasio = rev ? Math.round(1 / r) + " : 1" : "1 : " + (Math.abs(r - Math.round(r)) < 0.06 ? Math.round(r) : nf(r, 2));
+    L.push({tgl: t, jenis: g === "split" ? "Stock split" : g === "reverse" ? "Reverse split" : "Penyesuaian harga",
+      g, rinci: g === "lain" ? "harga dasar ÷ " + nf(r, 2) + " (rights issue / bonus / lainnya)" : rasio,
+      ex: t, st: {k: "lewat", t: "berlaku " + lksTglPendek(t), u: 0}});
+  });
+  return L;
+}
 function panelAksi(kode) {
   const p = el("div", "panel");
-  p.appendChild(el("h2", null, "Aksi korporasi"));
-  const alat = el("div", "alat");
-  ["Semua", "Dividen", "Stock split", "Reverse split", "Right issue", "Warrant", "Bonus"]
-    .forEach((teks, i) => {
-      const b = el("button", i === 0 ? "aktif" : null, teks);
-      b.style.padding = "5px 10px"; b.style.fontSize = "12px";
-      alat.appendChild(b);
-    });
+  p.appendChild(el("h2", null, "Aksi korporasi — " + kode));
+  muatDividen();
+  const semua = aksiBaris(kode);
+  const alat = el("div", "alat ph-alat");
+  const sk = el("div", "saklar rd-saklar");
+  [["semua", "Semua"], ["dividen", "Dividen"], ["split", "Stock split"], ["reverse", "Reverse split"], ["lain", "Penyesuaian lain"]]
+    .forEach(([v, j]) => {
+      const n = v === "semua" ? semua.length : semua.filter(x => x.g === v).length;
+      const b = el("button", akSaring === v ? "aktif" : null, j + " (" + n + ")");
+      b.onclick = () => { akSaring = v; halCari(); }; sk.appendChild(b); });
+  alat.appendChild(sk);
   p.appendChild(alat);
+  const tampil = semua.filter(x => akSaring === "semua" || x.g === akSaring);
+  p.appendChild(akTabel(tampil));
   p.appendChild(el("div", "bantu",
-    "Belum ada satu pun data aksi korporasi di TITEN: dividen, stock split, " +
-    "reverse split, right issue, warrant, bonus, maupun jadwal RUPS. Yang " +
-    "diperlukan per baris: jenis aksi, nilai, cum date, ex date, recording date, " +
-    "dan payment date. Begitu sumbernya masuk, empat baris di KEYSTATS " +
-    "(dividen TTM, payout ratio, dividend yield, ex-date terakhir) ikut hidup."));
+    (DIVIDEN ? "" : dvSedang ? "Memuat jadwal dividen… " : "Jadwal dividen belum ada di server (jalankan dividen_idx.py di laptop). ") +
+    "Dividen dari pengumuman jadwal dividen IDX sejak 1 Jan 2025 (sama dengan CARI › DIVIDEN). " +
+    "Stock split, reverse split, dan penyesuaian harga lain DIDETEKSI dari loncatan harga dasar dan jumlah saham tercatat " +
+    "pada riwayat harga di HP ini (± 13 bulan) — rasio 1 : 5 artinya 1 saham lama jadi 5 saham baru. " +
+    "Penyesuaian harga kecil biasanya rights issue atau saham bonus; rinciannya belum tersedia. " +
+    "Ketuk judul kolom untuk mengurutkan (ketuk lagi untuk membalik)."));
   return p;
+}
+function akTabel(baris) {
+  const bungkus = el("div", "tbl-bungkus tbl-kunci rd-tabel ak-tabel");
+  const t = el("table"), thead = el("thead"), trh = el("tr");
+  const tg = x => x ? lksTglPendek(x) : "–";
+  const KOL = [["tgl", "Tanggal", "cum / berlaku"], ["jenis", "Jenis", ""], ["rinci", "Rincian", "Rp / saham atau rasio"],
+    ["cum", "Cum", ""], ["ex", "Ex", ""], ["rec", "Recording", ""], ["bayar", "Bayar", ""], ["st", "Status", ""], ["", "PDF", ""]];
+  KOL.forEach(([k, j, sub]) => {
+    const th = el("th", "rd-kiri", j + (akUrut.k === k && k ? (akUrut.a < 0 ? " ▼" : " ▲") : ""));
+    if (sub) th.appendChild(el("span", "rd-subjudul", sub));
+    if (k) { th.style.cursor = "pointer"; th.title = "Urutkan (ketuk lagi untuk membalik)";
+      th.onclick = () => { if (akUrut.k === k) akUrut.a = -akUrut.a; else akUrut = {k, a: k === "jenis" || k === "rinci" ? 1 : -1};
+        bungkus.replaceWith(akTabel(baris)); }; }
+    trh.appendChild(th);
+  });
+  thead.appendChild(trh); t.appendChild(thead);
+  const tb = el("tbody");
+  const v = (r, k) => k === "st" ? r.st.u : k === "rinci" ? (r.g === "dividen" ? parseFloat(String(r.rinci).replace(/[^\d,]/g, "").replace(",", ".")) || 0 : r.rinci) : r[k];
+  baris.slice().sort((a, b) => {
+    const x = v(a, akUrut.k), y = v(b, akUrut.k);
+    if (x === y) return (a.tgl || "") < (b.tgl || "") ? 1 : -1;
+    if (x === undefined || x === null || x === "") return 1;
+    if (y === undefined || y === null || y === "") return -1;
+    return (typeof x === "string" && typeof y === "string" ? x.localeCompare(y) : (x > y ? 1 : -1)) * akUrut.a;
+  }).forEach(r => {
+    const tr = el("tr");
+    tr.appendChild(el("td", "rd-kiri", tg(r.tgl)));
+    tr.appendChild(el("td", "rd-kiri", r.jenis));
+    tr.appendChild(el("td", "rd-kiri", r.rinci));
+    ["cum", "ex", "rec", "bayar"].forEach(k => tr.appendChild(el("td", "rd-kiri", tg(r[k]))));
+    const cS = el("td", "rd-kiri"); cS.appendChild(el("span", "dv-tg " + r.st.k, r.st.t)); tr.appendChild(cS);
+    const cP = el("td", "rd-kiri");
+    if (r.pdf) { const a = el("a", null, "buka"); a.href = r.pdf; a.target = "_blank"; a.rel = "noopener"; cP.appendChild(a); }
+    else cP.textContent = "–";
+    tr.appendChild(cP);
+    tb.appendChild(tr);
+  });
+  if (!baris.length) { const tr = el("tr"), td = el("td", null, "Belum ada aksi korporasi tercatat untuk emiten ini."); td.colSpan = KOL.length; tr.appendChild(td); tb.appendChild(tr); }
+  t.appendChild(tb); bungkus.appendChild(t);
+  return bungkus;
 }
 
 /* ---- halaman utama ---- */
@@ -14920,7 +15191,7 @@ function halCariIsi() {
   rel.style.padding = "0 12px";
   rel.style.scrollbarWidth = "none";
   [["chart", "CHART"], ["keystats", "KEYSTATS"], ["finansial", "FINANSIAL"],
-   ["banding", "BANDING"], ["aksi", "AKSI"], ["pemilik", "PEMILIK"],
+   ["banding", "BANDING"], ["dividen", "DIVIDEN"], ["aksi", "AKSI"], ["pemilik", "PEMILIK"],
    ["mutasi", "MUTASI"], ["profil", "PROFIL"]]
     .forEach(([k, label]) => {
       const b = el("button", cariSub === k ? "aktif" : null, label);
@@ -14972,6 +15243,9 @@ function halCariIsi() {
 
   } else if (cariSub === "banding") {
     w.appendChild(panelBanding(cariKode, periode));
+
+  } else if (cariSub === "dividen") {
+    w.appendChild(panelDividen(cariKode));
 
   } else if (cariSub === "aksi") {
     w.appendChild(panelAksi(cariKode));
