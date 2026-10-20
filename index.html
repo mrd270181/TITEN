@@ -8631,7 +8631,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-20-8";
+const VERSI_APP = "2026-10-20-9";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -9960,7 +9960,8 @@ function udBaris() {
 
   /* 20 Okt 2026: jadwal dividen (dividen_idx.py) */
   muatDividen();
-  { const J = DIVIDEN ? (DIVIDEN.jadwal || []) : [], h = dvHariIni();
+  muatProfilRinci();
+  { const J = (DIVIDEN || PROFIL_RINCI) ? dvJadwal() : [], h = dvHariIni();
     const tAkhir = J.map(r => r.umum).filter(Boolean).sort().pop() || "";
     const dekat = J.filter(r => r.cum && r.cum >= h && dvSelisih(r.cum, h) <= 7).length;
     tambah("Harian", {nama: "Jadwal dividen", sub: "dividen tunai sejak 2025", tgl: tAkhir,
@@ -9970,7 +9971,7 @@ function udBaris() {
         (dekat ? " \u00b7 " + dekat + " cum \u2264 7 hari" : "") +
         (J.filter(r => r.cek).length ? " \u00b7 " + J.filter(r => r.cek).length + " cek PDF" : "") : "",
       sumber: "Keterbukaan informasi IDX \u2192 dividen_idx.py", jadwal: "tiap hari bursa",
-      status: !J.length ? (dvSedang ? "cek" : "mati") : (DIVIDEN.dibuat && udUmurHari(DIVIDEN.dibuat.slice(0, 10)) <= 3 ? "ok" : "lama"),
+      status: !J.length ? (dvSedang ? "cek" : "mati") : (DIVIDEN && DIVIDEN.dibuat && udUmurHari(DIVIDEN.dibuat.slice(0, 10)) <= 3 ? "ok" : "lama"),
       cara: "Di laptop: <b>python dividen_idx.py</b> (ambil pengumuman jadwal dividen baru dari IDX, baca PDF-nya, kirim " +
         "data/dividen.json). Pengumuman yang sudah pernah dibaca tidak diunduh ulang. Hasilnya tampil di CARI \u203a DIVIDEN."}); }
 
@@ -13391,7 +13392,7 @@ function muatProfilRinci() {
   prSedang = true;
   ambilGudang("profil_rinci.json").then(j => { PROFIL_RINCI = j || {data: {}}; })
     .catch(() => { prGagal = true; })
-    .finally(() => { prSedang = false; if (cariSub === "profil") halCari(); });
+    .finally(() => { prSedang = false; if (cariSub === "profil" || cariSub === "dividen" || cariSub === "aksi") halCari(); });
 }
 function prTabel(judul, kolom, baris) {
   const w = el("div", "pr-blok");
@@ -14910,6 +14911,36 @@ function muatDividen() {
     .finally(() => { dvSedang = false; if (cariSub === "dividen") halCari();
       const hd = document.querySelector("#hal-data"); if (hd && !hd.hidden && typeof halData === "function") halData(); });
 }
+/* 20 Okt 2026: jadwal dividen = PDF pengumuman (dividen.json) DIGABUNG tabel dividen profil IDX
+   (profil_rinci.json, berisi dividen TERAKHIR tiap emiten - banyak dividen final yang tidak punya
+   formulir jadwal). Kunci gabung: emiten + tanggal cum. Yang dari PDF didahulukan. */
+let dvGabung = null, dvGabungKunci = "";
+function dvJadwal() {
+  const kunci = (DIVIDEN ? (DIVIDEN.jadwal || []).length : -1) + "|" + (PROFIL_RINCI ? 1 : 0);
+  if (dvGabung && dvGabungKunci === kunci) return dvGabung;
+  const L = (DIVIDEN && DIVIDEN.jadwal || []).slice(), ada = new Set(L.filter(r => r.cum).map(r => r.e + "|" + r.cum));
+  const pd = PROFIL_RINCI && PROFIL_RINCI.data || {};
+  const t10 = x => x && x.slice(0, 4) > "1950" ? x.slice(0, 10) : "";
+  Object.keys(pd).forEach(e => (pd[e].div || []).forEach(x => {
+    const j = String(x.Jenis || "").toLowerCase();
+    if (j.indexOf("saham") >= 0) return;
+    const cum = t10(x.TanggalCum);
+    if (!cum || cum < "2025-01-01" || ada.has(e + "|" + cum)) return;
+    let rp = x.CashDividenPerSaham > 0 ? x.CashDividenPerSaham : null;
+    const mu = x.CashDividenPerSahamMU || x.CashDividenTotalMU || "";
+    if (!rp && x.CashDividenTotal > 0 && (!mu || mu === "IDR")) {
+      const ls = barisScr[e] ? ambilM(barisScr[e], "Jumlah saham (lembar)") : null;
+      if (ls > 0) rp = Math.round(x.CashDividenTotal / ls * 100) / 100;
+    }
+    L.push({e, judul: "Dividen tahun buku " + (x.TahunBuku || "") + " (profil IDX)", umum: "", pdf: "",
+      cum, ex: t10(x.TanggalExRegulerDanNegosiasi), rec: t10(x.TanggalDPS), bayar: t10(x.TanggalPembayaran),
+      rp, mu: mu && mu !== "IDR" ? mu : "", total: x.CashDividenTotal || null,
+      jenis: j === "dti" || j.indexOf("interim") >= 0 ? "interim" : "final", cek: false, sumber: "profil IDX"});
+    ada.add(e + "|" + cum);
+  }));
+  dvGabung = L; dvGabungKunci = kunci;
+  return L;
+}
 const dvHariIni = () => new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10);
 const dvSelisih = (a, b) => Math.round((Date.parse(a) - Date.parse(b)) / 864e5);
 function dvStatus(r) {
@@ -14923,14 +14954,14 @@ function dvStatus(r) {
 function panelDividen(kode) {
   const p = el("div", "panel");
   p.appendChild(el("h2", null, "Dividen — semua emiten sejak 1 Jan 2025"));
-  muatDividen();
-  if (!DIVIDEN) {
+  muatDividen(); muatProfilRinci();
+  if (!DIVIDEN && !PROFIL_RINCI) {
     p.appendChild(el("div", "bantu", dvGagal ? "data/dividen.json belum ada di server. Jalankan di laptop: python dividen_idx.py"
       : "Memuat jadwal dividen…"));
     return p;
   }
   const harga = k => barisScr[k] ? ambilM(barisScr[k], "Harga penutupan") : null;
-  const semua = (DIVIDEN.jadwal || []).map(r => {
+  const semua = dvJadwal().map(r => {
     const h = harga(r.e), st = dvStatus(r);
     return Object.assign({}, r, {st, yl: r.rp && h ? r.rp / h * 100 : null, th: (r.cum || r.umum || "").slice(0, 4)});
   });
@@ -14971,7 +15002,8 @@ function panelDividen(kode) {
     "tanggal pasar tunai ada di keterangan saat baris disentuh lama. Yield = Rp per saham ÷ harga tutup terakhir (bukan harga saat pengumuman). " +
     "“cek PDF” = tanggal tidak terbaca otomatis dari PDF — ketuk “buka”. Ketuk judul kolom untuk mengurutkan " +
     "(sekali: terbesar/terbaru dulu, sekali lagi: terkecil/terlama dulu); ketuk kode untuk membuka emiten itu. " +
-    "Sumber: pengumuman jadwal dividen di keterbukaan informasi IDX" + (DIVIDEN.dibuat ? ", diperbarui " + lksTglPendek(DIVIDEN.dibuat.slice(0, 10)) : "") + "."));
+    "Sumber: pengumuman jadwal dividen di keterbukaan informasi IDX (PDF)" + (DIVIDEN && DIVIDEN.dibuat ? ", diperbarui " + lksTglPendek(DIVIDEN.dibuat.slice(0, 10)) : "") +
+    ", ditambah tabel dividen terakhir di profil IDX untuk dividen yang tidak punya formulir jadwal (tanpa tautan PDF; Rp/saham dihitung dari total dibagi jumlah saham bila IDX tidak mencantumkannya)."));
   return p;
 }
 function dvTabel(baris, kode) {
@@ -15012,7 +15044,7 @@ function dvTabel(baris, kode) {
     cE.onclick = () => { cariKode = r.e; cariTutup = true; halCari(); window.scrollTo(0, 0); };
     tr.appendChild(cE);
     tr.appendChild(el("td", "rd-kiri", r.jenis || "–"));
-    tr.appendChild(el("td", "num", r.rp ? nf(r.rp, r.rp % 1 ? (r.rp < 10 ? 2 : 1) : 0) : "–"));
+    tr.appendChild(el("td", "num", r.rp ? nf(r.rp, r.rp % 1 ? (r.rp < 10 ? 2 : 1) : 0) : r.mu && r.total ? r.mu + " " + rpSingkat(r.total) + " total" : "–"));
     tr.appendChild(el("td", "num" + (r.yl ? " naik" : ""), r.yl ? nf(r.yl, 1) + "%" : "–"));
     ["cum", "ex", "rec", "bayar"].forEach(k => tr.appendChild(el("td", "rd-kiri", tg(r[k]))));
     const cS = el("td", "rd-kiri"); cS.appendChild(el("span", "dv-tg " + r.st.k, r.st.t)); tr.appendChild(cS);
@@ -15035,7 +15067,7 @@ let akSaring = "semua", akUrut = {k: "tgl", a: -1};
 const AK_SPLIT_LAMA = {PTRO: [["2025-01-03", 10]], CUAN: [["2025-07-15", 10]]};   /* sebelum riwayat harga di HP */
 function aksiBaris(kode) {
   const L = [];
-  (DIVIDEN && DIVIDEN.jadwal || []).filter(r => r.e === kode).forEach(r => {
+  dvJadwal().filter(r => r.e === kode).forEach(r => {
     L.push({tgl: r.cum || r.umum, jenis: "Dividen" + (r.jenis ? " " + r.jenis : ""), g: "dividen",
       rinci: r.rp ? "Rp " + nf(r.rp, r.rp % 1 ? 1 : 0) + " / saham" : "lihat PDF",
       cum: r.cum, ex: r.ex, rec: r.rec, bayar: r.bayar, st: dvStatus(r), pdf: r.pdf, umum: r.umum});
@@ -15054,7 +15086,7 @@ function aksiBaris(kode) {
 function panelAksi(kode) {
   const p = el("div", "panel");
   p.appendChild(el("h2", null, "Aksi korporasi — " + kode));
-  muatDividen();
+  muatDividen(); muatProfilRinci();
   const semua = aksiBaris(kode);
   const alat = el("div", "alat ph-alat");
   const sk = el("div", "saklar rd-saklar");
