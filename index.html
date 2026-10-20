@@ -588,6 +588,14 @@ tr.pt-dicoret td{opacity:.6} tr.pt-dicoret .kode{text-decoration:line-through}
 .pt-ket.pantau{background:var(--surface-2);color:var(--ink-2)}.pt-ket.tunggu{background:rgba(230,180,0,.18);color:#8a6500}
 .pt-ket.jual{background:var(--turun-bg);color:var(--turun)}
 .rek-news.aktif{outline:2px solid var(--merek);outline-offset:-2px}
+.rek-fca{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;padding:8px 10px;border-radius:9px;
+  background:var(--turun-bg);border:1px solid var(--turun);color:var(--turun);font-size:12.5px;font-weight:600}
+.rek-fca-tg{background:var(--turun);color:#fff;border-radius:5px;padding:2px 9px;font-size:13px;letter-spacing:.06em}
+.op-hijau{color:var(--naik)}.op-kuning{color:#a87400}.op-merah{color:var(--turun)}
+.rek-op-kt{font-size:10.5px;font-weight:700;margin:-1px 0 2px;line-height:1.25}
+.rek-op-t{width:100%;border-collapse:collapse;font-size:13px;margin:6px 0}
+.rek-op-t td{padding:5px 6px;border-bottom:1px solid var(--garis);vertical-align:top;white-space:normal}
+.rek-op-t td:first-child{color:var(--ink-3);width:170px}
 .rek-nw-hit{display:flex;gap:8px;font-size:12px;font-weight:800}.rek-nw-hit .naik{color:var(--naik)}.rek-nw-hit .turun{color:var(--turun)}.rek-nw-net{color:var(--ink-3)}
 .rek-nw-saring{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}.rek-nw-saring .aktif{background:var(--merek);color:#fff}
 .rek-nwl{display:flex;flex-direction:column;gap:6px}
@@ -2277,7 +2285,9 @@ function hitungScalping() {
     const tanda = [];
     if (chg >= scAra(x.p) - 0.01 && pos >= 0.99) tanda.push("ara");
     else if (chg >= 0.15) tanda.push("naik");
-    if (chg <= -0.14 && pos <= 0.01) tanda.push("arb");
+    /* ARB 15% s/d 16 Okt 2026, 7% mulai 19 Okt 2026 (harga Rp11-14: Rp1 mulai 20 Okt) */
+    const batasArb = akhir >= "2026-10-19" ? (x.p <= 14 ? 1 / x.p : 0.07) : 0.15;
+    if (chg <= -(batasArb - 0.01) && pos <= 0.01) tanda.push("arb");
     else if (chg <= -0.03) tanda.push("turun");
     if (rv >= 3) tanda.push("vol");
     hasil.push({em: k, c: x.c, chg: chg * 100, n: x.n || 0, rv, r20: r20 * 100, tk: tk * 100, pos: pos * 100, pr: pr * 100, tanda});
@@ -2332,7 +2342,7 @@ function panelScalping(w) {
     "Gerak besar BUKAN berarti naik — arah tetap dibaca dari running trade. " +
     "Tick = 1 fraksi harga ÷ harga (biaya beli+jual ±0,4%, jadi tick > 1% berarti satu tick hampir habis untuk biaya). " +
     "Tutup di = posisi harga tutup antara low (0%) dan high (100%). " +
-    "Tanda: ARA · tutup di high = naik sebatas auto reject atas dan tutup di harga tertinggi; ARB = turun ±15% dan tutup di harga terendah; " +
+    "Tanda: ARA · tutup di high = naik sebatas auto reject atas dan tutup di harga tertinggi; ARB = turun sebatas auto reject bawah (15% s/d 16 Okt 2026, 7% mulai 19 Okt 2026) dan tutup di harga terendah; " +
     "turun kmrn = turun ≥ 3%; volume ≥3× = volume hari ini ≥ 3× rata-rata 20 hari. " +
     "Ketuk judul kolom untuk mengurutkan; ketuk baris untuk membuka emiten di CARI."));
 
@@ -2344,6 +2354,7 @@ function panelScalping(w) {
    ["Turun kmrn + gap turun 4–7%", "Open→close rata-rata +1,5%, untung > 0,4% di 56% kasus — tapi belum kuat secara statistik. Target kecil."],
    ["Gap turun jarang tertutup", "Hanya 10–24% yang kembali ke harga tutup kemarin. Jangan pasang target di situ."],
    ["Beli di open rata-rata rugi", "Semua saham: open→close −0,36%. Masuk sesudah cekungan pertama, bukan di harga pembukaan."],
+   ["ARB jadi 7% (mulai 19 Okt 2026)", "Angka uji di atas dari masa ARB 15%. Dengan ARB 7% turunnya lebih cepat terkunci — gerak turun dalam sehari lebih pendek, antrean jual di ARB lebih sering."],
    ["Biaya ±0,4% pulang-pergi", "Tick besar (> 1%) = satu tick gerak sudah habis untuk biaya."]]
     .forEach(([j, t]) => { const d = el("div"); d.appendChild(el("b", null, j)); d.appendChild(el("span", null, t)); at.appendChild(d); });
   p2.appendChild(at);
@@ -3188,6 +3199,79 @@ function lksRingkasan(kode) {
   if (k.lama) st += " Emiten ini BELUM melaporkan LK periode terbaru (s/d " + lksTglPendek(terbaru) + ") padahal sebagian besar emiten sudah — penilaian memakai laporan lama, jadi bisa sudah tidak mencerminkan kondisi sekarang.";
   kal.push(st);
   return kal;
+}
+
+/* 20 Okt 2026: kotak OPINI AUDITOR di Rekomendasi. Sumber utama data/opini.json (opini_lk.py:
+   LK TAHUNAN terbaru tiap emiten - LK triwulan tidak diaudit, opininya kosong). Cadangan:
+   LK.profil[em].opini (sering kosong/tertimpa LK triwulan). 4 jenis opini SPAP. */
+let OPINI = null, opSedang = false, opGagal = false, rekOpBuka = false;
+const OP_JENIS = {
+  WTM: {n: "Wajar Tanpa Modifikasian", k: "op-hijau", s: "laporan disajikan wajar dalam semua hal material — paling baik"},
+  WDP: {n: "Wajar Dengan Pengecualian", k: "op-kuning", s: "wajar, KECUALI pos tertentu yang salah saji atau tidak bisa diperiksa — waspada"},
+  TW: {n: "Tidak Wajar", k: "op-merah", s: "salah saji material dan meluas — angka LK tidak bisa dipercaya"},
+  TMP: {n: "Tidak Menyatakan Pendapat", k: "op-merah", s: "auditor tidak mendapat bukti cukup (disclaimer) — emiten masuk Papan Pemantauan Khusus"}};
+function opKode(t) {
+  t = String(t || "").toLowerCase();
+  if (/tanpa modifikasian|unqualified/.test(t)) return "WTM";
+  if (/pengecualian|qualified/.test(t)) return "WDP";
+  if (/tidak wajar|adverse/.test(t)) return "TW";
+  if (/tidak menyatakan|disclaimer/.test(t)) return "TMP";
+  return "";
+}
+function muatOpini() {
+  if (OPINI || opSedang || opGagal) return;
+  opSedang = true;
+  ambilGudang("opini.json").then(j => { OPINI = (j && j.emiten) || {}; })
+    .catch(() => { opGagal = true; })
+    .finally(() => { opSedang = false; if (subScr === "rekomendasi") halScreener(); });
+}
+function opiniEmiten(em) {
+  if (OPINI && OPINI[em]) return OPINI[em];
+  const p = LK && LK.profil && LK.profil[em];
+  const c = p ? opKode(p.opini) : "";
+  return c ? {opini: c, asli: p.opini, auditor: p.auditor || "", th: null, dariProfil: true} : null;
+}
+function rekKartuOpini(em) {
+  muatOpini();
+  const o = opiniEmiten(em);
+  const k = el("div", "rek-k rek-news" + (rekOpBuka ? " aktif" : ""));
+  k.appendChild(el("div", "rek-kj", "OPINI AUDITOR"));
+  if (!o) {
+    k.appendChild(el("div", "rek-kn", "–"));
+    k.appendChild(el("div", "rek-kk", opSedang ? "memuat opini…" : "belum ada LK tahunan"));
+    k.title = "Opini auditor hanya ada di LK tahunan yang diaudit. Jalankan opini_lk.py di laptop untuk mengisinya.";
+    return k;
+  }
+  const J = OP_JENIS[o.opini], awas = !!(o.gc || o.ganti);
+  k.appendChild(el("div", "rek-kn " + J.k, o.opini + (awas ? " ⚠" : "")));
+  k.appendChild(el("div", "rek-op-kt " + J.k, "(" + J.n + ")"));
+  k.appendChild(el("div", "rek-kk", (o.th ? "LK " + o.th : "LK") + (o.gc ? " · ragu kelangsungan usaha" : o.ganti ? " · ganti auditor" : o.auditor ? " · " + o.auditor : "")));
+  k.title = J.n + ": " + J.s + ". Ketuk untuk rincian.";
+  k.style.cursor = "pointer";
+  k.onclick = () => { rekOpBuka = !rekOpBuka; halScreener(); };
+  return k;
+}
+function rekPanelOpini(em) {
+  const o = opiniEmiten(em);
+  const p = el("div", "rek-ng rek-op");
+  p.appendChild(el("h2", null, "Opini auditor — " + em + (o && o.th ? " · LK tahunan " + o.th : "")));
+  if (!o) { p.appendChild(el("div", "bantu", "Belum ada opini untuk emiten ini.")); return p; }
+  const J = OP_JENIS[o.opini];
+  const t = el("table", "rek-op-t");
+  const baris = (a, b, kls) => { const tr = el("tr"); tr.appendChild(el("td", null, a)); const td = el("td", kls || null); if (typeof b === "string") td.textContent = b; else td.appendChild(b); tr.appendChild(td); t.appendChild(tr); };
+  const b0 = el("span"); b0.appendChild(el("b", J.k, J.n + " (" + o.opini + ")")); b0.appendChild(document.createTextNode(" — " + J.s));
+  baris("Opini", b0);
+  if (o.auditor) baris("Auditor (KAP)", o.auditor + (o.partner ? " · partner " + o.partner : ""));
+  if (!o.dariProfil) baris("Ganti auditor?", o.ganti ? "YA — tahun sebelumnya " + (o.auditor_lalu || "–") : "Tidak (sama dengan tahun lalu)", o.ganti ? "op-merah" : null);
+  if (o.tgl) baris("Tanggal laporan audit", lksTglPendek(o.tgl));
+  if (!o.dariProfil) baris("Paragraf penekanan", o.penekanan ? o.penekanan + (o.gc ? "  ⚠ ketidakpastian material kelangsungan usaha" : "") : "Tidak ada", o.gc ? "op-merah" : null);
+  if (o.kam_teks) baris("Hal audit utama" + (o.kam ? " (" + o.kam + ")" : ""), o.kam_teks);
+  p.appendChild(t);
+  p.appendChild(el("div", "bantu", "4 jenis opini: WTM (Wajar Tanpa Modifikasian) paling baik · WDP (Wajar Dengan Pengecualian) waspada · " +
+    "TW (Tidak Wajar) dan TMP (Tidak Menyatakan Pendapat) sangat buruk. ⚠ = opini WTM tetapi auditor meragukan kelangsungan usaha " +
+    "(going concern), atau emiten berganti auditor. Opini hanya ada di LK tahunan yang diaudit; LK triwulan tidak diaudit." +
+    (o.dariProfil ? " Data ini dari profil LK (cadangan) — jalankan opini_lk.py untuk rincian lengkap." : "")));
+  return p;
 }
 
 /* 11 Okt 2026: kotak NEWS di Rekomendasi - berita media + keterbukaan informasi IDX untuk emiten terpilih,
@@ -5283,6 +5367,16 @@ function panelRekomendasi(w) {
   const pnet = gross ? netPindah / gross * 100 : null;
   const akhir = hr[hr.length - 1];
 
+  /* 20 Okt 2026: emiten di Papan Pemantauan Khusus langsung diberi pita FCA */
+  pakaiFcaGudang();
+  if (FCA && FCA[rek.em]) {
+    const f = FCA[rek.em], pf = el("div", "rek-fca");
+    pf.appendChild(el("b", "rek-fca-tg", "FCA"));
+    pf.appendChild(el("span", null, "Papan Pemantauan Khusus (full call auction) sejak " + (f.m ? lksTglPendek(f.m) : "–") +
+      " · kriteria " + (f.k || []).map(k => k + " (" + fcaTeks(k) + ")").join(", ") +
+      " · data per " + lksTglPendek(FCA_PER)));
+    p.appendChild(pf);
+  }
   const kartu = el("div", "rek-kartu");
   kartu.appendChild(rekKartu("HARGA TERBARU",
     akhir.c === null ? "—" : "Rp " + rp(akhir.c), "",
@@ -5306,8 +5400,10 @@ function panelRekomendasi(w) {
     kl.title = q ? q.kal + " Ketuk untuk melihat rinciannya di menu CARI." : "";
     if (q) { kl.style.cursor = "pointer"; kl.onclick = () => { if (typeof bukaCariLK === "function") bukaCariLK(rek.em); }; }
     kartu.appendChild(kl); lkPastikan(halScreener); }
+  kartu.appendChild(rekKartuOpini(rek.em));
   kartu.appendChild(rekKartuNews(rek.em));
   p.appendChild(kartu);
+  if (rekOpBuka) p.appendChild(rekPanelOpini(rek.em));
   if (rekNewsBuka) p.appendChild(rekPanelNews(rek.em));
 
   /* ---- % NET TERHADAP GROSS: batang panjang sama dengan menu BROKER > %NET > RASIO ---- */
@@ -8520,7 +8616,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-17-4";
+const VERSI_APP = "2026-10-20-1";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
