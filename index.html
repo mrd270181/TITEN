@@ -3242,10 +3242,10 @@ function rekKartuOpini(em) {
     k.title = "Opini auditor hanya ada di LK tahunan yang diaudit. Jalankan opini_lk.py di laptop untuk mengisinya.";
     return k;
   }
-  const J = OP_JENIS[o.opini], awas = !!(o.gc || o.ganti);
+  const J = OP_JENIS[o.opini], awas = !!o.gc;   /* ganti auditor cukup di rincian - 143 dari 919 emiten LK 2025 */
   k.appendChild(el("div", "rek-kn " + J.k, o.opini + (awas ? " ⚠" : "")));
   k.appendChild(el("div", "rek-op-kt " + J.k, "(" + J.n + ")"));
-  k.appendChild(el("div", "rek-kk", (o.th ? "LK " + o.th : "LK") + (o.gc ? " · ragu kelangsungan usaha" : o.ganti ? " · ganti auditor" : o.auditor ? " · " + o.auditor : "")));
+  k.appendChild(el("div", "rek-kk", (o.th ? "LK " + o.th : "LK") + (o.gc ? " · ragu kelangsungan usaha" : o.auditor ? " · " + o.auditor : "")));
   k.title = J.n + ": " + J.s + ". Ketuk untuk rincian.";
   k.style.cursor = "pointer";
   k.onclick = () => { rekOpBuka = !rekOpBuka; halScreener(); };
@@ -3269,7 +3269,7 @@ function rekPanelOpini(em) {
   p.appendChild(t);
   p.appendChild(el("div", "bantu", "4 jenis opini: WTM (Wajar Tanpa Modifikasian) paling baik · WDP (Wajar Dengan Pengecualian) waspada · " +
     "TW (Tidak Wajar) dan TMP (Tidak Menyatakan Pendapat) sangat buruk. ⚠ = opini WTM tetapi auditor meragukan kelangsungan usaha " +
-    "(going concern), atau emiten berganti auditor. Opini hanya ada di LK tahunan yang diaudit; LK triwulan tidak diaudit." +
+    "(going concern). Ganti auditor ditampilkan di rincian saja karena cukup sering terjadi (sekitar 1 dari 6 emiten tiap tahun) dan tidak selalu berarti buruk. Opini hanya ada di LK tahunan yang diaudit; LK triwulan tidak diaudit." +
     (o.dariProfil ? " Data ini dari profil LK (cadangan) — jalankan opini_lk.py untuk rincian lengkap." : "")));
   return p;
 }
@@ -8616,7 +8616,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-20-1";
+const VERSI_APP = "2026-10-20-2";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
