@@ -8631,7 +8631,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-20-9";
+const VERSI_APP = "2026-10-20-10";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -14996,6 +14996,7 @@ function panelDividen(kode) {
      (dvSaring === "dekat" && r.st.k === "dekat") || (dvSaring === "ini" && r.e === kode)) &&
     (!dvTahun || r.th === dvTahun) && (!dvCari || r.e.indexOf(dvCari) === 0));
   p.appendChild(dvTabel(saring(), kode));
+  p.appendChild(dvPerkiraan(semua, kode));
   p.appendChild(el("div", "bantu",
     "Cum = hari terakhir membeli supaya dapat dividen · Ex = mulai hari itu membeli sudah TIDAK dapat · " +
     "Recording = tanggal daftar pemegang saham yang berhak · Bayar = dividen masuk rekening. Tanggal pasar reguler & negosiasi; " +
@@ -15005,6 +15006,72 @@ function panelDividen(kode) {
     "Sumber: pengumuman jadwal dividen di keterbukaan informasi IDX (PDF)" + (DIVIDEN && DIVIDEN.dibuat ? ", diperbarui " + lksTglPendek(DIVIDEN.dibuat.slice(0, 10)) : "") +
     ", ditambah tabel dividen terakhir di profil IDX untuk dividen yang tidak punya formulir jadwal (tanpa tautan PDF; Rp/saham dihitung dari total dibagi jumlah saham bila IDX tidak mencantumkannya)."));
   return p;
+}
+/* 20 Okt 2026: PERKIRAAN dividen berikutnya = pola tahun lalu. Untuk tiap emiten & jenis
+   (interim/final), dividen yang sudah lewat digeser +1 tahun. Ditampilkan bila jatuh dalam
+   120 hari ke depan dan BELUM ada jadwal resmi jenis itu yang akan datang. Bukan kepastian. */
+let dvpUrut = {k: "kira", a: 1};
+function dvPerkiraan(semua, kode) {
+  const w = el("div", "pr-blok");
+  w.appendChild(el("h3", "pr-judul", "Perkiraan dividen berikutnya \u2014 dari pola tahun lalu"));
+  const h = dvHariIni(), batas = new Date(Date.parse(h) + 120 * 864e5).toISOString().slice(0, 10);
+  const geser = t => (parseInt(t.slice(0, 4), 10) + 1) + t.slice(4);
+  const akanAda = new Set(semua.filter(r => r.cum && r.cum >= h).map(r => r.e + "|" + (r.jenis || "")));
+  const per = {};
+  semua.filter(r => r.cum && r.cum < h).forEach(r => {
+    const j = r.jenis || "final", k = r.e + "|" + j;
+    if (!per[k] || r.cum > per[k].cum) per[k] = r;            /* dividen jenis ini yang terakhir */
+  });
+  const L = [];
+  Object.values(per).forEach(r => {
+    let kira = geser(r.cum);
+    while (kira < h) kira = geser(kira);                       /* sudah lewat tahun ini -> tahun depan */
+    if (kira > batas || akanAda.has(r.e + "|" + (r.jenis || ""))) return;
+    L.push({e: r.e, jenis: r.jenis || "final", kira, dasar: r.cum, rp: r.rp, yl: r.yl,
+      hari: dvSelisih(kira, h), n: semua.filter(x => x.e === r.e && x.cum && x.cum < h && (x.jenis || "final") === (r.jenis || "final")).length});
+  });
+  w.appendChild(el("div", "bantu", L.length + " emiten diperkirakan membagi dividen dalam 120 hari ke depan, berdasarkan tanggal cum " +
+    "dividen sejenis tahun lalu (digeser 1 tahun). Tanggal resmi tetap menunggu keputusan RUPS (final) atau direksi (interim)."));
+  const bungkus = el("div", "tbl-bungkus tbl-kunci rd-tabel dv-tabel");
+  const t = el("table"), thead = el("thead"), trh = el("tr");
+  const KOL = [["e", "Emiten", ""], ["jenis", "Jenis", ""], ["kira", "Perkiraan cum", "\u00b1 pola tahun lalu"], ["hari", "Hari lagi", ""],
+    ["dasar", "Dividen terakhir", "tanggal cum"], ["rp", "Rp / saham", "terakhir"], ["yl", "Yield", "terakhir \u00f7 harga kini"], ["n", "Riwayat", "kali sejak 2025"]];
+  const gambar = () => {
+    trh.innerHTML = ""; tb.innerHTML = "";
+    KOL.forEach(([k, j, sub]) => {
+      const num = ["hari", "rp", "yl", "n"].indexOf(k) >= 0;
+      const th = el("th", num ? "num" : "rd-kiri", j + (dvpUrut.k === k ? (dvpUrut.a < 0 ? " \u25bc" : " \u25b2") : ""));
+      if (sub) th.appendChild(el("span", "rd-subjudul", sub));
+      th.style.cursor = "pointer"; th.title = "Urutkan (ketuk lagi untuk membalik)";
+      th.onclick = () => { if (dvpUrut.k === k) dvpUrut.a = -dvpUrut.a; else dvpUrut = {k, a: k === "e" || k === "jenis" || k === "kira" || k === "hari" ? 1 : -1}; gambar(); };
+      trh.appendChild(th);
+    });
+    L.slice().sort((a, b) => { const x = a[dvpUrut.k], y = b[dvpUrut.k];
+      if (x === y) return a.kira < b.kira ? -1 : 1;
+      if (x === null || x === undefined) return 1; if (y === null || y === undefined) return -1;
+      return (typeof x === "string" ? x.localeCompare(y) : x - y) * dvpUrut.a; })
+      .forEach(r => {
+        const tr = el("tr", r.e === kode ? "dv-pilih" : null);
+        const cE = el("td", "rd-kiri klik"); cE.appendChild(el("span", "kode", r.e));
+        cE.appendChild(el("span", "nm", (DATA.nama && DATA.nama[r.e]) || ""));
+        cE.onclick = () => { cariKode = r.e; cariTutup = true; halCari(); window.scrollTo(0, 0); };
+        tr.appendChild(cE);
+        tr.appendChild(el("td", "rd-kiri", r.jenis));
+        tr.appendChild(el("td", "rd-kiri", "\u00b1 " + lksTglPendek(r.kira)));
+        tr.appendChild(el("td", "num", r.hari + " hari"));
+        tr.appendChild(el("td", "rd-kiri", lksTglPendek(r.dasar)));
+        tr.appendChild(el("td", "num", r.rp ? nf(r.rp, r.rp % 1 ? 1 : 0) : "\u2013"));
+        tr.appendChild(el("td", "num" + (r.yl ? " naik" : ""), r.yl ? nf(r.yl, 1) + "%" : "\u2013"));
+        tr.appendChild(el("td", "num", r.n + "\u00d7"));
+        tb.appendChild(tr);
+      });
+    if (!L.length) { const tr = el("tr"), td = el("td", null, "Belum ada perkiraan (riwayat dividen tahun lalu belum cukup)."); td.colSpan = KOL.length; tr.appendChild(td); tb.appendChild(tr); }
+  };
+  const tb = el("tbody");
+  thead.appendChild(trh); t.appendChild(thead); t.appendChild(tb); bungkus.appendChild(t);
+  gambar();
+  w.appendChild(bungkus);
+  return w;
 }
 function dvTabel(baris, kode) {
   const bungkus = el("div", "tbl-bungkus tbl-kunci rd-tabel dv-tabel");
