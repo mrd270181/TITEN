@@ -595,6 +595,7 @@ tr.pt-dicoret td{opacity:.6} tr.pt-dicoret .kode{text-decoration:line-through}
 .dv-tabel td.klik{cursor:pointer}
 .dv-tg{display:inline-block;font-size:10px;font-weight:800;border-radius:4px;padding:1px 6px;white-space:nowrap}
 .dv-tg.dekat{background:rgba(230,170,0,.16);color:#a87400}.dv-tg.akan{background:var(--naik-bg);color:var(--naik)}
+.dv-tglh{display:block;font-size:10px;opacity:.65;font-weight:400}
 .dv-tg.lewat{background:var(--surface-2);color:var(--ink-3)}.dv-tg.cek{background:var(--turun-bg);color:var(--turun)}
 .rek-fca{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;padding:8px 10px;border-radius:9px;
   background:var(--turun-bg);border:1px solid var(--turun);color:var(--turun);font-size:12.5px;font-weight:600}
@@ -8697,7 +8698,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-21-8";
+const VERSI_APP = "2026-10-21-11";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -15054,7 +15055,7 @@ function muatDividen() {
    formulir jadwal). Kunci gabung: emiten + tanggal cum. Yang dari PDF didahulukan. */
 let dvGabung = null, dvGabungKunci = "";
 function dvJadwal() {
-  const kunci = (DIVIDEN ? (DIVIDEN.jadwal || []).length : -1) + "|" + (PROFIL_RINCI ? 1 : 0);
+  const kunci = (DIVIDEN ? (DIVIDEN.jadwal || []).length : -1) + "|" + (PROFIL_RINCI ? 1 : 0) + "|" + Object.keys(barisScr).length;
   if (dvGabung && dvGabungKunci === kunci) return dvGabung;
   const L = (DIVIDEN && DIVIDEN.jadwal || []).slice(), ada = new Set(L.filter(r => r.cum).map(r => r.e + "|" + r.cum));
   const pd = PROFIL_RINCI && PROFIL_RINCI.data || {};
@@ -15066,16 +15067,35 @@ function dvJadwal() {
     if (!cum || cum < "2025-01-01" || ada.has(e + "|" + cum)) return;
     let rp = x.CashDividenPerSaham > 0 ? x.CashDividenPerSaham : null;
     const mu = x.CashDividenPerSahamMU || x.CashDividenTotalMU || "";
-    if (!rp && x.CashDividenTotal > 0 && (!mu || mu === "IDR")) {
+    let cekRp = false;
+    if (x.CashDividenTotal > 0 && (!mu || mu === "IDR")) {
       const ls = barisScr[e] ? ambilM(barisScr[e], "Jumlah saham (lembar)") : null;
-      if (ls > 0) rp = Math.round(x.CashDividenTotal / ls * 100) / 100;
+      const dariTotal = ls > 0 ? Math.round(x.CashDividenTotal / ls * 100) / 100 : null;
+      /* 21 Okt 2026: IDX kadang salah skala per saham (PTPW: 5.694 padahal total Rp5 M / 878 jt
+         saham = Rp5,69). Kalau selisihnya > 20x dari total / saham tercatat, pakai hitungan total. */
+      if (dariTotal && (!rp || rp / dariTotal > 20 || rp / dariTotal < 0.05)) { cekRp = !!rp; rp = dariTotal; }
     }
     L.push({e, judul: "Dividen tahun buku " + (x.TahunBuku || "") + " (profil IDX)", umum: "", pdf: "",
       cum, ex: t10(x.TanggalExRegulerDanNegosiasi), rec: t10(x.TanggalDPS), bayar: t10(x.TanggalPembayaran),
       rp, mu: mu && mu !== "IDR" ? mu : "", total: x.CashDividenTotal || null,
-      jenis: j === "dti" || j.indexOf("interim") >= 0 ? "interim" : "final", cek: false, sumber: "profil IDX"});
+      jenis: j === "dti" || j.indexOf("interim") >= 0 ? "interim" : "final", cek: false, rpKoreksi: cekRp, sumber: "profil IDX"});
     ada.add(e + "|" + cum);
   }));
+  /* 21 Okt 2026: penjaga angka Rp/saham. Pembaca PDF kadang menangkap TOTAL dividen (BBRI
+     Rp20,6 T) atau jumlah saham sebagai Rp/saham -> yield ratusan juta persen. Aturan:
+     - judul "dividen saham" (bukan tunai) -> Rp/saham dikosongkan
+     - Rp/saham >= harga tutup: kalau total / saham tercatat masuk akal (Rp1 .. < harga) pakai
+       itu (BBRI -> Rp136), kalau tidak dikosongkan (tampil "lihat PDF") */
+  L.forEach(r => {
+    if (!(r.rp > 0) || r.mu) return;
+    if (/dividen saham|saham bonus/i.test(r.judul || "")) { r.rp = null; return; }
+    const sc = barisScr[r.e], h = sc ? ambilM(sc, "Harga penutupan") : null;
+    if (!(h > 0) || r.rp < h) return;
+    const ls = sc ? ambilM(sc, "Jumlah saham (lembar)") : null;
+    const per = ls > 0 ? r.rp / ls : null;
+    r.rpAsli = r.rp;
+    r.rp = per && per >= 1 && per < h ? Math.round(per * 100) / 100 : null;
+  });
   dvGabung = L; dvGabungKunci = kunci;
   return L;
 }
@@ -15099,9 +15119,14 @@ function panelDividen(kode) {
     return p;
   }
   const harga = k => barisScr[k] ? ambilM(barisScr[k], "Harga penutupan") : null;
+  /* 21 Okt 2026: kolom HARGA SKR + tanggal penutupan terakhir tiap emiten (daftarHari urut terbaru dulu) */
+  const tglH = {};
+  { const perlu = new Set(dvJadwal().map(r => r.e));
+    for (const r of daftarHari) { if (!perlu.size) break;
+      for (const k of [...perlu]) { const b = r.baris && r.baris[k]; if (b && b.c > 0) { tglH[k] = r.tgl; perlu.delete(k); } } } }
   const semua = dvJadwal().map(r => {
     const h = harga(r.e), st = dvStatus(r);
-    return Object.assign({}, r, {st, yl: r.rp && h ? r.rp / h * 100 : null, th: (r.cum || r.umum || "").slice(0, 4)});
+    return Object.assign({}, r, {st, hk: h || null, hkTgl: tglH[r.e] || "", yl: r.rp && h ? r.rp / h * 100 : null, th: (r.cum || r.umum || "").slice(0, 4)});
   });
   const h0 = dvHariIni();
   const rg = el("div", "nw-ring rd-ring");
@@ -15215,12 +15240,12 @@ function dvTabel(baris, kode) {
   const bungkus = el("div", "tbl-bungkus tbl-kunci rd-tabel dv-tabel");
   const t = el("table"), thead = el("thead"), trh = el("tr");
   const tg = x => x ? lksTglPendek(x) : "–";
-  const KOL = [["e", "Emiten", ""], ["jenis", "Jenis", ""], ["rp", "Rp / saham", ""], ["yl", "Yield", "÷ harga tutup kini"],
+  const KOL = [["e", "Emiten", ""], ["jenis", "Jenis", ""], ["rp", "Rp / saham", ""], ["hk", "Harga skr", "tutup terakhir"], ["yl", "Yield", "÷ harga skr"],
     ["cum", "Cum", "reguler & nego"], ["ex", "Ex", "reguler & nego"], ["rec", "Recording", "daftar pemegang"],
     ["bayar", "Bayar", ""], ["st", "Status", ""], ["", "PDF", ""]];
   const nilai = (r, k) => k === "st" ? r.st.u * 1e4 - (r.cum ? dvSelisih(r.cum, "2025-01-01") : 0) * (r.st.u >= 2 ? 1 : -1) / 1e3 : r[k];
   KOL.forEach(([k, j, sub]) => {
-    const num = k === "rp" || k === "yl";
+    const num = k === "rp" || k === "yl" || k === "hk";
     const th = el("th", num ? "num" : "rd-kiri", j + (dvUrut.k === k && k ? (dvUrut.a < 0 ? " ▼" : " ▲") : ""));
     if (sub) th.appendChild(el("span", "rd-subjudul", sub));
     if (k) {
@@ -15250,6 +15275,9 @@ function dvTabel(baris, kode) {
     tr.appendChild(cE);
     tr.appendChild(el("td", "rd-kiri", r.jenis || "–"));
     tr.appendChild(el("td", "num", r.rp ? nf(r.rp, r.rp % 1 ? (r.rp < 10 ? 2 : 1) : 0) : r.mu && r.total ? r.mu + " " + rpSingkat(r.total) + " total" : "–"));
+    { const td = el("td", "num", r.hk ? nf(r.hk, r.hk % 1 ? 1 : 0) : "–");
+      if (r.hk && r.hkTgl) td.appendChild(el("span", "dv-tglh", tglID(r.hkTgl)));
+      tr.appendChild(td); }
     tr.appendChild(el("td", "num" + (r.yl ? " naik" : ""), r.yl ? nf(r.yl, 1) + "%" : "–"));
     ["cum", "ex", "rec", "bayar"].forEach(k => tr.appendChild(el("td", "rd-kiri", tg(r[k]))));
     const cS = el("td", "rd-kiri"); cS.appendChild(el("span", "dv-tg " + r.st.k, r.st.t)); tr.appendChild(cS);
