@@ -2268,8 +2268,22 @@ function rdTabel(baris) {
    rentang20 = rata-rata (high/low - 1) 20 hari bursa s/d hari ini; vol relatif = volume hari
    ini / rata-rata 20 hari SEBELUMNYA. Gerak besar bukan berarti arah naik. */
 let scMin = 1e10, scTanda = "semua", scBuangArb = false, scUrut = {k: "pr", a: -1}, scCache = null;
+let scHarga = "semua", scGerak = 3;   /* 21 Okt 2026: saringan harga & perkiraan gerak minimal */
 const scTick = p => p < 200 ? 1 : p < 500 ? 2 : p < 2000 ? 5 : p < 5000 ? 10 : 25;
 const scAra = p => p <= 200 ? 0.35 : p <= 5000 ? 0.25 : 0.20;
+const SC_HARGA = {semua: [0, Infinity], a: [50, 500], b: [500, 2000], c: [2000, 5000], d: [5000, Infinity]};
+const SC_BIAYA = 0.4;   /* % beli + jual pulang-pergi */
+/* batas auto reject BESOK dari harga tutup c: ARB 7% (harga <= Rp14: turun Rp1), ARA 35/25/20%;
+   dibulatkan ke fraksi harga di dalam batas (ARB ke atas, ARA ke bawah) */
+function scBatas(c) {
+  let arb;
+  if (c <= 14) arb = Math.max(1, c - 1);
+  else { const b = c * 0.93, t = scTick(b); arb = Math.ceil(b / t - 1e-9) * t; if (arb >= c) arb = c - scTick(c - 1); }
+  const a = c * (1 + scAra(c)), ta = scTick(a);
+  let ara = Math.floor(a / ta + 1e-9) * ta;
+  if (scTick(ara) !== ta) ara = Math.floor(a / scTick(ara)) * scTick(ara);
+  return {arb, ara};
+}
 function hitungScalping() {
   const tgl = [...new Set(daftarHari.map(r => r.tgl))].filter(Boolean).sort();
   const kunci = tgl.length + "|" + tgl[tgl.length - 1] + "|" + daftarHari.length;
@@ -2302,7 +2316,9 @@ function hitungScalping() {
     if (chg <= -(batasArb - 0.01) && pos <= 0.01) tanda.push("arb");
     else if (chg <= -0.03) tanda.push("turun");
     if (rv >= 3) tanda.push("vol");
-    hasil.push({em: k, c: x.c, chg: chg * 100, n: x.n || 0, rv, r20: r20 * 100, tk: tk * 100, pos: pos * 100, pr: pr * 100, tanda});
+    const bt = scBatas(x.c);
+    hasil.push({em: k, c: x.c, chg: chg * 100, n: x.n || 0, rv, r20: r20 * 100, tk: tk * 100, pos: pos * 100, pr: pr * 100,
+                pb: pr * 100 - SC_BIAYA, arb: bt.arb, arbJ: (bt.arb / x.c - 1) * 100, ara: bt.ara, araJ: (bt.ara / x.c - 1) * 100, tanda});
   });
   return (scCache = {kunci, akhir, hasil});
 }
@@ -2319,12 +2335,14 @@ function panelScalping(w) {
   if (!R.akhir) { p.appendChild(el("div", "bantu", "Data harga belum termuat.")); w.appendChild(p); return; }
   p.appendChild(el("div", "bantu", "Data penutupan " + tglID(R.akhir) + ". Diurutkan menurut perkiraan gerak harian besok (high ÷ low). " +
     "Saham Papan Pemantauan Khusus disembunyikan."));
-  const lolos = R.hasil.filter(x => x.n >= scMin && x.c >= 50 && !(FCA && FCA[x.em]));
+  const [hMin, hMaks] = SC_HARGA[scHarga] || SC_HARGA.semua;
+  const lolos = R.hasil.filter(x => x.n >= scMin && x.c >= 50 && !(FCA && FCA[x.em]) &&
+    x.c >= hMin && x.c < hMaks && x.pr >= scGerak);
   const tampil = lolos.filter(x => (scTanda === "semua" || x.tanda.indexOf(scTanda) >= 0) && !(scBuangArb && x.tanda.indexOf("arb") >= 0));
 
   const rg = el("div", "nw-ring rd-ring");
   const kotak = (isi, ket, kelas) => { const d = el("div"); d.appendChild(el("b", kelas, isi)); d.appendChild(el("span", null, ket)); rg.appendChild(d); };
-  kotak(String(lolos.length), "lolos saringan value");
+  kotak(String(lolos.length), "lolos saringan");
   kotak(String(lolos.filter(x => x.pr >= 8).length), "perkiraan gerak ≥ 8%", "rd-or");
   kotak(String(lolos.filter(x => x.tanda.indexOf("ara") >= 0).length), "ARA · tutup di high", "naik");
   kotak(String(lolos.filter(x => x.tanda.indexOf("arb") >= 0).length), "ARB", "turun");
@@ -2336,6 +2354,16 @@ function panelScalping(w) {
     const o = el("option", null, t); o.value = v; if (scMin === v) o.selected = true; sM.appendChild(o); });
   sM.onchange = () => { scMin = +sM.value; halScreener(); };
   lM.appendChild(sM); alat.appendChild(lM);
+  const pilih = (judul, opsi, nilai, pasang) => {
+    const w = el("div", "sc-pilih"); w.appendChild(el("span", "bantu", judul + " "));
+    const g = el("div", "saklar rd-saklar");
+    opsi.forEach(([v, j]) => { const b = el("button", nilai === v ? "aktif" : null, j);
+      b.onclick = () => { pasang(v); halScreener(); }; g.appendChild(b); });
+    w.appendChild(g); alat.appendChild(w);
+  };
+  pilih("Harga", [["semua", "Semua"], ["a", "50\u2013500"], ["b", "500\u20132.000"], ["c", "2.000\u20135.000"], ["d", "> 5.000"]],
+    scHarga, v => { scHarga = v; });
+  pilih("Gerak min.", [[0, "Semua"], [3, "\u2265 3%"], [5, "\u2265 5%"], [8, "\u2265 8%"]], scGerak, v => { scGerak = v; });
   const sk = el("div", "saklar rd-saklar");
   [["semua", "Semua"], ["ara", "ARA · tutup di high"], ["turun", "Turun kmrn"], ["vol", "Volume ≥3×"]].forEach(([v, j]) => {
     const b = el("button", scTanda === v ? "aktif" : null, j);
@@ -2356,6 +2384,9 @@ function panelScalping(w) {
     "Tutup di = posisi harga tutup antara low (0%) dan high (100%). " +
     "Tanda: ARA · tutup di high = naik sebatas auto reject atas dan tutup di harga tertinggi; ARB = turun sebatas auto reject bawah (15% s/d 16 Okt 2026, 7% mulai 19 Okt 2026) dan tutup di harga terendah; " +
     "turun kmrn = turun ≥ 3%; volume ≥3× = volume hari ini ≥ 3× rata-rata 20 hari. " +
+    "Gerak bersih = perkiraan gerak \u2212 biaya beli+jual \u00b10,4%. ARB/ARA besok = harga batas auto reject untuk hari bursa berikutnya dari harga tutup, " +
+    "sudah dibulatkan ke fraksi harga (ARB 7%, harga \u2264 Rp14 turun Rp1; ARA 35% \u2264 Rp200, 25% \u2264 Rp5.000, 20% di atasnya). " +
+    "Saringan Harga dan Gerak min. menyaring daftar dan kotak angka di atas. " +
     "Ketuk judul kolom untuk mengurutkan; ketuk baris untuk membuka emiten di CARI."));
 
   const p2 = el("div", "panel");
@@ -2378,7 +2409,9 @@ function scTabel(baris, akhir) {
   const t = el("table"), thead = el("thead"), trh = el("tr");
   const KOL = [["em", "Emiten", ""], ["c", "Harga", "tutup " + tglID(akhir)], ["chg", "Chg", "hari itu"], ["n", "Value", "hari itu"],
     ["rv", "Vol ×", "÷ rata-rata 20 hari"], ["r20", "Rentang 20h", "rata-rata high÷low"], ["tk", "Tick", "1 tick ÷ harga"],
-    ["pos", "Tutup di", "0% low · 100% high"], ["pr", "Perkiraan gerak", "besok, high÷low"], ["", "Tanda", ""]];
+    ["pos", "Tutup di", "0% low · 100% high"], ["pr", "Perkiraan gerak", "besok, high÷low"],
+    ["pb", "Gerak bersih", "\u2212 biaya " + String(SC_BIAYA).replace(".", ",") + "%"], ["arbJ", "ARB besok", "harga \u00b7 jarak"],
+    ["araJ", "ARA besok", "harga \u00b7 jarak"], ["", "Tanda", ""]];
   KOL.forEach(([k, j, sub]) => {
     const kiri = k === "em" || !k;
     const th = el("th", kiri ? "rd-kiri" : "num", j + (scUrut.k === k && k ? (scUrut.a < 0 ? " ▼" : " ▲") : ""));
@@ -2411,6 +2444,9 @@ function scTabel(baris, akhir) {
     tr.appendChild(el("td", "num" + (s.tk > 1 ? " sc-mahal" : ""), nf(s.tk, 2) + "%"));
     tr.appendChild(el("td", "num", nf(s.pos) + "%"));
     tr.appendChild(el("td", "num sc-pr", nf(s.pr, 1) + "%"));
+    tr.appendChild(el("td", "num" + (s.pb <= 1 ? " sc-mahal" : ""), nf(s.pb, 1) + "%"));
+    tr.appendChild(el("td", "num turun", nf(s.arb) + " \u00b7 \u2212" + nf(Math.abs(s.arbJ), 1) + "%"));
+    tr.appendChild(el("td", "num naik", nf(s.ara) + " \u00b7 +" + nf(s.araJ, 1) + "%"));
     const cT = el("td", "rd-kiri");
     s.tanda.forEach(g => cT.appendChild(el("span", "sc-tg " + g, SC_TANDA[g])));
     tr.appendChild(cT);
@@ -8631,7 +8667,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-21-3";
+const VERSI_APP = "2026-10-21-4";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
