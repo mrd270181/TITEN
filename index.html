@@ -595,6 +595,7 @@ tr.pt-dicoret td{opacity:.6} tr.pt-dicoret .kode{text-decoration:line-through}
 .dv-tabel td.klik{cursor:pointer}
 .dv-tg{display:inline-block;font-size:10px;font-weight:800;border-radius:4px;padding:1px 6px;white-space:nowrap}
 .dv-tg.dekat{background:rgba(230,170,0,.16);color:#a87400}.dv-tg.akan{background:var(--naik-bg);color:var(--naik)}
+.sc-hl{display:block;font-size:10px;opacity:.7;font-weight:400;white-space:nowrap}
 .dv-tglh{display:block;font-size:10px;opacity:.65;font-weight:400}
 .dv-tg.lewat{background:var(--surface-2);color:var(--ink-3)}.dv-tg.cek{background:var(--turun-bg);color:var(--turun)}
 .rek-fca{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;padding:8px 10px;border-radius:9px;
@@ -1295,6 +1296,10 @@ function halWatchlist() {
     fav.onclick = () => { ubahFav(k); halWatchlist(); };
     d.appendChild(fav);
 
+    const cr = el("button", "tambah");
+    cr.textContent = "Buka REKOMENDASI " + k + " →";
+    cr.onclick = () => rekBukaDari(k);
+    d.appendChild(cr);
     const cv = el("button", "tambah");
     cv.textContent = "Lihat volume & net foreign 18 hari →";
     cv.onclick = () => {
@@ -2324,13 +2329,21 @@ function hitungScalping() {
     else if (chg <= -0.03) tanda.push("turun");
     if (rv >= 3) tanda.push("vol");
     const bt = scBatas(x.c);
-    hasil.push({em: k, c: x.c, chg: chg * 100, n: x.n || 0, rv, r20: r20 * 100, tk: tk * 100, pos: pos * 100, pr: pr * 100,
+    hasil.push({em: k, c: x.c, h: x.h || null, l: x.l || null, chg: chg * 100, n: x.n || 0, rv, r20: r20 * 100, tk: tk * 100, pos: pos * 100, pr: pr * 100,
                 pb: pr * 100 - SC_BIAYA, arb: bt.arb, arbJ: (bt.arb / x.c - 1) * 100, ara: bt.ara, araJ: (bt.ara / x.c - 1) * 100, tanda});
   });
   return (scCache = {kunci, akhir, hasil});
 }
 const SC_TANDA = {ara: "ARA · tutup di high", naik: "naik tinggi", arb: "ARB", turun: "turun kmrn", vol: "volume ≥3×"};
-function scBuka(em) {
+/* 21 Okt 2026: klik emiten di menu SCREENER (SCALPING, FOREIGN AKUM, BROKER AKUM) langsung ke REKOMENDASI */
+function rekBukaDari(em, dari, sampai) {
+  rek.em = em; rek.dari = dari || ""; rek.sampai = sampai || "";
+  subScr = "rekomendasi";
+  const nb = document.querySelector('nav button[data-hal="screener"]');
+  if (nb && !nb.classList.contains("aktif")) nb.click();   /* dari menu lain: pindah ke SCREENER dulu */
+  halScreener(); window.scrollTo(0, 0);
+}
+function scBukaCari(em) {
   cariKode = em; cariSub = "chart"; try { cariTutup = true; } catch (e) {}
   document.querySelector('nav button[data-hal="cari"]').click(); halCari();
 }
@@ -2394,7 +2407,7 @@ function panelScalping(w) {
     "Gerak bersih = perkiraan gerak \u2212 biaya beli+jual \u00b10,4%. ARB/ARA besok = harga batas auto reject untuk hari bursa berikutnya dari harga tutup, " +
     "sudah dibulatkan ke fraksi harga (ARB 7%, harga \u2264 Rp14 turun Rp1; ARA 35% \u2264 Rp200, 25% \u2264 Rp5.000, 20% di atasnya). " +
     "Saringan Harga dan Gerak min. menyaring daftar dan kotak angka di atas. " +
-    "Ketuk judul kolom untuk mengurutkan; ketuk baris untuk membuka emiten di CARI."));
+    "Ketuk judul kolom untuk mengurutkan; ketuk baris untuk membuka emiten di REKOMENDASI."));
 
   const p2 = el("div", "panel");
   p2.appendChild(el("h2", null, "Aturan besok pagi — dari uji 416 hari bursa"));
@@ -2414,7 +2427,7 @@ function panelScalping(w) {
 function scTabel(baris, akhir) {
   const bungkus = el("div", "tbl-bungkus tbl-kunci rd-tabel");
   const t = el("table"), thead = el("thead"), trh = el("tr");
-  const KOL = [["em", "Emiten", ""], ["c", "Harga", "tutup " + tglID(akhir)], ["chg", "Chg", "hari itu"], ["n", "Value", "hari itu"],
+  const KOL = [["em", "Emiten", ""], ["c", "Harga", "tutup " + tglID(akhir) + " \u00b7 H/L"], ["chg", "Chg", "hari itu"], ["n", "Value", "hari itu"],
     ["rv", "Vol ×", "÷ rata-rata 20 hari"], ["r20", "Rentang 20h", "rata-rata high÷low"], ["tk", "Tick", "1 tick ÷ harga"],
     ["pos", "Tutup di", "0% low · 100% high"], ["pr", "Perkiraan gerak", "besok, high÷low"],
     ["pb", "Gerak bersih", "\u2212 biaya " + String(SC_BIAYA).replace(".", ",") + "%"], ["arbJ", "ARB besok", "harga \u00b7 jarak"],
@@ -2439,11 +2452,13 @@ function scTabel(baris, akhir) {
     return (typeof x === "string" ? x.localeCompare(y) : x - y) * scUrut.a;
   }).forEach(s => {
     const tr = el("tr", "klik");
-    tr.title = "Buka " + s.em + " di CARI";
-    tr.onclick = () => scBuka(s.em);
+    tr.title = "Buka " + s.em + " di REKOMENDASI";
+    tr.onclick = () => rekBukaDari(s.em);
     const cE = el("td", "rd-kiri"); cE.appendChild(el("span", "kode", s.em));
     cE.appendChild(el("span", "nm", (DATA.nama && DATA.nama[s.em]) || "")); tr.appendChild(cE);
-    tr.appendChild(el("td", "num", nf(s.c)));
+    { const td = el("td", "num", nf(s.c));   /* 21 Okt 2026: high & low hari itu di bawah harga */
+      if (s.h && s.l) td.appendChild(el("span", "sc-hl", "H " + nf(s.h) + " \u00b7 L " + nf(s.l)));
+      tr.appendChild(td); }
     tr.appendChild(el("td", "num " + arah(s.chg).k, (s.chg > 0 ? "+" : s.chg < 0 ? "−" : "") + nf(Math.abs(s.chg), 1) + "%"));
     tr.appendChild(el("td", "num", rpSingkat(s.n)));
     tr.appendChild(el("td", "num", nf(s.rv, 1) + "×"));
@@ -3881,8 +3896,8 @@ function jvTabel(id, kepala, baris) {
 }
 
 function jvKodeSel(r) {
-  const s = el("span", "kode jv-kd", r.kode); s.title = "Buka " + r.kode + " di menu Cari";
-  s.onclick = () => { cariKode = r.kode; cariSub = "keystats"; try { cariTutup = true; } catch (x) {} document.querySelector('nav button[data-hal="cari"]').click(); halCari(); };
+  const s = el("span", "kode jv-kd", r.kode); s.title = "Buka REKOMENDASI " + r.kode;
+  s.onclick = () => rekBukaDari(r.kode);
   return s;
 }
 
@@ -6054,11 +6069,7 @@ function panelForeignAkum(w) {
   h.baris.forEach((x, i) => {
     const tr = el("tr", "klik");
     tr.title = "Buka kalender foreign " + x.em;
-    tr.onclick = () => {
-      kfEm = x.em; kfBulan = faSampai.slice(0, 7); subVol = "kalfor";
-      document.querySelector('nav button[data-hal="volume"]').click();
-      halVolume();
-    };
+    tr.onclick = () => rekBukaDari(x.em, faDari, faSampai);   /* dulu ke KALENDER FOREIGN */
     tr.appendChild(el("td", "no", String(i + 1)));
     const c0 = el("td", "kunci");
     c0.appendChild(el("span", "kode", x.em));
@@ -6092,7 +6103,7 @@ function panelForeignAkum(w) {
     "minggu net beli lebih banyak, lalu net asing lebih besar. Hanya emiten yang " +
     "net asingnya positif sepanjang rentang, berdagang minimal 80% hari, dan " +
     "rata-rata transaksinya minimal Rp" + faMin + " miliar per hari. Net asing M = " +
-    "miliar. Ketuk baris untuk membuka KALENDER FOREIGN emiten itu. " +
+    "miliar. Ketuk baris untuk membuka REKOMENDASI emiten itu (rentang tanggal ikut). " +
     "Bukan rekomendasi investasi."));
   w.appendChild(hs);
 }
@@ -6296,13 +6307,7 @@ function panelBrokerAkum(w) {
   h.baris.forEach((x, i) => {
     const tr = el("tr", "klik");
     tr.title = "Buka ACTIVITY " + bkBroker + " — " + x.em;
-    tr.onclick = () => {
-      pilih.sub = "posisi"; pilih.subPos = "activity";
-      pilih.baBroker = bkBroker; pilih.baChip = [x.em]; pilih.baTampil = "tabel";
-      pilih.pasar = bkPapan; pilih.dari = bkDari; pilih.sampai = bkSampai;
-      document.querySelector('nav button[data-hal="broker"]').click();
-      halBroker();
-    };
+    tr.onclick = () => rekBukaDari(x.em, bkDari, bkSampai);   /* dulu ke BROKER > activity */
     tr.appendChild(el("td", "no", String(i + 1)));
     const c0 = el("td", "kunci");
     c0.appendChild(el("span", "kode", x.em));
@@ -6336,7 +6341,7 @@ function panelBrokerAkum(w) {
     " Hanya emiten yang net dibeli " + bkBroker + ", diperdagangkan minimal 80% hari, dan " +
     "rata-rata transaksinya minimal Rp" + bkMin + " miliar per hari. M = miliar. " +
     "TITEN cuma memuat ~148 emiten berdata broker, jadi emiten di luar itu tidak " +
-    "akan muncul. Ketuk baris untuk membuka ACTIVITY. Bukan rekomendasi investasi."));
+    "akan muncul. Ketuk baris untuk membuka REKOMENDASI emiten itu (rentang tanggal ikut). Bukan rekomendasi investasi."));
   w.appendChild(hs);
 }
 
@@ -7282,8 +7287,7 @@ function halNews() {
     (x.e || []).slice(0, 6).forEach(k => {
       const c = el("button", "nw-kd", k);
       c.title = "Buka Rekomendasi " + k;
-      c.onclick = () => { rek.em = k; subScr = "rekomendasi";
-        document.querySelector('nav button[data-hal="screener"]').click(); halScreener(); };
+      c.onclick = () => rekBukaDari(k);
       m.appendChild(c);
     });
     if (x.s) m.appendChild(el("span", null, x.s));
@@ -8428,9 +8432,8 @@ function kfTabelPeringkat(baris, judul, arahKelas) {
   baris.forEach(x => {
     const tr = el("tr");
     tr.className = "klik";
-    tr.title = "Buka kalender " + x.em;
-    tr.onclick = () => { kfEm = x.em; halVolume();
-      window.scrollTo({top: 0, behavior: "smooth"}); };
+    tr.title = "Buka REKOMENDASI " + x.em;
+    tr.onclick = () => rekBukaDari(x.em);   /* 21 Okt 2026: dulu memilih emiten kalender */
     const c0 = el("td");
     c0.appendChild(el("span", "kode", x.em));
     c0.appendChild(el("span", "nm", DATA.nama[x.em] || ""));
@@ -8861,7 +8864,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-21-13";
+const VERSI_APP = "2026-10-21-16";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -15328,7 +15331,7 @@ function panelDividen(kode) {
     "Recording = tanggal daftar pemegang saham yang berhak · Bayar = dividen masuk rekening. Tanggal pasar reguler & negosiasi; " +
     "tanggal pasar tunai ada di keterangan saat baris disentuh lama. Yield = Rp per saham ÷ harga tutup terakhir (bukan harga saat pengumuman). " +
     "“cek PDF” = tanggal tidak terbaca otomatis dari PDF — ketuk “buka”. Ketuk judul kolom untuk mengurutkan " +
-    "(sekali: terbesar/terbaru dulu, sekali lagi: terkecil/terlama dulu); ketuk kode untuk membuka emiten itu. " +
+    "(sekali: terbesar/terbaru dulu, sekali lagi: terkecil/terlama dulu); ketuk kode untuk membuka REKOMENDASI emiten itu. " +
     "Sumber: pengumuman jadwal dividen di keterbukaan informasi IDX (PDF)" + (DIVIDEN && DIVIDEN.dibuat ? ", diperbarui " + lksTglPendek(DIVIDEN.dibuat.slice(0, 10)) : "") +
     ", ditambah tabel dividen terakhir di profil IDX untuk dividen yang tidak punya formulir jadwal (tanpa tautan PDF; Rp/saham dihitung dari total dibagi jumlah saham bila IDX tidak mencantumkannya)."));
   return p;
@@ -15380,7 +15383,7 @@ function dvPerkiraan(semua, kode) {
         const tr = el("tr", r.e === kode ? "dv-pilih" : null);
         const cE = el("td", "rd-kiri klik"); cE.appendChild(el("span", "kode", r.e));
         cE.appendChild(el("span", "nm", (DATA.nama && DATA.nama[r.e]) || ""));
-        cE.onclick = () => { cariKode = r.e; cariTutup = true; halCari(); window.scrollTo(0, 0); };
+        cE.onclick = () => rekBukaDari(r.e);
         tr.appendChild(cE);
         tr.appendChild(el("td", "rd-kiri", r.jenis));
         tr.appendChild(el("td", "rd-kiri", "\u00b1 " + lksTglPendek(r.kira)));
@@ -15434,7 +15437,7 @@ function dvTabel(baris, kode) {
     tr.title = r.judul + (r.cum_tn ? "\nPasar tunai: cum " + tg(r.cum_tn) + ", ex " + tg(r.ex_tn) : "") + "\nDiumumkan " + tg(r.umum);
     const cE = el("td", "rd-kiri klik"); cE.appendChild(el("span", "kode", r.e));
     cE.appendChild(el("span", "nm", (DATA.nama && DATA.nama[r.e]) || ""));
-    cE.onclick = () => { cariKode = r.e; cariTutup = true; halCari(); window.scrollTo(0, 0); };
+    cE.onclick = () => rekBukaDari(r.e);
     tr.appendChild(cE);
     tr.appendChild(el("td", "rd-kiri", r.jenis || "–"));
     tr.appendChild(el("td", "num", r.rp ? nf(r.rp, r.rp % 1 ? (r.rp < 10 ? 2 : 1) : 0) : r.mu && r.total ? r.mu + " " + rpSingkat(r.total) + " total" : "–"));
