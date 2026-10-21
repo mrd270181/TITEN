@@ -2292,15 +2292,20 @@ function scSkor(pr, n, tk, pos, nf, rv, tanda, em) {
   const L = n > 0 ? Math.round(Math.min(1, Math.max(0, (Math.log10(n) - 10) / (Math.log10(2e11) - 10))) * 25) : 0;
   const T = Math.round(Math.min(1, Math.max(0, (1 - tk) / 0.6)) * 15);
   const P = pos >= 60 && pos <= 90 ? 15 : (pos >= 40 && pos < 60) || (pos > 90 && pos < 99.5) ? 9 : pos >= 99.5 ? 4 : pos >= 20 ? 6 : 2;
-  const A = nf > 0 ? Math.round(Math.min(1, nf / 0.1) * 10) : 0;     /* net asing = 10% volume -> penuh */
+  const A0 = nf > 0 ? Math.min(1, nf / 0.2) * 10 : 0;     /* net asing = 20% volume -> penuh */
+  /* 21 Okt 2026 (revisi): untuk scalping GERAK paling menentukan - nilai L/T/P/A dikalikan
+     faktor gerak (perkiraan gerak 10% ke atas = penuh). Tanpa ini saham besar yang tenang
+     (BBCA gerak 4%, AMMN 4,6%) naik ke atas hanya karena likuid & tick murah. */
+  const f = Math.min(1, Math.max(0, pr / 10));
   const pot = [];
   if (tanda.indexOf("arb") >= 0) pot.push([-20, "ARB"]);
   if (tanda.indexOf("ara") >= 0) pot.push([-8, "ARA"]);
   if (rv > 5) pot.push([-5, "vol"]);
   if (typeof SN_OJK !== "undefined" && SN_OJK[em]) pot.push([-5, "OJK"]);
-  const tot = G + L + T + P + A + pot.reduce((a, b) => a + b[0], 0);
+  const Lf = Math.round(L * f), Tf = Math.round(T * f), Pf = Math.round(P * f), A = Math.round(A0 * f);
+  const tot = G + Lf + Tf + Pf + A + pot.reduce((a, b) => a + b[0], 0);
   return {n: Math.max(0, Math.min(100, tot)),
-    r: "G" + G + " L" + L + " T" + T + " P" + P + (A ? " A" + A : "") + pot.map(x => " " + x[0] + " " + x[1]).join("")};
+    r: "G" + G + " L" + Lf + " T" + Tf + " P" + Pf + (A ? " A" + A : "") + pot.map(x => " " + x[0] + " " + x[1]).join("")};
 }   /* % beli + jual pulang-pergi */
 /* batas auto reject BESOK dari harga tutup c: ARB 7% (harga <= Rp14: turun Rp1), ARA 35/25/20%;
    dibulatkan ke fraksi harga di dalam batas (ARB ke atas, ARA ke bawah) */
@@ -2347,8 +2352,9 @@ function hitungScalping() {
     if (rv >= 3) tanda.push("vol");
     const bt = scBatas(x.c);
     /* 21 Okt 2026: SKOR 0-100 = gerak 35 + likuiditas 25 + tick 15 + posisi tutup 15 + asing 10 - potongan */
-    const sk = scSkor(pr * 100, x.n || 0, tk * 100, pos * 100, x.v > 0 ? ((x.fb || 0) - (x.fs || 0)) / x.v : 0, rv, tanda, k);
-    hasil.push({skor: sk.n, skr: sk.r, em: k, c: x.c, h: x.h || null, l: x.l || null, chg: chg * 100, n: x.n || 0, rv, r20: r20 * 100, tk: tk * 100, pos: pos * 100, pr: pr * 100,
+    const nfp = x.v > 0 && (x.fb != null || x.fs != null) ? ((x.fb || 0) - (x.fs || 0)) / x.v : null;
+    const sk = scSkor(pr * 100, x.n || 0, tk * 100, pos * 100, nfp || 0, rv, tanda, k);
+    hasil.push({skor: sk.n, skr: sk.r, nfp: nfp === null ? null : nfp * 100, em: k, c: x.c, h: x.h || null, l: x.l || null, chg: chg * 100, n: x.n || 0, rv, r20: r20 * 100, tk: tk * 100, pos: pos * 100, pr: pr * 100,
                 pb: pr * 100 - SC_BIAYA, arb: bt.arb, arbJ: (bt.arb / x.c - 1) * 100, ara: bt.ara, araJ: (bt.ara / x.c - 1) * 100, tanda});
   });
   return (scCache = {kunci, akhir, hasil});
@@ -2425,7 +2431,7 @@ function panelScalping(w) {
     "turun kmrn = turun ≥ 3%; volume ≥3× = volume hari ini ≥ 3× rata-rata 20 hari. " +
     "SKOR (0\u2013100) = G gerak (perkiraan gerak, 15% ke atas penuh 35) + L likuiditas (Value Rp10 M = 0, Rp200 M ke atas = 25) + " +
     "T tick (\u2264 0,4% = 15, \u2265 1% = 0) + P posisi tutup (60\u201390% = 15; 40\u201360% atau 90\u201399% = 9; 20\u201340% = 6; ARA 100% = 4; < 20% = 2) + " +
-    "A asing (net asing hari itu \u00f7 volume, 10% ke atas = 10) \u2212 potongan (ARB \u221220, ARA \u22128, volume > 5\u00d7 \u22125, sanksi OJK \u22125). " +
+    "A asing (net asing hari itu \u00f7 volume, 20% ke atas = 10); L, T, P, A dikalikan faktor gerak (perkiraan gerak \u00f7 10%, maks 1) supaya saham tenang tidak naik ke atas \u2212 potongan (ARB \u221220, ARA \u22128, volume > 5\u00d7 \u22125, sanksi OJK \u22125). " +
     "Tabel bawaan diurutkan menurut Skor. Skor = alat mengurutkan, bukan sinyal beli. " +
     "Gerak bersih = perkiraan gerak \u2212 biaya beli+jual \u00b10,4%. ARB/ARA besok = harga batas auto reject untuk hari bursa berikutnya dari harga tutup, " +
     "sudah dibulatkan ke fraksi harga (ARB 7%, harga \u2264 Rp14 turun Rp1; ARA 35% \u2264 Rp200, 25% \u2264 Rp5.000, 20% di atasnya). " +
@@ -2451,7 +2457,7 @@ function scTabel(baris, akhir) {
   const bungkus = el("div", "tbl-bungkus tbl-kunci rd-tabel");
   const t = el("table"), thead = el("thead"), trh = el("tr");
   const KOL = [["em", "Emiten", ""], ["skor", "Skor", "gerak\u00b7likuid\u00b7tick\u00b7posisi\u00b7asing"], ["c", "Harga", "tutup " + tglID(akhir) + " \u00b7 H/L"], ["chg", "Chg", "hari itu"], ["n", "Value", "hari itu"],
-    ["rv", "Vol ×", "÷ rata-rata 20 hari"], ["r20", "Rentang 20h", "rata-rata high÷low"], ["tk", "Tick", "1 tick ÷ harga"],
+    ["nfp", "%NF", "net asing \u00f7 volume"], ["rv", "Vol ×", "÷ rata-rata 20 hari"], ["r20", "Rentang 20h", "rata-rata high÷low"], ["tk", "Tick", "1 tick ÷ harga"],
     ["pos", "Tutup di", "0% low · 100% high"], ["pr", "Perkiraan gerak", "besok, high÷low"],
     ["pb", "Gerak bersih", "\u2212 biaya " + String(SC_BIAYA).replace(".", ",") + "%"], ["arbJ", "ARB besok", "harga \u00b7 jarak"],
     ["araJ", "ARA besok", "harga \u00b7 jarak"], ["", "Tanda", ""]];
@@ -2472,6 +2478,8 @@ function scTabel(baris, akhir) {
   const tb = el("tbody");
   baris.slice().sort((a, b) => {
     const x = a[scUrut.k], y = b[scUrut.k];
+    if (x === null || x === undefined) return 1;      /* kosong selalu di bawah */
+    if (y === null || y === undefined) return -1;
     return (typeof x === "string" ? x.localeCompare(y) : x - y) * scUrut.a;
   }).forEach(s => {
     const tr = el("tr", "klik");
@@ -2487,6 +2495,7 @@ function scTabel(baris, akhir) {
       tr.appendChild(td); }
     tr.appendChild(el("td", "num " + arah(s.chg).k, (s.chg > 0 ? "+" : s.chg < 0 ? "−" : "") + nf(Math.abs(s.chg), 1) + "%"));
     tr.appendChild(el("td", "num", rpSingkat(s.n)));
+    tr.appendChild(el("td", "num " + (s.nfp === null ? "" : arah(s.nfp).k), s.nfp === null ? "\u2013" : (s.nfp > 0 ? "+" : s.nfp < 0 ? "\u2212" : "") + nf(Math.abs(s.nfp), 1) + "%"));
     tr.appendChild(el("td", "num", nf(s.rv, 1) + "×"));
     tr.appendChild(el("td", "num", nf(s.r20, 1) + "%"));
     tr.appendChild(el("td", "num" + (s.tk > 1 ? " sc-mahal" : ""), nf(s.tk, 2) + "%"));
@@ -8890,7 +8899,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-21-17";
+const VERSI_APP = "2026-10-21-19";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
