@@ -602,6 +602,7 @@ tr.pt-dicoret td{opacity:.6} tr.pt-dicoret .kode{text-decoration:line-through}
 .rek-fca-tg{background:var(--turun);color:#fff;border-radius:5px;padding:2px 9px;font-size:13px;letter-spacing:.06em}
 .op-hijau{color:var(--naik)}.op-kuning{color:#a87400}.op-merah{color:var(--turun)}
 .rek-op-kt{font-size:10.5px;font-weight:700;margin:-1px 0 2px;line-height:1.25}
+.sn-it{border-left:3px solid var(--garis);padding:6px 10px;margin:8px 0;font-size:13px}.sn-it.op-merah{border-color:var(--turun);color:inherit}.sn-it.op-kuning{border-color:#a87400;color:inherit}.sn-it b{display:block}
 .rek-op-t{width:100%;border-collapse:collapse;font-size:13px;margin:6px 0}
 .rek-op-t td{padding:5px 6px;border-bottom:1px solid var(--garis);vertical-align:top;white-space:normal}
 .rek-op-t td:first-child{color:var(--ink-3);width:170px}
@@ -3325,6 +3326,160 @@ function rekPanelOpini(em) {
   return p;
 }
 
+/* 21 Okt 2026: kotak BUYBACK di Rekomendasi - data/buyback.json (buyback_idx.py: pengumuman IDX
+   "pembelian kembali saham", dibaca nilai dana, periode, sekuritas pelaksana). Rinciannya juga
+   menghitung net lot broker pelaksana sejak tanggal mulai, dari data broker di HP. */
+let BUYBACK = null, bbSedang = false, bbGagal = false, rekBbBuka = false;
+function muatBuyback() {
+  if (BUYBACK || bbSedang || bbGagal) return;
+  bbSedang = true;
+  ambilGudang("buyback.json").then(j => { BUYBACK = j || {data: []}; })
+    .catch(() => { bbGagal = true; })
+    .finally(() => { bbSedang = false; if (subScr === "rekomendasi") halScreener(); });
+}
+const BB_JENIS = {rencana: "rencana / keterbukaan", laporan: "laporan pelaksanaan", selesai: "pengakhiran",
+  pengalihan: "pengalihan saham hasil buyback", iklan: "bukti iklan", pers: "siaran pers"};
+function bbEmiten(em) {
+  if (!BUYBACK || !BUYBACK.data) return null;
+  const L = BUYBACK.data.filter(r => r.e === em).sort((a, b) => a.umum < b.umum ? 1 : -1);
+  if (!L.length) return null;
+  const kini = new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10);
+  /* program = pengumuman rencana terbaru yang angkanya terbaca (nilai / periode / broker) */
+  const r = L.find(x => x.jenis === "rencana" && (x.nilai || x.mulai || x.broker)) || L.find(x => x.jenis === "rencana") || null;
+  let st = {t: "–", k: "", u: 0};
+  if (r) {
+    const akhir = L.find(x => x.jenis === "selesai" && x.umum >= r.umum);
+    if (akhir || (r.selesai && r.selesai < kini)) st = {t: "selesai", k: "", u: 1};
+    else if (r.mulai && r.mulai > kini) st = {t: "akan mulai", k: "op-kuning", u: 2};
+    else if (r.mulai) st = {t: "AKTIF", k: "op-hijau", u: 3};
+    else if ((Date.parse(kini) - Date.parse(r.umum)) / 864e5 <= 90) st = {t: "diumumkan", k: "op-kuning", u: 2};
+    else st = {t: "lama", k: "", u: 1};
+  }
+  return {r, st, L};
+}
+function rekKartuBuyback(em) {
+  muatBuyback();
+  const b = bbEmiten(em);
+  const k = el("div", "rek-k rek-news" + (rekBbBuka ? " aktif" : ""));
+  k.appendChild(el("div", "rek-kj", "BUYBACK"));
+  if (!b || !b.r) {
+    k.appendChild(el("div", "rek-kn", "–"));
+    k.appendChild(el("div", "rek-kk", bbSedang ? "memuat buyback…" : !BUYBACK ? "jalankan buyback_idx.py" : b ? b.L.length + " pengumuman lain" : "tidak ada sejak Jan 2026"));
+    if (b) { k.style.cursor = "pointer"; k.onclick = () => { rekBbBuka = !rekBbBuka; halScreener(); }; }
+    return k;
+  }
+  const r = b.r;
+  k.appendChild(el("div", "rek-kn " + b.st.k, b.st.t));
+  k.appendChild(el("div", "rek-kk", [r.nilai ? "Rp" + rpSingkat(r.nilai) : "", r.selesai ? "s/d " + lksTglPendek(r.selesai) : "",
+    (r.broker || []).join(", ")].filter(Boolean).join(" · ") || "lihat PDF"));
+  k.title = "Ketuk untuk rincian buyback";
+  k.style.cursor = "pointer";
+  k.onclick = () => { rekBbBuka = !rekBbBuka; halScreener(); };
+  return k;
+}
+function rekPanelBuyback(em) {
+  const b = bbEmiten(em);
+  const p = el("div", "rek-ng rek-op");
+  p.appendChild(el("h2", null, "Buyback — " + em));
+  if (!b) { p.appendChild(el("div", "bantu", "Tidak ada pengumuman buyback sejak 1 Jan 2026.")); return p; }
+  const t = el("table", "rek-op-t");
+  const baris = (a, v, kls) => { const tr = el("tr"); tr.appendChild(el("td", null, a)); const td = el("td", kls || null);
+    if (typeof v === "string") td.textContent = v; else td.appendChild(v); tr.appendChild(td); t.appendChild(tr); };
+  const r = b.r;
+  if (r) {
+    baris("Status", b.st.t, b.st.k);
+    baris("Diumumkan", lksTglPendek(r.umum));
+    baris("Dana maksimal", r.nilai ? "Rp" + rpSingkat(r.nilai) : "– (lihat PDF)");
+    baris("Periode", r.mulai ? lksTglPendek(r.mulai) + " s/d " + (r.selesai ? lksTglPendek(r.selesai) : "?") : "– (lihat PDF)");
+    baris("Sekuritas pelaksana", r.broker && r.broker.length ? r.broker.map(x => x + " (" + namaBroker(x) + ")").join(", ") : "– (lihat PDF)");
+    /* net lot broker pelaksana sejak tanggal mulai - apakah buyback benar-benar dijalankan */
+    if (r.broker && r.broker.length && r.mulai) {
+      const brk = rekBroker(em, r.mulai, "9999-12-31");
+      const sp = el("span");
+      r.broker.forEach((x, i) => { const n = brk.total[x] || 0;
+        if (i) sp.appendChild(document.createTextNode(" · "));
+        sp.appendChild(el("b", n > 0 ? "op-hijau" : n < 0 ? "op-merah" : null, x + " " + (n > 0 ? "+" : n < 0 ? "−" : "") + rekLot(Math.abs(n)) + " lot")); });
+      baris("Net broker pelaksana sejak mulai (" + rek.pasar + ")", sp);
+    }
+  }
+  p.appendChild(t);
+  const t2 = el("table", "rek-op-t");
+  b.L.slice(0, 12).forEach(x => { const tr = el("tr");
+    tr.appendChild(el("td", null, lksTglPendek(x.umum)));
+    tr.appendChild(el("td", null, (BB_JENIS[x.jenis] || x.jenis) + " — " + x.judul));
+    const td = el("td");
+    if (x.pdf) { const a = el("a", null, "PDF"); a.href = x.pdf; a.target = "_blank"; a.rel = "noopener"; td.appendChild(a); }
+    tr.appendChild(td); t2.appendChild(tr); });
+  p.appendChild(el("div", "bantu", "Pengumuman buyback " + em + " sejak 1 Jan 2026 (terbaru di atas):"));
+  p.appendChild(t2);
+  p.appendChild(el("div", "bantu", "Dana, periode dan sekuritas pelaksana dibaca otomatis dari PDF keterbukaan informasi — kalau \"lihat PDF\", angkanya tidak terbaca. " +
+    "Net broker pelaksana: kalau positif besar, buyback benar-benar dijalankan (contoh LG di CUAN, HP di TPIA). Buyback menahan harga, bukan jaminan naik."));
+  return p;
+}
+
+/* 21 Okt 2026: kotak SENTIMEN di Rekomendasi - sanksi OJK, keanggotaan indeks MSCI (data Agu 2026),
+   dikeluarkan MSCI, dan free float < 15% (otomatis). Daftar ditulis MANUAL - perbarui sesudah review
+   MSCI 11 Nov 2026 atau kabar baru. */
+let rekSnBuka = false;
+const SN_OJK = {
+  DSSA: "Denda Rp1,5 T untuk pihak terkait: manipulasi perdagangan terencana & terstruktur 2024–2026 lewat beberapa broker sehingga harga naik tinggi; izin perorangan direktur sekuritas dibekukan.",
+  BREN: "Denda Rp500 M untuk pihak terkait IPO: saham IPO diarahkan ke kelompok terafiliasi pengendali dengan identitas disamarkan — kepemilikan terpusat, free float semu.",
+  CUAN: "Denda Rp100 M untuk pihak terkait IPO: saham IPO diarahkan ke kelompok terafiliasi pengendali dengan identitas disamarkan — kepemilikan terpusat, free float semu."};
+const SN_MSCI_STD = ["ASII", "BBCA", "BBNI", "BBRI", "BMRI", "BRMS", "BRPT", "TLKM", "UNTR"];
+const SN_MSCI_SC = ["ADRO", "AADI", "AKRA", "AMRT", "AVIA", "BBTN", "BFIN", "BUMI", "INCO", "MDKA", "MEDC", "PTBA", "PTRO",
+  "CMRY", "CPIN", "INDF", "INKP", "INTP", "JPFA", "CTRA", "EMTK", "EXCL", "JSMR", "MTEL", "PGAS", "PWON", "RAJA", "TOWR",
+  "WIFI", "GGRM", "KLBF", "MAPA", "MAPI", "ENRG"];
+const SN_MSCI_KELUAR = {GOTO: "dikeluarkan dari MSCI Global Standard", CPIN: "turun dari Global Standard ke Small Cap",
+  ARTO: "dikeluarkan dari MSCI Small Cap", BUKA: "dikeluarkan dari MSCI Small Cap", ESSA: "dikeluarkan dari MSCI Small Cap",
+  FILM: "dikeluarkan dari MSCI Small Cap", HEAL: "dikeluarkan dari MSCI Small Cap", KPIG: "dikeluarkan dari MSCI Small Cap",
+  RATU: "dikeluarkan dari MSCI Small Cap", SMGR: "dikeluarkan dari MSCI Small Cap", TCPI: "dikeluarkan dari MSCI Small Cap"};
+function snDaftar(em) {
+  const L = [];
+  if (SN_OJK[em]) L.push({k: "op-merah", j: "Sanksi OJK · 16 Okt 2026", t: SN_OJK[em], p: 3});
+  const ff = barisScr[em] ? ambilM(barisScr[em], "Free float (%)") : null;
+  if (ff !== null && ff !== undefined && ff > 0 && ff < 0.15)
+    L.push({k: "op-merah", j: "Free float " + (ff * 100).toFixed(2).replace(".", ",") + "% — di bawah batas minimum 15%",
+      t: "Wajib menambah free float; anggota MSCI dengan free float di bawah 15% berisiko dikeluarkan. Dihitung otomatis dari data free float TITEN.", p: 3});
+  const std = SN_MSCI_STD.indexOf(em) >= 0, sc = SN_MSCI_SC.indexOf(em) >= 0;
+  if (std || sc) L.push({k: "op-kuning", j: "Anggota MSCI " + (std ? "Global Standard" : "Small Cap") + " (data Agu 2026)",
+    t: "Kalau Indonesia diturunkan ke Standalone Market (konsultasi MSCI 15 Okt 2026, keputusan paling lambat 30 Jun 2027), dana pasif " +
+       "pengikut indeks Emerging Market bisa keluar dari saham ini. Selama konsultasi MSCI membekukan penambahan saham & bobot Indonesia.", p: 2});
+  if (SN_MSCI_KELUAR[em]) L.push({k: "op-kuning", j: "MSCI Agu 2026: " + SN_MSCI_KELUAR[em], t: "Berlaku 1 Sep 2026 — dana pasif pengikut indeks sudah/ikut keluar.", p: 2});
+  if (L.length && !SN_OJK[em] && !(std || sc))
+    L.push({k: "", j: "Isu MSCI · 15 Okt 2026", t: "Konsultasi penurunan Indonesia ke Standalone Market menyorot struktur pemegang saham yang tidak transparan dan dugaan perdagangan terkoordinasi.", p: 1});
+  if (SN_OJK[em]) L.push({k: "op-kuning", j: "Isu MSCI · 15 Okt 2026", t: "Konsultasi penurunan Indonesia ke Standalone Market menyorot struktur pemegang saham yang tidak transparan dan dugaan perdagangan terkoordinasi — emiten seperti ini paling sensitif.", p: 2});
+  return L;
+}
+function rekKartuSentimen(em) {
+  const L = snDaftar(em);
+  const k = el("div", "rek-k rek-news" + (rekSnBuka ? " aktif" : ""));
+  k.appendChild(el("div", "rek-kj", "SENTIMEN"));
+  const merah = L.some(x => x.k === "op-merah");
+  if (!L.length) { k.appendChild(el("div", "rek-kn op-hijau", "–")); k.appendChild(el("div", "rek-kk", "tidak ada catatan khusus")); }
+  else if (L.length === 1 || (!merah && L.length <= 2 && L[0].j.indexOf("Anggota MSCI") === 0)) {
+    k.appendChild(el("div", "rek-kn " + L[0].k, L[0].j.indexOf("Anggota MSCI") === 0 ? (SN_MSCI_STD.indexOf(em) >= 0 ? "MSCI Standard" : "MSCI Small Cap") : "⚠ " + L.length + " catatan"));
+    k.appendChild(el("div", "rek-kk", L[0].j.indexOf("Anggota MSCI") === 0 ? "risiko arus dana pasif" : L[0].j));
+  } else {
+    k.appendChild(el("div", "rek-kn " + (merah ? "op-merah" : "op-kuning"), "⚠ " + L.length + " catatan"));
+    k.appendChild(el("div", "rek-kk", L.map(x => x.j.split(" · ")[0].split(" — ")[0].replace(/ \(data.*\)/, "")).slice(0, 2).join(" · ")));
+  }
+  k.title = "Ketuk untuk rincian sentimen";
+  k.style.cursor = "pointer";
+  k.onclick = () => { rekSnBuka = !rekSnBuka; halScreener(); };
+  return k;
+}
+function rekPanelSentimen(em) {
+  const L = snDaftar(em);
+  const p = el("div", "rek-ng rek-op");
+  p.appendChild(el("h2", null, "Sentimen — " + em));
+  if (!L.length) p.appendChild(el("div", "bantu", "Tidak ada catatan sanksi OJK, keanggotaan MSCI, atau free float di bawah 15% untuk " + em + "."));
+  L.forEach(x => { const d = el("div", "sn-it " + (x.k || "")); d.appendChild(el("b", x.k || null, x.j)); d.appendChild(el("div", null, x.t)); p.appendChild(d); });
+  p.appendChild(el("div", "bantu", "Jadwal berikutnya: review MSCI diumumkan 11 Nov 2026 (berlaku 1 Des 2026); pembaruan FTSE Russell menjelang review Desember 2026 " +
+    "(status sekarang tetap Secondary Emerging, tidak di Watch List). Sumber: siaran pers OJK SP 193 (16 Okt 2026), MSCI (15 Okt 2026), review MSCI Agustus 2026. " +
+    "Daftar sanksi & MSCI ditulis manual — minta Claude memperbarui kalau ada kabar baru."));
+  return p;
+}
+
 /* 11 Okt 2026: kotak NEWS di Rekomendasi - berita media + keterbukaan informasi IDX untuk emiten terpilih,
    7 hari terakhir. Sumbernya NEWS.item (news.json + ki.json yang sudah digabung muatNews). */
 const REK_NEWS_HARI = 7;
@@ -5452,9 +5607,13 @@ function panelRekomendasi(w) {
     if (q) { kl.style.cursor = "pointer"; kl.onclick = () => { if (typeof bukaCariLK === "function") bukaCariLK(rek.em); }; }
     kartu.appendChild(kl); lkPastikan(halScreener); }
   kartu.appendChild(rekKartuOpini(rek.em));
+  kartu.appendChild(rekKartuBuyback(rek.em));
+  kartu.appendChild(rekKartuSentimen(rek.em));
   kartu.appendChild(rekKartuNews(rek.em));
   p.appendChild(kartu);
   if (rekOpBuka) p.appendChild(rekPanelOpini(rek.em));
+  if (rekBbBuka) p.appendChild(rekPanelBuyback(rek.em));
+  if (rekSnBuka) p.appendChild(rekPanelSentimen(rek.em));
   if (rekNewsBuka) p.appendChild(rekPanelNews(rek.em));
 
   /* ---- % NET TERHADAP GROSS: batang panjang sama dengan menu BROKER > %NET > RASIO ---- */
@@ -8698,7 +8857,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-21-11";
+const VERSI_APP = "2026-10-21-12";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
