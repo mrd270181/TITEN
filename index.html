@@ -795,6 +795,7 @@ td.rek-lawan{outline:1.5px solid currentColor;outline-offset:-3px;font-weight:80
 .rek-nf{margin:3px 0;font-size:14px}
 .rek-nf-j{display:inline-block;min-width:230px;color:var(--ink-2)}
 .rek-nf b{margin-right:6px}
+.rek-vma{background:rgba(88,166,255,.07)}.rek-vma-kuat{font-weight:700}
 .rek-avg{margin-left:4px;font-weight:400;opacity:.7;font-size:.88em;white-space:nowrap}
 tfoot td{border-top:2px solid var(--garis);font-weight:800;background:var(--surface-2)}
 #barisVersi{
@@ -5556,9 +5557,26 @@ function panelRekomendasi(w) {
   /* Level harga TIDAK lagi jadi kolom di sini - sudah pindah ke kotak LEVEL HARGA
      di atas tabel. Sebagai kolom, angkanya terulang di tiap baris padahal cuma
      berlaku untuk tanggal terbaru. */
-  ["Tanggal", "Tutup", "%Hrg", "Net Foreign", "Volume", "Value"].forEach(judul => {
-    const th = el("th", null, judul); th.rowSpan = 2; tr1.appendChild(th);
+  ["Tanggal", "Tutup", "%Hrg", "Net Foreign", "Volume", "Value", "VMA5/VMA20", "VMA5/VMA50"].forEach(judul => {
+    const th = el("th", judul.indexOf("VMA") === 0 ? "num rek-vma" : null, judul); th.rowSpan = 2;
+    if (judul.indexOf("VMA") === 0) { th.appendChild(el("span", "rd-subjudul", "volume naik bertahap"));
+      th.title = "Rata-rata volume 5 hari \u00f7 " + judul.slice(6) + " hari, dari hari-hari SEBELUM tanggal itu. " +
+        "Di atas 1\u00d7 = volume naik bertahap. Berguna kalau asing juga net beli (uji 404 hari bursa)."; }
+    tr1.appendChild(th);
   });
+  /* 21 Okt 2026: VMA5/VMA20 & VMA5/VMA50 per tanggal (uji_vma.py: di dalam 20% teratas %NF,
+     keduanya unggul +-1% dalam 3 hari di data Jul-Okt 2026). VMA = rata-rata volume n hari
+     SEBELUM tanggal itu (hari itu sendiri tidak ikut) - sama persis dengan cara uji. */
+  const vmaRasio = {};
+  {
+    const L = daftarHari.filter(r => r.baris && r.baris[rek.em] && r.baris[rek.em].v > 0)
+      .map(r => [r.tgl, r.baris[rek.em].v]).sort((a, b) => a[0] < b[0] ? -1 : 1);
+    const rata = (i, n) => { if (i < n) return null; let j = 0; for (let k = i - n; k < i; k++) j += L[k][1]; return j / n; };
+    L.forEach(([t], i) => { const v5 = rata(i, 5), v20 = rata(i, 20), v50 = rata(i, 50);
+      vmaRasio[t] = [v5 && v20 ? v5 / v20 : null, v5 && v50 ? v5 / v50 : null]; });
+  }
+  const selVma = v => v === null || v === undefined ? el("td", "num rek-vma", "\u2013") :
+    el("td", "num rek-vma " + (v >= 1.3 ? "naik rek-vma-kuat" : v >= 1 ? "naik" : "turun"), v.toFixed(2).replace(".", ",") + "\u00d7");
   if (adaBroker) {
     if (brBeli.length) {
       const th = el("th", "rek-b rek-gb", "Net lot harian — " + brBeli.length +
@@ -5609,6 +5627,7 @@ function panelRekomendasi(w) {
       tr.appendChild(td); }
     tr.appendChild(el("td", "num", lotSingkat(Math.round(x.v / LOT))));
     tr.appendChild(el("td", "num", x.n ? rpSingkat(x.n) : "\u2013"));
+    { const q = vmaRasio[x.tgl] || [null, null]; tr.appendChild(selVma(q[0])); tr.appendChild(selVma(q[1])); }
     if (adaBroker) {
       const hari = brk.perTgl[x.tgl] || {};
       const avH = brk.avgTgl[x.tgl] || {};
@@ -5637,6 +5656,7 @@ function panelRekomendasi(w) {
     trf.appendChild(td); }
   trf.appendChild(el("td", "num", lotSingkat(Math.round(volTot / LOT))));
   trf.appendChild(el("td", "num", valTot ? rpSingkat(valTot) : "\u2013"));
+  trf.appendChild(el("td", "num rek-vma", "")); trf.appendChild(el("td", "num rek-vma", ""));
   if (adaBroker) {
     brBeli.forEach(k => trf.appendChild(rekSelLot("num rek-b " + arah(brk.total[k]).k,
       brk.total[k], rekAvgSisi(brk.avgTot[k], brk.total[k]), volTot / LOT)));
@@ -5646,6 +5666,11 @@ function panelRekomendasi(w) {
   tfoot.appendChild(trf); t.appendChild(tfoot);
   bungkus.appendChild(t); p.appendChild(bungkus);
 
+  p.appendChild(el("div", "bantu",
+    "VMA5/VMA20 dan VMA5/VMA50 = rata-rata volume 5 hari \u00f7 rata-rata 20 / 50 hari, dihitung dari hari-hari " +
+    "SEBELUM tanggal itu. Di atas 1\u00d7 (hijau) = volume naik bertahap; hijau tebal \u2265 1,3\u00d7; di bawah 1\u00d7 (merah) = volume menurun. " +
+    "Dari uji 404 hari bursa: berguna kalau ASING JUGA NET BELI (%NF tinggi) \u2014 keduanya bersama unggul \u00b11% dalam 3 hari. " +
+    "Sendirian tidak berarti, dan lonjakan volume satu hari (volume hari itu jauh di atas VMA) justru cenderung diikuti ambil untung."));
 
   if (adaBroker) {
     p.appendChild(el("div", "bantu",
@@ -8667,7 +8692,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-21-4";
+const VERSI_APP = "2026-10-21-5";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
