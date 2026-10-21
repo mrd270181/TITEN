@@ -8631,7 +8631,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-21-1";
+const VERSI_APP = "2026-10-21-3";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -13468,13 +13468,38 @@ function panelProfil(kode, periode) {
   muatIpo();
   const ipo = (IPO_DATA && IPO_DATA.data && IPO_DATA.data[kode]) || null;
   if (ipo) {
-    if (ipo.harga) baris.push(["Harga IPO", "Rp" + ipo.harga.toLocaleString("id-ID") + (ipo.bb ? " (book building " + ipo.bb.replace(/ - /, " \u2013 ") + ")" : "")]);
-    if (ipo.saham) baris.push(["Saham ditawarkan (IPO shares)", ipo.saham.toLocaleString("id-ID") + " lembar" +
-      (ipo.persen ? " (" + String(ipo.persen).replace(".", ",") + "% dari saham tercatat)" : "")]);
+    /* 21 Okt 2026: harga & saham IPO LANGSUNG dikonversi dengan split / reverse split / rights
+       issue sesudah tanggal IPO (sumber sama dengan tab AKSI: SPLIT_EV + AK_SPLIT_LAMA);
+       angka asli e-IPO tetap ditulis dalam kurung */
+    const evIpo = (SPLIT_EV[kode] || []).map(e => [e.tgl, e.r]);
+    (AK_SPLIT_LAMA[kode] || []).forEach(([t, r]) => { if (!evIpo.some(e => e[0] === t)) evIpo.push([t, r]); });
+    let fIpo = 1, fSaham = 1; const ketIpo = [];   /* fSaham: hanya split/reverse (rights issue tidak melipatkan saham IPO) */
+    evIpo.filter(([t]) => ipo.tgl && t > ipo.tgl).sort((a, b) => a[0] < b[0] ? -1 : 1).forEach(([t, r]) => {
+      fIpo *= r;
+      if (r < 0.55 || Math.abs(r - Math.round(r)) < 0.06 && r >= 1.9) fSaham *= r;
+      ketIpo.push((r < 1 ? "reverse " + Math.round(1 / r) + ":1" : Math.abs(r - Math.round(r)) < 0.06 ? "split 1:" + Math.round(r) : "\u00f7" + nf(r, 2)) + " " + lksTglPendek(t));
+    });
+    const rpH = v => "Rp" + (v >= 100 ? Math.round(v) : Math.round(v * 100) / 100).toLocaleString("id-ID");
+    const hIpo = ipo.harga ? ipo.harga / fIpo : null;
+    const konv = fIpo !== 1;
+    if (hIpo) baris.push([konv ? "Harga IPO (disesuaikan)" : "Harga IPO",
+      rpH(hIpo) + (konv ? " (asli Rp" + ipo.harga.toLocaleString("id-ID") + ", " + ketIpo.join(", ") + ")"
+                        : ipo.bb ? " (book building " + ipo.bb.replace(/ - /, " \u2013 ") + ")" : "")]);
+    if (ipo.saham) baris.push([fSaham !== 1 ? "Saham ditawarkan (disesuaikan)" : "Saham ditawarkan (IPO shares)",
+      Math.round(ipo.saham * fSaham).toLocaleString("id-ID") + " lembar" +
+      (fSaham !== 1 ? " (asli " + ipo.saham.toLocaleString("id-ID") + ")" : "") +
+      (ipo.persen ? " \u00b7 " + String(ipo.persen).replace(".", ",") + "% dari saham tercatat saat IPO" : "")]);
     if (ipo.nilai) baris.push(["Dana IPO (IPO amount)", "Rp" + rpSingkat(ipo.nilai)]);
     const hk = barisScr[kode] ? ambilM(barisScr[kode], "Harga penutupan") : null;
-    if (ipo.harga && hk) { const d = (hk / ipo.harga - 1) * 100;
-      baris.push(["Harga sekarang vs harga IPO", (d >= 0 ? "+" : "") + d.toFixed(1).replace(".", ",") + "% (Rp" + hk.toLocaleString("id-ID") + " vs Rp" + ipo.harga.toLocaleString("id-ID") + ")"]); }
+    /* split sebelum riwayat harga di HP (mis. 2021-2024) tidak terdeteksi - curigai kalau jumlah
+       saham tercatat kini berlipat bulat dibanding saat IPO dan belum dijelaskan event di atas */
+    { const lbr = barisScr[kode] ? ambilM(barisScr[kode], "Jumlah saham (lembar)") : null;
+      if (lbr && ipo.saham && ipo.persen) {
+        const sisa = lbr / (ipo.saham / (ipo.persen / 100)) / fIpo;
+        if (sisa >= 1.8 && Math.abs(sisa - Math.round(sisa)) < 0.05)
+          baris.push(["\u26a0 Cek split", "saham tercatat kini \u00d7" + Math.round(sisa) + " dibanding saat IPO \u2013 kemungkinan ada split sebelum 2025 yang belum disesuaikan"]); } }
+    if (hIpo && hk) { const d = (hk / hIpo - 1) * 100;
+      baris.push(["Harga sekarang vs harga IPO", (d >= 0 ? "+" : "") + d.toFixed(1).replace(".", ",") + "% (" + rpH(hk) + " vs " + rpH(hIpo) + ")"]); }
     if (ipo.pje && ipo.pje.length) baris.push(["Penjamin emisi (underwriter)", ipo.pje.length + " sekuritas, lihat tabel di bawah"]);
   } else if (IPO_DATA) {
     baris.push(["Harga IPO \u00b7 saham \u00b7 dana \u00b7 penjamin emisi", "\u2014 (IPO sebelum 2021 / tidak tercatat di e-IPO)"]);
