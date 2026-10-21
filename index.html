@@ -1802,9 +1802,13 @@ function mfKotak(tglMF, tglSinyal, harga, isi, simpanIsi, ringkas, saatTanggalLa
   bT.onclick = () => {
     const baru = [];
     ta.value.split(/\n|;/).forEach(br => {
-      const tk = br.trim().split(/\s+/); if (tk.length < 2) return;
-      const em = mfKode(tk[0]), a = mfAngka(tk.slice(1).join(""), true);
-      if (em && a) baru.push({ocr: em, em: harga[em] ? em : "", nf: a.v, lot: null, tersirat: null, st: harga[em] ? "manual" : "periksa", waktu: Date.now()});
+      const tk = br.trim().split(/\s+/); if (tk.length < 2 || /^#/.test(tk[0])) return;
+      /* 21 Okt 2026: boleh 3 kolom "BBCA 296.94B 567.15K" (kolom ke-3 = N.Lot) - dulu kolomnya
+         digabung jadi "296.94B567.15K" sehingga baris tidak terbaca sama sekali */
+      const em = mfKode(tk[0]);
+      let a = mfAngka(tk[1], true), lt = tk[2] ? mfAngka(tk[2], true) : null;
+      if (!a) { a = mfAngka(tk.slice(1).join(""), true); lt = null; }
+      if (em && a) baru.push({ocr: em, em: harga[em] ? em : "", nf: a.v, lot: lt ? Math.abs(lt.v) : null, tersirat: null, st: harga[em] ? "manual" : "periksa", waktu: Date.now()});
     });
     isi.baris = mfGabung(isi.baris.concat(baru)); simpanIsi();
     mfPesan = baru.length + " baris ditambahkan secara manual."; mfPesanTgl = tglMF; halScreener();
@@ -8857,7 +8861,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-21-12";
+const VERSI_APP = "2026-10-21-13";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
