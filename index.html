@@ -795,7 +795,7 @@ td.rek-lawan{outline:1.5px solid currentColor;outline-offset:-3px;font-weight:80
 .rek-nf{margin:3px 0;font-size:14px}
 .rek-nf-j{display:inline-block;min-width:230px;color:var(--ink-2)}
 .rek-nf b{margin-right:6px}
-.rek-vma{background:rgba(88,166,255,.07)}.rek-vma-kuat{font-weight:700}
+.rek-vma{background:rgba(88,166,255,.07);width:1%;white-space:nowrap;padding-left:6px!important;padding-right:6px!important}.rek-vma-kuat{font-weight:700}
 .rek-avg{margin-left:4px;font-weight:400;opacity:.7;font-size:.88em;white-space:nowrap}
 tfoot td{border-top:2px solid var(--garis);font-weight:800;background:var(--surface-2)}
 #barisVersi{
@@ -5550,6 +5550,14 @@ function panelRekomendasi(w) {
       "berguna sesudah aplikasi mengunduh beberapa bulan harga."));
   }
 
+  /* 21 Okt 2026: penjelasan VMA muncul kalau judul kolom VMA disentuh (title tidak tampil di HP) */
+  const vmaKet = el("div", "bantu rek-vma-ket",
+    "VMA5/VMA20 dan VMA5/VMA50 = rata-rata volume 5 hari \u00f7 rata-rata 20 / 50 hari, dari hari-hari SEBELUM tanggal itu. " +
+    "Di atas 1\u00d7 (hijau) = volume naik bertahap; hijau tebal \u2265 1,3\u00d7; di bawah 1\u00d7 (merah) = volume menurun. " +
+    "Uji 404 hari bursa: berguna kalau ASING JUGA NET BELI (%NF tinggi) \u2014 keduanya bersama unggul \u00b11% dalam 3 hari. " +
+    "Sendirian tidak berarti; lonjakan volume satu hari justru cenderung diikuti ambil untung. Ketuk judul kolom lagi untuk menutup.");
+  vmaKet.style.display = "none";
+  p.appendChild(vmaKet);
   const bungkus = el("div", "tbl-bungkus tbl-kunci");
   const t = el("table");
   const thead = el("thead");
@@ -5558,10 +5566,12 @@ function panelRekomendasi(w) {
      di atas tabel. Sebagai kolom, angkanya terulang di tiap baris padahal cuma
      berlaku untuk tanggal terbaru. */
   ["Tanggal", "Tutup", "%Hrg", "Net Foreign", "Volume", "Value", "VMA5/VMA20", "VMA5/VMA50"].forEach(judul => {
-    const th = el("th", judul.indexOf("VMA") === 0 ? "num rek-vma" : null, judul); th.rowSpan = 2;
-    if (judul.indexOf("VMA") === 0) { th.appendChild(el("span", "rd-subjudul", "volume naik bertahap"));
-      th.title = "Rata-rata volume 5 hari \u00f7 " + judul.slice(6) + " hari, dari hari-hari SEBELUM tanggal itu. " +
-        "Di atas 1\u00d7 = volume naik bertahap. Berguna kalau asing juga net beli (uji 404 hari bursa)."; }
+    const vma = judul.indexOf("VMA") === 0;
+    const th = el("th", vma ? "num rek-vma" : null, vma ? null : judul); th.rowSpan = 2;
+    if (vma) { th.appendChild(document.createTextNode("VMA5/")); th.appendChild(el("br")); th.appendChild(document.createTextNode(judul.slice(5)));
+      th.title = "Ketuk untuk penjelasan";
+      th.style.cursor = "pointer";
+      th.onclick = () => { vmaKet.style.display = vmaKet.style.display === "none" ? "" : "none"; }; }
     tr1.appendChild(th);
   });
   /* 21 Okt 2026: VMA5/VMA20 & VMA5/VMA50 per tanggal (uji_vma.py: di dalam 20% teratas %NF,
@@ -5666,11 +5676,6 @@ function panelRekomendasi(w) {
   tfoot.appendChild(trf); t.appendChild(tfoot);
   bungkus.appendChild(t); p.appendChild(bungkus);
 
-  p.appendChild(el("div", "bantu",
-    "VMA5/VMA20 dan VMA5/VMA50 = rata-rata volume 5 hari \u00f7 rata-rata 20 / 50 hari, dihitung dari hari-hari " +
-    "SEBELUM tanggal itu. Di atas 1\u00d7 (hijau) = volume naik bertahap; hijau tebal \u2265 1,3\u00d7; di bawah 1\u00d7 (merah) = volume menurun. " +
-    "Dari uji 404 hari bursa: berguna kalau ASING JUGA NET BELI (%NF tinggi) \u2014 keduanya bersama unggul \u00b11% dalam 3 hari. " +
-    "Sendirian tidak berarti, dan lonjakan volume satu hari (volume hari itu jauh di atas VMA) justru cenderung diikuti ambil untung."));
 
   if (adaBroker) {
     p.appendChild(el("div", "bantu",
@@ -8692,7 +8697,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-21-5";
+const VERSI_APP = "2026-10-21-8";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
