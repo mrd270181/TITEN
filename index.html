@@ -8631,7 +8631,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-20-10";
+const VERSI_APP = "2026-10-21-1";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -13394,6 +13394,39 @@ function muatProfilRinci() {
     .catch(() => { prGagal = true; })
     .finally(() => { prSedang = false; if (cariSub === "profil" || cariSub === "dividen" || cariSub === "aksi") halCari(); });
 }
+/* 21 Okt 2026: data IPO dari e-IPO (ipo_eipo.py -> data/ipo.json), sejak 2021 */
+let IPO_DATA = null, ipoSedang = false, ipoGagal = false, pjeUrut = {k: "", a: 1};
+function muatIpo() {
+  if (IPO_DATA || ipoSedang || ipoGagal) return;
+  ipoSedang = true;
+  ambilGudang("ipo.json").then(j => { IPO_DATA = j || {data: {}}; })
+    .catch(() => { ipoGagal = true; })
+    .finally(() => { ipoSedang = false; if (cariSub === "profil") halCari(); });
+}
+function pjeTabel(daftar) {
+  const w = el("div", "pr-blok");
+  w.appendChild(el("h3", "pr-judul", "Penjamin emisi efek (underwriter IPO)"));
+  const bungkus = el("div", "tbl-bungkus tbl-kunci rd-tabel");
+  const t = el("table"), thead = el("thead"), trh = el("tr");
+  const baris = daftar.map(x => { const m = /^([A-Z0-9]{2}) - (.*)$/.exec(x); return m ? {kode: m[1], nama: m[2]} : {kode: "", nama: x}; });
+  [["kode", "Kode"], ["nama", "Sekuritas"]].forEach(([k, j]) => {
+    const th = el("th", "rd-kiri", j + (pjeUrut.k === k ? (pjeUrut.a < 0 ? " \u25bc" : " \u25b2") : ""));
+    th.style.cursor = "pointer"; th.title = "Urutkan (ketuk lagi untuk membalik)";
+    th.onclick = () => { if (pjeUrut.k === k) pjeUrut.a = -pjeUrut.a; else pjeUrut = {k, a: 1}; w.replaceWith(pjeTabel(daftar)); };
+    trh.appendChild(th);
+  });
+  thead.appendChild(trh); t.appendChild(thead);
+  const tb = el("tbody");
+  (pjeUrut.k ? baris.slice().sort((a, b) => a[pjeUrut.k].localeCompare(b[pjeUrut.k]) * pjeUrut.a) : baris).forEach(r => {
+    const tr = el("tr");
+    tr.appendChild(el("td", "rd-kiri", r.kode || "\u2013"));
+    tr.appendChild(el("td", "rd-kiri", r.nama));
+    tb.appendChild(tr);
+  });
+  t.appendChild(tb); bungkus.appendChild(t); w.appendChild(bungkus);
+  w.appendChild(el("div", "bantu", "Kode penjamin emisi = kode broker, jadi bisa dicocokkan dengan posisi broker di tab BROKER."));
+  return w;
+}
 function prTabel(judul, kolom, baris) {
   const w = el("div", "pr-blok");
   w.appendChild(el("h3", "pr-judul", judul));
@@ -13432,7 +13465,20 @@ function panelProfil(kode, periode) {
   }
   { const ff = barisScr[kode] ? ambilM(barisScr[kode], "Free float (%)") : null;
     if (ff !== null && ff !== undefined) baris.push(["Free float", (ff * 100).toFixed(2).replace(".", ",") + "%"]); }   /* metrik pct = pecahan */
-  baris.push(["IPO price \u00b7 amount \u00b7 shares \u00b7 underwriter", "belum ada sumber data"]);
+  muatIpo();
+  const ipo = (IPO_DATA && IPO_DATA.data && IPO_DATA.data[kode]) || null;
+  if (ipo) {
+    if (ipo.harga) baris.push(["Harga IPO", "Rp" + ipo.harga.toLocaleString("id-ID") + (ipo.bb ? " (book building " + ipo.bb.replace(/ - /, " \u2013 ") + ")" : "")]);
+    if (ipo.saham) baris.push(["Saham ditawarkan (IPO shares)", ipo.saham.toLocaleString("id-ID") + " lembar" +
+      (ipo.persen ? " (" + String(ipo.persen).replace(".", ",") + "% dari saham tercatat)" : "")]);
+    if (ipo.nilai) baris.push(["Dana IPO (IPO amount)", "Rp" + rpSingkat(ipo.nilai)]);
+    const hk = barisScr[kode] ? ambilM(barisScr[kode], "Harga penutupan") : null;
+    if (ipo.harga && hk) { const d = (hk / ipo.harga - 1) * 100;
+      baris.push(["Harga sekarang vs harga IPO", (d >= 0 ? "+" : "") + d.toFixed(1).replace(".", ",") + "% (Rp" + hk.toLocaleString("id-ID") + " vs Rp" + ipo.harga.toLocaleString("id-ID") + ")"]); }
+    if (ipo.pje && ipo.pje.length) baris.push(["Penjamin emisi (underwriter)", ipo.pje.length + " sekuritas, lihat tabel di bawah"]);
+  } else if (IPO_DATA) {
+    baris.push(["Harga IPO \u00b7 saham \u00b7 dana \u00b7 penjamin emisi", "\u2014 (IPO sebelum 2021 / tidak tercatat di e-IPO)"]);
+  }
   if (pr) {
     [["sektor", "Sektor"], ["subsektor", "Subsektor"],
      ["industri", "Industri"], ["subindustri", "Subindustri"],
@@ -13465,6 +13511,7 @@ function panelProfil(kode, periode) {
     tr.appendChild(td); t.appendChild(tr);
   });
   p.appendChild(t);
+  if (ipo && ipo.pje && ipo.pje.length) p.appendChild(pjeTabel(ipo.pje));
   if (rinci) {
     if (rinci.sek && rinci.sek.length) p.appendChild(prTabel("Sekretaris perusahaan", [["Nama"], ["Telepon"], ["Email"]], rinci.sek));
     if (rinci.dir && rinci.dir.length) p.appendChild(prTabel("Direksi", [["Nama"], ["Jabatan"]], rinci.dir));
