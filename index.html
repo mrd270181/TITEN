@@ -2536,7 +2536,7 @@ function panelTopGainer() {
     bT.onclick = () => { tgTgl = hIni; halScreener(); }; bT.title = "Kembali ke hari ini";
     [bK, bT, bN].forEach(b => g.appendChild(b)); nav.appendChild(g);
     const s1x = tgS1 && tgS1.tanggal && tgS1.tanggal[tgl];
-    nav.appendChild(el("span", "bantu", lalu ? (s1x ? "hasil besok: " + tglID(s1x.hari) + ", sampai penutupan sesi 1" : "hasil besok sesi 1 belum ada (diambil 12.35, diunggah 15.15 hari bursa berikutnya)") : "hari ini"));
+    nav.appendChild(el("span", "bantu", lalu ? (s1x ? "hasil besok: " + tglID(s1x.hari) + ", sampai penutupan sesi 1" : "hasil besok sesi 1 belum ada (diambil sesudah 12.35, diunggah 13.15 hari bursa berikutnya)") : "hari ini"));
     p.appendChild(nav); }
   const alat = el("div", "alat tg-alat");
   const st = el("div", "bantu tg-st", tgPesan || "Unggah tangkapan layar Stockbit › Markets › Movers › Top Gainer (kolom Symbol, Price, Value, Volume, Freq). Boleh beberapa gambar sekaligus.");
@@ -9372,7 +9372,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-22-6";
+const VERSI_APP = "2026-10-22-7";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
