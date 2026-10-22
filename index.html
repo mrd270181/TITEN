@@ -2506,12 +2506,38 @@ async function tgSinkronServer() {
   } catch (e) { tgSrvWaktu = Date.now(); return false; }
   finally { tgSrvJalan = false; }
 }
+/* 22 Okt 2026: backtes Top Gainers. data/s1.json (unggah_s1.py; jadwal Claude 12.35 membaca Open/High/Low/harga
+   terakhir SESI 1 tiap emiten Top Gainer 15.00 hari bursa sebelumnya dari Stockbit -> masuk\s1-TANGGAL.txt):
+   {dibuat, tanggal: {"<tanggal beli>": {hari: "<tanggal sesi 1>", waktu, baris: [[kode, open, high, low, last], ...]}}}.
+   Hasil dihitung dari harga TUTUP hari beli (data harian); berhasil = high sesi 1 >= +3%. */
+let tgTgl = "", tgS1 = null, tgS1Waktu = 0, tgS1Jalan = false;
+async function tgS1Sinkron() {
+  if (tgS1Jalan || (tgS1 && Date.now() - tgS1Waktu < 5 * 60 * 1000)) return false;
+  tgS1Jalan = true;
+  try { const J = await ambilGudang("s1.json"); tgS1Waktu = Date.now();
+    const baru = JSON.stringify(J.tanggal || {}) !== JSON.stringify((tgS1 || {}).tanggal || {}); tgS1 = J; return baru; }
+  catch (e) { tgS1Waktu = Date.now(); if (!tgS1) tgS1 = {tanggal: {}}; return false; }
+  finally { tgS1Jalan = false; }
+}
 function panelTopGainer() {
   pakaiFcaGudang();
   tgSinkronServer().then(ub => { if (ub && subScr === "scalping") halScreener(); });
-  const tgl = tgHariIni(), S = tgMuat(), H = S[tgl] || {};
+  tgS1Sinkron().then(ub => { if (ub && subScr === "scalping") halScreener(); });
+  const hIni = tgHariIni(), S = tgMuat();
+  const dTgl = [...new Set(Object.keys(S).filter(t => S[t] && (S[t].s1 || S[t].s2)).concat([hIni]))].sort();
+  if (!tgTgl || dTgl.indexOf(tgTgl) < 0) tgTgl = hIni;
+  const tgl = tgTgl, H = S[tgl] || {}, lalu = tgl < hIni;
   const p = el("div", "panel");
   p.appendChild(el("h2", null, "Top Gainers intraday · " + tglID(tgl)));
+  { const iT = dTgl.indexOf(tgl), nav = el("div", "alat"), g = el("div", "saklar rd-saklar");
+    const bK = el("button", null, "\u2039"), bT = el("button", "aktif", tglID(tgl)), bN = el("button", null, "\u203a");
+    bK.disabled = iT <= 0; bN.disabled = iT >= dTgl.length - 1;
+    bK.onclick = () => { tgTgl = dTgl[iT - 1]; halScreener(); }; bN.onclick = () => { tgTgl = dTgl[iT + 1]; halScreener(); };
+    bT.onclick = () => { tgTgl = hIni; halScreener(); }; bT.title = "Kembali ke hari ini";
+    [bK, bT, bN].forEach(b => g.appendChild(b)); nav.appendChild(g);
+    const s1x = tgS1 && tgS1.tanggal && tgS1.tanggal[tgl];
+    nav.appendChild(el("span", "bantu", lalu ? (s1x ? "hasil besok: " + tglID(s1x.hari) + ", sampai penutupan sesi 1" : "hasil besok sesi 1 belum ada (diambil 12.35, diunggah 15.15 hari bursa berikutnya)") : "hari ini"));
+    p.appendChild(nav); }
   const alat = el("div", "alat tg-alat");
   const st = el("div", "bantu tg-st", tgPesan || "Unggah tangkapan layar Stockbit › Markets › Movers › Top Gainer (kolom Symbol, Price, Value, Volume, Freq). Boleh beberapa gambar sekaligus.");
   [["s1", "📷 TOP GAINERS 12.00"], ["s2", "📷 TOP GAINERS 15.00"]].forEach(([k, j]) => {
@@ -2546,14 +2572,20 @@ function panelTopGainer() {
     bh.onclick = () => { const o = tgMuat(); delete o[tgl]; tgSimpan(o); tgPesan = "Data Top Gainers hari ini dihapus."; halScreener(); };
     det.appendChild(bh); }
   alat.appendChild(det);
-  p.appendChild(alat); p.appendChild(st);
-  if (!H.s1 && !H.s2) { p.appendChild(el("div", "bantu", "Belum ada data Top Gainers hari ini.")); return p; }
+  if (!lalu) { p.appendChild(alat); p.appendChild(st); }
+  if (!H.s1 && !H.s2) { p.appendChild(el("div", "bantu", "Belum ada data Top Gainers " + (lalu ? "tanggal ini." : "hari ini."))); return p; }
+  /* harian hari beli (penutupan) & data sesi 1 besok */
+  const hrBeli = (daftarHari.find(r => r.tgl === tgl) || {}).baris || null;
+  const S1 = {}; const s1d = tgS1 && tgS1.tanggal && tgS1.tanggal[tgl];
+  if (s1d) (s1d.baris || []).forEach(b => { S1[b[0]] = {o: b[1], h: b[2], l: b[3], c: b[4]}; });
+  const adaHasil = !!s1d && lalu;
   /* gabung s1 & s2 */
   const a = {}, z = {};
   ((H.s1 && H.s1.baris) || []).forEach(r => { a[r.em] = r; });
   ((H.s2 && H.s2.baris) || []).forEach(r => { z[r.em] = r; });
   const kode = [...new Set(Object.keys(a).concat(Object.keys(z)))];
-  const prevDari = k => { const sc = barisScr[k]; return sc ? ambilM(sc, "Harga penutupan") : null; };
+  const prevDari = k => { if (hrBeli) { const x = hrBeli[k]; return x && x.p > 0 ? x.p : null; }
+    const sc = barisScr[k]; return sc ? ambilM(sc, "Harga penutupan") : null; };
   const baris = kode.map(k => {
     const r1 = a[k] || null, r2 = z[k] || null, r = r2 || r1;
     const isiHarga = x => { if (x && !x.c) { const pv = prevDari(k); if (pv) x.c = Math.round(pv * (1 + x.pct / 100)); } return x; };
@@ -2563,6 +2595,11 @@ function panelTopGainer() {
       c: r.c, pct: r.pct, n: r.n, vol: r.vol, f: r.f};
     Object.assign(o, tgSkor(o));
     o.lemah = d !== null && d <= -3;
+    o.tutup = hrBeli && hrBeli[k] && hrBeli[k].c > 0 ? hrBeli[k].c : null;
+    if (adaHasil) { const z = S1[k], b = o.tutup;
+      if (z && b && z.c > 0) { const zo = z.o > 0 ? z.o : z.c, zh = Math.max(z.h || 0, zo, z.c), zl = Math.min(z.l > 0 ? z.l : z.c, zo, z.c);
+        o.bo = (zo / b - 1) * 100; o.bh = (zh / b - 1) * 100; o.bl = (zl / b - 1) * 100; o.bc = (z.c / b - 1) * 100; o.ok = o.bh >= 3 ? 1 : 0; }
+      else { o.bo = o.bh = o.bl = o.bc = o.ok = null; } }
     return o;
   });
   const bung = el("div", "tbl-bungkus tbl-kunci rd-tabel"), t = el("table"), th = el("thead"), trh = el("tr");
@@ -2570,8 +2607,24 @@ function panelTopGainer() {
     ["p1", "12.00", "harga · % naik" + (H.s1 ? " (" + H.s1.waktu + ")" : "")], ["p2", "15.00", "harga · % naik" + (H.s2 ? " (" + H.s2.waktu + ")" : "")],
     ["d", "12.00 → 15.00", "selisih % naik"], ["n", "Value", "terakhir"], ["f", "Freq", "terakhir"],
     ["keAra", "Ke ARA", "jarak dari harga terakhir"], ["tk", "Tick", "1 tick ÷ harga"], ["", "Tanda", ""]];
-  KOL.forEach(([k, j, sub]) => {
-    const h = el("th", k === "em" || !k ? "rd-kiri" : "num", j + (tgUrut.k === k && k ? (tgUrut.a < 0 ? " ▼" : " ▲") : ""));
+  if (lalu) KOL.splice(4, 0, ["tutup", "Tutup", tglID(tgl) + " \u00b7 harga beli"]);
+  if (adaHasil) KOL.splice(5, 0, ["bo", "Open", "besok " + tglID(s1d.hari), 1], ["bh", "High sesi 1", "peluang jual", 1],
+    ["bl", "Low sesi 1", "risiko", 1], ["bc", "Tutup sesi 1", "harga " + (s1d.waktu || "12.00"), 1], ["ok", "Hasil", "high s1 \u2265 +3%", 1]);
+  if (adaHasil) {   /* ringkasan backtes */
+    const rb = el("div", "nw-ring rd-ring");
+    const kb = (isi, ket, kelas) => { const d = el("div"); d.appendChild(el("b", kelas, isi)); d.appendChild(el("span", null, ket)); rb.appendChild(d); };
+    const ps = a => { const b = a.filter(x => x.ok !== null && x.ok !== undefined); return b.length ? {p: b.filter(x => x.ok).length / b.length * 100, n: b.length} : null; };
+    const tulis = (r, ket) => kb(r ? nf(r.p) + "%" : "\u2013", ket + (r ? " (" + r.n + " emiten)" : " (tidak ada)"), r ? (r.p >= 50 ? "naik" : "turun") : null);
+    tulis(ps(baris), "sempat naik \u2265 3% di sesi 1 " + tglID(s1d.hari));
+    tulis(ps(baris.filter(x => x.skor >= 70)), "Skor \u2265 70 yang berhasil");
+    tulis(ps(baris.filter(x => x.skor < 50)), "Skor < 50 yang berhasil");
+    const bc = baris.filter(x => x.bc !== null && x.bc !== undefined);
+    kb(bc.length ? (bc.reduce((a, x) => a + x.bc, 0) / bc.length >= 0 ? "+" : "\u2212") + nf(Math.abs(bc.reduce((a, x) => a + x.bc, 0) / bc.length), 1) + "%" : "\u2013",
+      "rata-rata harga tutup sesi 1 besok", bc.length ? arah(bc.reduce((a, x) => a + x.bc, 0)).k : null);
+    p.appendChild(rb);
+  }
+  KOL.forEach(([k, j, sub, hb]) => {
+    const h = el("th", (k === "em" || !k ? "rd-kiri" : "num") + (hb ? " sc-hb" : ""), j + (tgUrut.k === k && k ? (tgUrut.a < 0 ? " ▼" : " ▲") : ""));
     if (sub) h.appendChild(el("span", "rd-subjudul", sub));
     if (k) { h.style.cursor = "pointer"; h.title = "Urutkan (ketuk lagi untuk membalik)";
       h.onclick = () => { if (tgUrut.k === k) tgUrut.a = -tgUrut.a; else tgUrut = {k, a: k === "em" ? 1 : -1}; halScreener(); }; }
@@ -2590,6 +2643,15 @@ function panelTopGainer() {
     const hp = (c, pc) => { const td = el("td", "num"); if (pc === null) { td.textContent = "–"; return td; }
       td.appendChild(document.createTextNode(c ? nf(c) + " " : "")); td.appendChild(el("span", "naik", "+" + nf(pc, 1) + "%")); return td; };
     tr.appendChild(hp(r.c1, r.p1)); tr.appendChild(hp(r.c2, r.p2));
+    if (lalu) tr.appendChild(el("td", "num", r.tutup ? nf(r.tutup) : "\u2013"));
+    if (adaHasil) {
+      const pc = v => v === null || v === undefined ? "\u2013" : (v > 0 ? "+" : v < 0 ? "\u2212" : "") + nf(Math.abs(v), 1) + "%";
+      ["bo", "bh", "bl", "bc"].forEach(k => tr.appendChild(el("td", "num sc-hb " + arah(r[k]).k, pc(r[k]))));
+      const td = el("td", "num sc-hb");
+      if (r.ok === null || r.ok === undefined) td.textContent = r.tutup ? "tidak terbaca" : "harga tutup belum ada";
+      else td.appendChild(el("span", "sc-ok " + (r.ok ? "y" : "n"), r.ok ? "\u2713 berhasil" : "\u2717 gagal"));
+      tr.appendChild(td);
+    }
     tr.appendChild(el("td", "num " + (r.d === null ? "" : arah(r.d).k), r.d === null ? "–" : (r.d > 0 ? "+" : r.d < 0 ? "−" : "") + nf(Math.abs(r.d), 1)));
     tr.appendChild(el("td", "num", r.n ? rpSingkat(r.n) : "–"));
     tr.appendChild(el("td", "num", r.f ? nf(r.f) : "–"));
@@ -9310,7 +9372,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-22-5";
+const VERSI_APP = "2026-10-22-6";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
