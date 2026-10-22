@@ -8958,9 +8958,19 @@ function panelTopStock1(w) {
   const rg = el("div", "nw-ring rd-ring");
   const kotak = (isi, ket, kelas) => { const d = el("div"); d.appendChild(el("b", kelas, isi)); d.appendChild(el("span", null, ket)); rg.appendChild(d); };
   const nilai = T ? (T.nilai || null) : null;
-  kotak(nilai ? "Rp" + rpSingkat(nilai) : "–", "nilai transaksi sesi I" + (nilai ? "" : " (belum ada)"));
-  kotak(pasar === null ? "–" : ts1Rp(pasar), "net foreign pasar sesi I" + (H.pasar && H.pasar.nf !== undefined ? "" : " (jumlah baris MF1)"), pasar === null ? null : arah(pasar).k);
-  kotak(pasar === null ? "–" : ts1Rp(-pasar), "net domestik (= kebalikan asing)", pasar === null ? null : arah(-pasar).k);
+  const fB = T && T.fbeli ? T.fbeli : null, fJ = T && T.fjual ? T.fjual : null;
+  const rpK = v => v ? "Rp" + rpSingkat(v) : "–";
+  kotak(rpK(nilai), "nilai transaksi sesi I");
+  if (ts1Mode === "dom") {
+    kotak(rpK(nilai && fB ? nilai - fB : null), "domestic buy (= nilai − foreign buy)", "naik");
+    kotak(rpK(nilai && fJ ? nilai - fJ : null), "domestic sell (= nilai − foreign sell)", "turun");
+    kotak(pasar === null ? "–" : ts1Rp(-pasar), "net domestic (= kebalikan asing)", pasar === null ? null : arah(-pasar).k);
+  } else {
+    kotak(rpK(fB), "foreign buy sesi I", "naik");
+    kotak(rpK(fJ), "foreign sell sesi I", "turun");
+    kotak(pasar === null ? "–" : ts1Rp(pasar), "net foreign sesi I" + (H.pasar && H.pasar.nf !== undefined ? "" : " (jumlah baris MF1)"), pasar === null ? null : arah(pasar).k);
+    if (ts1Mode === "all") kotak(pasar === null ? "–" : ts1Rp(-pasar), "net domestic (= kebalikan asing)", pasar === null ? null : arah(-pasar).k);
+  }
   p.appendChild(rg);
 
   if (ts1Mode === "all") {
@@ -8977,13 +8987,16 @@ function panelTopStock1(w) {
       (T.waktu ? ", diambil " + T.waktu : "") + "). Net asing kosong kalau emiten tidak ada di MF1. Ketuk emiten untuk membuka REKOMENDASI."));
     return;
   }
-  const sisi = Object.values(asing).map(r => ({em: r.em, nf: ts1Mode === "dom" ? -r.nf : r.nf,
-    lot: r.lot === null || r.lot === undefined ? null : (ts1Mode === "dom" ? -r.lot : r.lot)}));
+  /* N.Lot ikut tanda N.Foreign (di MF1 lot kadang tersimpan tanpa tanda minus) */
+  const sisi = Object.values(asing).map(r => { const lot = r.lot === null || r.lot === undefined ? null : Math.abs(r.lot) * Math.sign(r.nf);
+    return {em: r.em, nf: ts1Mode === "dom" ? -r.nf : r.nf, lot: lot === null ? null : (ts1Mode === "dom" ? -lot : lot)}; });
   if (!sisi.length) { p.appendChild(el("div", "bantu", "Data MF1 tanggal ini belum ada.")); return; }
   const kata = ts1Mode === "dom" ? "domestik" : "asing";
   const kolNv = ts1Mode === "dom" ? "N.Val" : "N.Foreign";
   const dua = el("div", "ts1-dua");
-  const blok = (judul, data, kunci) => { const d = el("div"); d.appendChild(el("div", "ts1-judul", judul + " (" + data.length + ")"));
+  const blok = (judul, data, kunci) => { const d = el("div"); const jml = data.reduce((a, r) => a + r.nf, 0);
+    const jd = el("div", "ts1-judul", judul + " (" + data.length + ") · total ");
+    jd.appendChild(el("span", arah(jml).k, ts1Rp(jml))); d.appendChild(jd);
     d.appendChild(ts1Tabel(data, [["em", "Emiten"], ["nf", kolNv], ["lot", "N.Lot"]], kunci)); dua.appendChild(d); };
   blok("Beli " + kata, sisi.filter(r => r.nf > 0), "beli");
   blok("Jual " + kata, sisi.filter(r => r.nf < 0), "jual");
@@ -9250,7 +9263,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-22-3";
+const VERSI_APP = "2026-10-22-4";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
