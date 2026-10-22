@@ -599,6 +599,7 @@ tr.pt-dicoret td{opacity:.6} tr.pt-dicoret .kode{text-decoration:line-through}
 .sc-skor.s1{background:#3fb950}.sc-skor.s2{background:#9be9a8}.sc-skor.s3{background:#d29922}.sc-skor.s4{background:#6e7681;color:#fff}
 .tg-ok{font-size:12px;color:var(--naik);margin-right:6px}.tg-alat{flex-wrap:wrap;gap:8px}
 .sc-hl{display:block;font-size:10px;opacity:.7;font-weight:400;white-space:nowrap}
+td.sc-hb{background:rgba(88,166,255,.07)}th.sc-hb{background:#3a5a8c!important}.sc-ok{display:inline-block;border-radius:4px;padding:1px 6px;font-size:11px;font-weight:700}.sc-ok.y{background:#1f4d2b;color:#9be9a8}.sc-ok.n{background:#4a1d1d;color:#ffb4ae}
 .dv-tglh{display:block;font-size:10px;opacity:.65;font-weight:400}
 .dv-tg.lewat{background:var(--surface-2);color:var(--ink-3)}.dv-tg.cek{background:var(--turun-bg);color:var(--turun)}
 .rek-fca{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;padding:8px 10px;border-radius:9px;
@@ -2283,7 +2284,7 @@ function rdTabel(baris) {
    + 0,3874*|chg hari ini| + 0,797*tick%.  Asing sengaja TIDAK dipakai (permintaan user).
    rentang20 = rata-rata (high/low - 1) 20 hari bursa s/d hari ini; vol relatif = volume hari
    ini / rata-rata 20 hari SEBELUMNYA. Gerak besar bukan berarti arah naik. */
-let scMin = 1e10, scTanda = "semua", scBuangArb = false, scUrut = {k: "skor", a: -1}, scCache = null;
+let scMin = 1e10, scTanda = "semua", scBuangArb = false, scUrut = {k: "skor", a: -1}, scCache = null, scTgl = "";
 let scHarga = "semua", scGerak = 3;   /* 21 Okt 2026: saringan harga & perkiraan gerak minimal */
 const scTick = p => p < 200 ? 1 : p < 500 ? 2 : p < 2000 ? 5 : p < 5000 ? 10 : 25;
 const scAra = p => p <= 200 ? 0.35 : p <= 5000 ? 0.25 : 0.20;
@@ -2320,13 +2321,18 @@ function scBatas(c) {
   if (scTick(ara) !== ta) ara = Math.floor(a / scTick(ara)) * scTick(ara);
   return {arb, ara};
 }
-function hitungScalping() {
-  const tgl = [...new Set(daftarHari.map(r => r.tgl))].filter(Boolean).sort();
-  const kunci = tgl.length + "|" + tgl[tgl.length - 1] + "|" + daftarHari.length;
+/* 22 Okt 2026: pilih = tanggal penutupan yang dihitung (bawaan terbaru). Kalau ada hari bursa
+   sesudahnya, tiap baris diberi HASIL BESOK (open/high/low/close hari berikutnya terhadap harga tutup)
+   untuk backtes: "berhasil" = high besok >= +3% dari harga tutup. */
+function hitungScalping(pilih) {
+  const semuaTgl = [...new Set(daftarHari.map(r => r.tgl))].filter(Boolean).sort();
+  const akhir = pilih && semuaTgl.indexOf(pilih) >= 0 ? pilih : semuaTgl[semuaTgl.length - 1];
+  const tgl = semuaTgl.filter(t => t <= akhir), besok = semuaTgl.find(t => t > akhir) || null;
+  const kunci = semuaTgl.length + "|" + akhir + "|" + besok + "|" + daftarHari.length;
   if (scCache && scCache.kunci === kunci) return scCache;
   const perTgl = {};
   daftarHari.forEach(r => { if (r.tgl && !perTgl[r.tgl]) perTgl[r.tgl] = r.baris || {}; });
-  const akhir = tgl[tgl.length - 1], T = tgl.slice(-21);
+  const T = tgl.slice(-21), bBesok = besok ? perTgl[besok] || {} : null;
   const hasil = [];
   const bAkhir = perTgl[akhir] || {};
   Object.keys(bAkhir).forEach(k => {
@@ -2358,8 +2364,16 @@ function hitungScalping() {
     const sk = scSkor(pr * 100, x.n || 0, tk * 100, pos * 100, nfp || 0, rv, tanda, k);
     hasil.push({skor: sk.n, skr: sk.r, nfp: nfp === null ? null : nfp * 100, em: k, c: x.c, h: x.h || null, l: x.l || null, chg: chg * 100, n: x.n || 0, rv, r20: r20 * 100, tk: tk * 100, pos: pos * 100, pr: pr * 100,
                 pb: pr * 100 - SC_BIAYA, arb: bt.arb, arbJ: (bt.arb / x.c - 1) * 100, ara: bt.ara, araJ: (bt.ara / x.c - 1) * 100, tanda});
+    if (bBesok) {
+      const z = bBesok[k], o = hasil[hasil.length - 1];
+      if (z && z.c > 0 && z.v > 0) {
+        const zo = z.o > 0 ? z.o : z.c, zh = Math.max(z.h || 0, zo, z.c), zl = Math.min(z.l > 0 ? z.l : z.c, zo, z.c);
+        o.bo = (zo / x.c - 1) * 100; o.bh = (zh / x.c - 1) * 100; o.bl = (zl / x.c - 1) * 100; o.bc = (z.c / x.c - 1) * 100;
+        o.bg = (zh / zl - 1) * 100; o.ok = o.bh >= 3 ? 1 : 0;
+      } else { o.bo = o.bh = o.bl = o.bc = o.bg = o.ok = null; }   /* tidak ditransaksikan / disuspensi besok */
+    }
   });
-  return (scCache = {kunci, akhir, hasil});
+  return (scCache = {kunci, akhir, besok, semuaTgl, hasil});
 }
 const SC_TANDA = {ara: "ARA · tutup di high", naik: "naik tinggi", arb: "ARB", turun: "turun kmrn", vol: "volume ≥3×"};
 /* 21 Okt 2026: klik emiten di menu SCREENER (SCALPING, FOREIGN AKUM, BROKER AKUM) langsung ke REKOMENDASI */
@@ -2603,11 +2617,22 @@ function panelScalping(w) {
   pakaiFcaGudang();
   w.appendChild(panelTopGainer());
   const p = el("div", "panel");
-  const R = hitungScalping();
+  const R = hitungScalping(scTgl);
   p.appendChild(el("h2", null, "Scalping — kandidat hari bursa berikutnya"));
   if (!R.akhir) { p.appendChild(el("div", "bantu", "Data harga belum termuat.")); w.appendChild(p); return; }
-  p.appendChild(el("div", "bantu", "Data penutupan " + tglID(R.akhir) + ". Diurutkan menurut perkiraan gerak harian besok (high ÷ low). " +
-    "Saham Papan Pemantauan Khusus disembunyikan."));
+  { /* 22 Okt 2026: pilihan tanggal penutupan untuk backtes */
+    const D = R.semuaTgl.slice(25), i = D.indexOf(R.akhir);
+    const nav = el("div", "alat"); nav.appendChild(el("span", "bantu", "Data penutupan: "));
+    const g = el("div", "saklar rd-saklar");
+    const bK = el("button", null, "\u2039"), bT = el("button", "aktif", tglID(R.akhir)), bN = el("button", null, "\u203a");
+    bK.disabled = i <= 0; bN.disabled = i < 0 || i >= D.length - 1;
+    bK.onclick = () => { scTgl = D[i - 1]; halScreener(); }; bN.onclick = () => { scTgl = D[i + 1]; halScreener(); };
+    bT.onclick = () => { scTgl = ""; halScreener(); }; bT.title = "Kembali ke tanggal terbaru";
+    [bK, bT, bN].forEach(b => g.appendChild(b)); nav.appendChild(g);
+    nav.appendChild(el("span", "bantu", R.besok ? "hasil besok: " + tglID(R.besok) : "terbaru \u00b7 hasil besok menunggu data hari bursa berikutnya (18.00)"));
+    p.appendChild(nav); }
+  p.appendChild(el("div", "bantu", "Data penutupan " + tglID(R.akhir) + ". Diurutkan menurut Skor. " +
+    "Saham Papan Pemantauan Khusus disembunyikan." + (R.besok ? " Mundur ke tanggal lama untuk backtes: kolom HASIL BESOK menunjukkan gerak nyata " + tglID(R.besok) + "." : "")));
   const [hMin, hMaks] = SC_HARGA[scHarga] || SC_HARGA.semua;
   const lolos = R.hasil.filter(x => x.n >= scMin && x.c >= 50 && !(FCA && FCA[x.em]) &&
     x.c >= hMin && x.c < hMaks && x.pr >= scGerak);
@@ -2620,6 +2645,17 @@ function panelScalping(w) {
   kotak(String(lolos.filter(x => x.tanda.indexOf("ara") >= 0).length), "ARA · tutup di high", "naik");
   kotak(String(lolos.filter(x => x.tanda.indexOf("arb") >= 0).length), "ARB", "turun");
   p.appendChild(rg);
+  if (R.besok) {   /* ringkasan backtes atas baris yang tampil (ikut semua saringan & tanda) */
+    const rb = el("div", "nw-ring rd-ring");
+    const kb = (isi, ket, kelas) => { const d = el("div"); d.appendChild(el("b", kelas, isi)); d.appendChild(el("span", null, ket)); rb.appendChild(d); };
+    const ps = a => { const b = a.filter(x => x.ok !== null && x.ok !== undefined); return b.length ? {p: b.filter(x => x.ok).length / b.length * 100, n: b.length} : null; };
+    const tulis = (r, ket) => kb(r ? nf(r.p) + "%" : "\u2013", ket + (r ? " (" + r.n + " emiten)" : " (tidak ada)"), r ? (r.p >= 50 ? "naik" : "turun") : null);
+    tulis(ps(tampil), "sempat naik \u2265 3% pada " + tglID(R.besok));
+    tulis(ps(tampil.filter(x => x.skor >= 70)), "Skor \u2265 70 yang berhasil");
+    tulis(ps(tampil.filter(x => x.skor >= 50 && x.skor < 70)), "Skor 50\u201369 yang berhasil");
+    tulis(ps(tampil.filter(x => x.skor < 50)), "Skor < 50 yang berhasil");
+    p.appendChild(rb);
+  }
 
   const alat = el("div", "alat ph-alat");
   const lM = el("label", "bantu", "Value min.: "), sM = el("select", "fa-min");
@@ -2646,7 +2682,7 @@ function panelScalping(w) {
   bA.onclick = () => { scBuangArb = !scBuangArb; halScreener(); };
   const skA = el("div", "saklar rd-saklar"); skA.appendChild(bA); alat.appendChild(skA);
   p.appendChild(alat);
-  p.appendChild(scTabel(tampil, R.akhir));
+  p.appendChild(scTabel(tampil, R.akhir, R.besok));
 
   p.appendChild(el("div", "bantu",
     "Perkiraan gerak = perkiraan jarak harga tertinggi ke terendah besok, dari rentang harian rata-rata 20 hari (paling berat), " +
@@ -2681,7 +2717,7 @@ function panelScalping(w) {
   p2.appendChild(el("div", "bantu", "Pola historis Jan 2025 – Okt 2026, bukan nasihat keuangan."));
   w.appendChild(p); w.appendChild(p2);
 }
-function scTabel(baris, akhir) {
+function scTabel(baris, akhir, besok) {
   const bungkus = el("div", "tbl-bungkus tbl-kunci rd-tabel");
   const t = el("table"), thead = el("thead"), trh = el("tr");
   const KOL = [["em", "Emiten", ""], ["skor", "Skor", "gerak\u00b7likuid\u00b7tick\u00b7posisi\u00b7asing"], ["c", "Harga", "tutup " + tglID(akhir) + " \u00b7 H/L"], ["chg", "Chg", "hari itu"], ["n", "Value", "hari itu"],
@@ -2689,15 +2725,17 @@ function scTabel(baris, akhir) {
     ["pos", "Tutup di", "0% low · 100% high"], ["pr", "Perkiraan gerak", "besok, high÷low"],
     ["pb", "Gerak bersih", "\u2212 biaya " + String(SC_BIAYA).replace(".", ",") + "%"], ["arbJ", "ARB besok", "harga \u00b7 jarak"],
     ["araJ", "ARA besok", "harga \u00b7 jarak"], ["", "Tanda", ""]];
-  KOL.forEach(([k, j, sub]) => {
+  if (besok) KOL.splice(5, 0, ["bo", "Open", "besok " + tglID(besok), 1], ["bh", "High", "peluang jual", 1], ["bl", "Low", "risiko", 1],
+    ["bc", "Close", "besok", 1], ["bg", "Gerak nyata", "high \u00f7 low", 1], ["ok", "Hasil", "high \u2265 +3%", 1]);
+  KOL.forEach(([k, j, sub, hb]) => {
     const kiri = k === "em" || !k;
-    const th = el("th", kiri ? "rd-kiri" : "num", j + (scUrut.k === k && k ? (scUrut.a < 0 ? " ▼" : " ▲") : ""));
+    const th = el("th", (kiri ? "rd-kiri" : "num") + (hb ? " sc-hb" : ""), j + (scUrut.k === k && k ? (scUrut.a < 0 ? " ▼" : " ▲") : ""));
     if (sub) th.appendChild(el("span", "rd-subjudul", sub));
     if (k) {
       th.style.cursor = "pointer"; th.title = "Urutkan menurut " + j;
       th.onclick = () => {
         if (scUrut.k === k) scUrut.a = -scUrut.a; else scUrut = {k, a: k === "em" ? 1 : -1};
-        bungkus.replaceWith(scTabel(baris, akhir));
+        bungkus.replaceWith(scTabel(baris, akhir, besok));
       };
     }
     trh.appendChild(th);
@@ -2723,6 +2761,15 @@ function scTabel(baris, akhir) {
       tr.appendChild(td); }
     tr.appendChild(el("td", "num " + arah(s.chg).k, (s.chg > 0 ? "+" : s.chg < 0 ? "−" : "") + nf(Math.abs(s.chg), 1) + "%"));
     tr.appendChild(el("td", "num", rpSingkat(s.n)));
+    if (besok) {
+      const pc = v => v === null || v === undefined ? "\u2013" : (v > 0 ? "+" : v < 0 ? "\u2212" : "") + nf(Math.abs(v), 1) + "%";
+      ["bo", "bh", "bl", "bc"].forEach(k => tr.appendChild(el("td", "num sc-hb " + arah(s[k]).k, pc(s[k]))));
+      tr.appendChild(el("td", "num sc-hb", s.bg === null || s.bg === undefined ? "\u2013" : nf(s.bg, 1) + "%"));
+      const td = el("td", "num sc-hb");
+      if (s.ok === null || s.ok === undefined) td.textContent = "tidak ditransaksikan";
+      else td.appendChild(el("span", "sc-ok " + (s.ok ? "y" : "n"), s.ok ? "\u2713 berhasil" : "\u2717 gagal"));
+      tr.appendChild(td);
+    }
     tr.appendChild(el("td", "num " + (s.nfp === null ? "" : arah(s.nfp).k), s.nfp === null ? "\u2013" : (s.nfp > 0 ? "+" : s.nfp < 0 ? "\u2212" : "") + nf(Math.abs(s.nfp), 1) + "%"));
     tr.appendChild(el("td", "num", nf(s.rv, 1) + "×"));
     tr.appendChild(el("td", "num", nf(s.r20, 1) + "%"));
@@ -9263,7 +9310,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-22-4";
+const VERSI_APP = "2026-10-22-5";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
