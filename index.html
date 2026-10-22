@@ -597,6 +597,7 @@ tr.pt-dicoret td{opacity:.6} tr.pt-dicoret .kode{text-decoration:line-through}
 .dv-tg.dekat{background:rgba(230,170,0,.16);color:#a87400}.dv-tg.akan{background:var(--naik-bg);color:var(--naik)}
 .sc-skor{display:inline-block;min-width:32px;text-align:center;border-radius:6px;padding:1px 6px;font-weight:800;color:#0b1220}
 .sc-skor.s1{background:#3fb950}.sc-skor.s2{background:#9be9a8}.sc-skor.s3{background:#d29922}.sc-skor.s4{background:#6e7681;color:#fff}
+.tg-ok{font-size:12px;color:var(--naik);margin-right:6px}.tg-alat{flex-wrap:wrap;gap:8px}
 .sc-hl{display:block;font-size:10px;opacity:.7;font-weight:400;white-space:nowrap}
 .dv-tglh{display:block;font-size:10px;opacity:.65;font-weight:400}
 .dv-tg.lewat{background:var(--surface-2);color:var(--ink-3)}.dv-tg.cek{background:var(--turun-bg);color:var(--turun)}
@@ -2372,8 +2373,206 @@ function scBukaCari(em) {
   cariKode = em; cariSub = "chart"; try { cariTutup = true; } catch (e) {}
   document.querySelector('nav button[data-hal="cari"]').click(); halCari();
 }
+/* ================= SCALPING > TOP GAINERS INTRADAY (22 Okt 2026) =================
+   Tangkapan layar Stockbit Markets > Movers > Top Gainer jam 12.00 (s1) & 15.00 (s2), atau teks
+   tempelan. Disimpan per tanggal di localStorage "titenTG". Skor akhir sesi = kandidat beli
+   menjelang penutupan untuk dijual besok pagi (uji: ARA & tutup di high -> 81% sempat +5% besok
+   pagi, open->close rata-rata turun). */
+let tgUrut = {k: "skor", a: -1}, tgPesan = "";
+function tgHariIni() { return new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10); }
+function tgMuat() { try { return JSON.parse(localStorage.getItem("titenTG") || "{}") || {}; } catch (e) { return {}; } }
+function tgSimpan(o) {
+  const t = Object.keys(o).sort(); t.slice(0, Math.max(0, t.length - 30)).forEach(k => delete o[k]);
+  try { localStorage.setItem("titenTG", JSON.stringify(o)); } catch (e) { tgPesan = "Gagal menyimpan: " + e.message; }
+}
+function tgAngka(t) {
+  t = String(t || "").trim().replace(/^[+]/, "");
+  const m = t.match(/^([\d.,]+)([BMK]?)$/i); if (!m) return null;
+  let a = m[1];
+  if (m[2]) a = a.replace(/,/g, "");                 /* 2.11B */
+  else a = a.replace(/,/g, "");                      /* 1,800 (Stockbit memakai koma ribuan) */
+  const v = parseFloat(a); if (isNaN(v)) return null;
+  return v * ({B: 1e9, M: 1e6, K: 1e3}[(m[2] || "").toUpperCase()] || 1);
+}
+/* teks -> [{em, c, pct, n, vol, f}]. Dua bentuk:
+   (1) baris Stockbit/OCR: "ENAK 178 (+31.85%) +0.02 +0.0004% 2.11B 122.91K 3.05K"
+   (2) rekap: "ENAK 178 31.85 2.11B 122.91K 3.05K" (harga boleh "-") */
+function tgBacaTeks(teks) {
+  const kenal = k => !!((DATA.nama && DATA.nama[k]) || barisScr[k]);
+  const out = [];
+  String(teks).split(/\n/).forEach(br => {
+    if (/^\s*#/.test(br)) return;
+    const b = br.replace(/[−–]/g, "-").replace(/\s+/g, " ").trim(); if (!b) return;
+    let m = b.match(/\b([A-Z]{4})\b[^(]*?([\d.,]+)?\s*\(\s*\+?\s*([\d.,]+)\s*%\s*\)(.*)$/);
+    let em, c, pct, sisa;
+    if (m) { em = m[1]; c = m[2] ? tgAngka(m[2]) : null; pct = parseFloat(m[3].replace(",", ".")); sisa = m[4]; }
+    else {
+      const t = b.split(" "); if (t.length < 3 || !/^[A-Z]{4}$/.test(t[0])) return;
+      em = t[0]; c = t[1] === "-" ? null : tgAngka(t[1]); pct = parseFloat(String(t[2]).replace("%", "")); sisa = t.slice(3).join(" ");
+      if (isNaN(pct)) return;
+    }
+    if (!kenal(em)) {   /* salah baca OCR: cari kode terdekat */
+      const semua = Object.keys(barisScr); let best = null, bd = 9;
+      semua.forEach(k => { const d = mfJarak(em, k); if (d < bd) { bd = d; best = k; } });
+      if (best && bd <= 1) em = best; else return;
+    }
+    const nums = sisa.split(" ").filter(x => x && !/^[+-]/.test(x) && !/%$/.test(x)).map(tgAngka).filter(x => x !== null);
+    const [n, vol, f] = nums.length >= 3 ? nums.slice(-3) : [nums[0] || null, nums[1] || null, null];
+    out.push({em, c, pct, n, vol, f});
+  });
+  const peta = {}; out.forEach(r => { peta[r.em] = r; }); return Object.values(peta);
+}
+async function tgGambar(file) {
+  const img = await new Promise((ok, gagal) => { const im = new Image(); im.onload = () => ok(im);
+    im.onerror = () => gagal(new Error(file.name + " bukan gambar")); im.src = URL.createObjectURL(file); });
+  const W = img.naturalWidth, H = img.naturalHeight, sk = Math.min(3, 2400 / W, 6000 / H);
+  const cv = document.createElement("canvas"); cv.width = Math.round(W * sk); cv.height = Math.round(H * sk);
+  const g = cv.getContext("2d"); g.imageSmoothingQuality = "high"; g.drawImage(img, 0, 0, cv.width, cv.height);
+  const d = g.getImageData(0, 0, cv.width, cv.height), q = d.data;
+  let jum = 0; for (let i = 0; i < q.length; i += 4) jum += Math.max(q[i], q[i + 1], q[i + 2]);
+  const gelap = jum / (q.length / 4) < 128;
+  for (let i = 0; i < q.length; i += 4) { let v = gelap ? 255 - Math.max(q[i], q[i + 1], q[i + 2]) : Math.min(q[i], q[i + 1], q[i + 2]); q[i] = q[i + 1] = q[i + 2] = v; }
+  g.putImageData(d, 0, 0); return cv;
+}
+async function tgBacaGambar(files, lapor) {
+  const w = await mfSiapOCR(lapor); let semua = [];
+  await w.setParameters({tessedit_pageseg_mode: "6", tessedit_char_whitelist: ""});
+  for (let i = 0; i < files.length; i++) {
+    lapor("Membaca gambar " + (i + 1) + " dari " + files.length + "…");
+    const r = await w.recognize(await tgGambar(files[i]));
+    semua = semua.concat(tgBacaTeks((r.data.text || "").toUpperCase().replace(/(\d)\s*%/g, "$1%")));
+  }
+  const peta = {}; semua.forEach(r => { peta[r.em] = r; }); return Object.values(peta);
+}
+function tgSkor(r) {
+  const prev = r.c && r.pct > -100 ? r.c / (1 + r.pct / 100) : null;
+  const araP = prev ? scBatas(Math.round(prev)).ara : null;
+  const araPct = prev ? scAra(prev) * 100 : 25;
+  const kunci = r.pct >= araPct - 0.6 || (araP && r.c >= araP);
+  let M = 15;
+  if (r.d !== null && r.d !== undefined) M = r.d >= 3 ? 30 : r.d >= 0 ? Math.round(18 + r.d * 4) : Math.max(0, Math.round(18 + r.d * 3.6));
+  const K = kunci ? 10 : r.pct >= 8 ? 20 : r.pct >= 5 ? 12 : 5;
+  const L = r.n > 0 ? Math.round(Math.min(1, Math.max(0, (Math.log10(r.n) - Math.log10(2e9)) / (Math.log10(5e10) - Math.log10(2e9)))) * 25) : 0;
+  const tk = r.c ? scTick(r.c) / r.c * 100 : null;
+  const T = tk === null ? 7 : Math.round(Math.min(1, Math.max(0, (1 - tk) / 0.6)) * 15);
+  const F = r.f ? Math.round(Math.min(1, r.f / 5000) * 10) : 0;
+  const pot = [];
+  if (FCA && FCA[r.em]) pot.push([-20, "FCA"]);
+  if (r.c && r.c < 50) pot.push([-10, "<50"]);
+  if (typeof SN_OJK !== "undefined" && SN_OJK[r.em]) pot.push([-5, "OJK"]);
+  const n = Math.max(0, Math.min(100, M + K + L + T + F + pot.reduce((a, b) => a + b[0], 0)));
+  return {skor: n, skr: "M" + M + " K" + K + " L" + L + " T" + T + " F" + F + pot.map(x => " " + x[0] + " " + x[1]).join(""),
+    kunci, tk, keAra: araP && r.c ? (araP / r.c - 1) * 100 : null, araP};
+}
+function panelTopGainer() {
+  pakaiFcaGudang();
+  const tgl = tgHariIni(), S = tgMuat(), H = S[tgl] || {};
+  const p = el("div", "panel");
+  p.appendChild(el("h2", null, "Top Gainers intraday · " + tglID(tgl)));
+  const alat = el("div", "alat tg-alat");
+  const st = el("div", "bantu tg-st", tgPesan || "Unggah tangkapan layar Stockbit › Markets › Movers › Top Gainer (kolom Symbol, Price, Value, Volume, Freq). Boleh beberapa gambar sekaligus.");
+  [["s1", "📷 TOP GAINERS 12.00"], ["s2", "📷 TOP GAINERS 15.00"]].forEach(([k, j]) => {
+    const fi = el("input"); fi.type = "file"; fi.accept = "image/*"; fi.multiple = true; fi.style.display = "none";
+    const b = el("button", "pt-mf-u", j); b.onclick = () => fi.click();
+    fi.onchange = async () => {
+      const files = [...fi.files]; if (!files.length) return; b.disabled = true;
+      try {
+        const rows = await tgBacaGambar(files, t => { st.textContent = t; });
+        const o = tgMuat(); const h = o[tgl] || {}; const lama = (h[k] && h[k].baris) || [];
+        const peta = {}; lama.concat(rows).forEach(r => { peta[r.em] = r; });
+        h[k] = {waktu: new Date().toTimeString().slice(0, 5), baris: Object.values(peta)}; o[tgl] = h; tgSimpan(o);
+        tgPesan = rows.length + " emiten terbaca dari " + files.length + " gambar untuk " + (k === "s1" ? "12.00" : "15.00") + ".";
+      } catch (e) { tgPesan = "Gagal membaca: " + e.message; }
+      b.disabled = false; halScreener();
+    };
+    alat.appendChild(b); alat.appendChild(fi);
+    if (H[k]) alat.appendChild(el("span", "tg-ok", "✓ " + H[k].baris.length + " emiten (" + H[k].waktu + ")"));
+  });
+  const det = el("details", "pt-mf-manual"); det.appendChild(el("summary", null, "Ketik / tempel manual"));
+  const ta = el("textarea", "mf-ta"); ta.rows = 4;
+  ta.placeholder = "Satu emiten per baris:\nENAK 178 (+31.85%) +0.02 +0.0004% 2.11B 122.91K 3.05K\natau: ENAK 178 31.85 2.11B 122.91K 3.05K  (kode harga %naik value volume freq)";
+  det.appendChild(ta);
+  [["s1", "Simpan sebagai 12.00"], ["s2", "Simpan sebagai 15.00"]].forEach(([k, j]) => {
+    const b = el("button", "kecil", j);
+    b.onclick = () => { const rows = tgBacaTeks(ta.value.toUpperCase()); const o = tgMuat(); const h = o[tgl] || {};
+      h[k] = {waktu: new Date().toTimeString().slice(0, 5), baris: rows}; o[tgl] = h; tgSimpan(o);
+      tgPesan = rows.length + " emiten disimpan sebagai " + (k === "s1" ? "12.00" : "15.00") + "."; halScreener(); };
+    det.appendChild(b);
+  });
+  if (H.s1 || H.s2) { const bh = el("button", "kecil", "Hapus data hari ini");
+    bh.onclick = () => { const o = tgMuat(); delete o[tgl]; tgSimpan(o); tgPesan = "Data Top Gainers hari ini dihapus."; halScreener(); };
+    det.appendChild(bh); }
+  alat.appendChild(det);
+  p.appendChild(alat); p.appendChild(st);
+  if (!H.s1 && !H.s2) { p.appendChild(el("div", "bantu", "Belum ada data Top Gainers hari ini.")); return p; }
+  /* gabung s1 & s2 */
+  const a = {}, z = {};
+  ((H.s1 && H.s1.baris) || []).forEach(r => { a[r.em] = r; });
+  ((H.s2 && H.s2.baris) || []).forEach(r => { z[r.em] = r; });
+  const kode = [...new Set(Object.keys(a).concat(Object.keys(z)))];
+  const prevDari = k => { const sc = barisScr[k]; return sc ? ambilM(sc, "Harga penutupan") : null; };
+  const baris = kode.map(k => {
+    const r1 = a[k] || null, r2 = z[k] || null, r = r2 || r1;
+    const isiHarga = x => { if (x && !x.c) { const pv = prevDari(k); if (pv) x.c = Math.round(pv * (1 + x.pct / 100)); } return x; };
+    isiHarga(r1); isiHarga(r2);
+    const d = r1 && r2 ? r2.pct - r1.pct : null;
+    const o = {em: k, c1: r1 ? r1.c : null, p1: r1 ? r1.pct : null, c2: r2 ? r2.c : null, p2: r2 ? r2.pct : null, d,
+      c: r.c, pct: r.pct, n: r.n, vol: r.vol, f: r.f};
+    Object.assign(o, tgSkor(o));
+    o.lemah = d !== null && d <= -3;
+    return o;
+  });
+  const bung = el("div", "tbl-bungkus tbl-kunci rd-tabel"), t = el("table"), th = el("thead"), trh = el("tr");
+  const KOL = [["em", "Emiten", ""], ["skor", "Skor akhir sesi", "momentum·kuat·likuid·tick·freq"],
+    ["p1", "12.00", "harga · % naik" + (H.s1 ? " (" + H.s1.waktu + ")" : "")], ["p2", "15.00", "harga · % naik" + (H.s2 ? " (" + H.s2.waktu + ")" : "")],
+    ["d", "12.00 → 15.00", "selisih % naik"], ["n", "Value", "terakhir"], ["f", "Freq", "terakhir"],
+    ["keAra", "Ke ARA", "jarak dari harga terakhir"], ["tk", "Tick", "1 tick ÷ harga"], ["", "Tanda", ""]];
+  KOL.forEach(([k, j, sub]) => {
+    const h = el("th", k === "em" || !k ? "rd-kiri" : "num", j + (tgUrut.k === k && k ? (tgUrut.a < 0 ? " ▼" : " ▲") : ""));
+    if (sub) h.appendChild(el("span", "rd-subjudul", sub));
+    if (k) { h.style.cursor = "pointer"; h.title = "Urutkan (ketuk lagi untuk membalik)";
+      h.onclick = () => { if (tgUrut.k === k) tgUrut.a = -tgUrut.a; else tgUrut = {k, a: k === "em" ? 1 : -1}; halScreener(); }; }
+    trh.appendChild(h);
+  });
+  th.appendChild(trh); t.appendChild(th);
+  const tb = el("tbody");
+  baris.sort((x, y) => { const u = x[tgUrut.k], v = y[tgUrut.k];
+    if (u === null || u === undefined) return 1; if (v === null || v === undefined) return -1;
+    return (typeof u === "string" ? u.localeCompare(v) : u - v) * tgUrut.a; }).forEach(r => {
+    const tr = el("tr", "klik"); tr.title = "Buka REKOMENDASI " + r.em; tr.onclick = () => rekBukaDari(r.em);
+    const cE = el("td", "rd-kiri"); cE.appendChild(el("span", "kode", r.em)); cE.appendChild(el("span", "nm", (DATA.nama && DATA.nama[r.em]) || "")); tr.appendChild(cE);
+    { const td = el("td", "num");
+      td.appendChild(el("span", "sc-skor " + (r.skor >= 70 ? "s1" : r.skor >= 60 ? "s2" : r.skor >= 50 ? "s3" : "s4"), String(r.skor)));
+      td.appendChild(el("span", "sc-hl", r.skr)); tr.appendChild(td); }
+    const hp = (c, pc) => { const td = el("td", "num"); if (pc === null) { td.textContent = "–"; return td; }
+      td.appendChild(document.createTextNode(c ? nf(c) + " " : "")); td.appendChild(el("span", "naik", "+" + nf(pc, 1) + "%")); return td; };
+    tr.appendChild(hp(r.c1, r.p1)); tr.appendChild(hp(r.c2, r.p2));
+    tr.appendChild(el("td", "num " + (r.d === null ? "" : arah(r.d).k), r.d === null ? "–" : (r.d > 0 ? "+" : r.d < 0 ? "−" : "") + nf(Math.abs(r.d), 1)));
+    tr.appendChild(el("td", "num", r.n ? rpSingkat(r.n) : "–"));
+    tr.appendChild(el("td", "num", r.f ? nf(r.f) : "–"));
+    tr.appendChild(el("td", "num", r.keAra === null ? "–" : r.kunci ? "terkunci" : "+" + nf(r.keAra, 1) + "%"));
+    tr.appendChild(el("td", "num" + (r.tk > 1 ? " sc-mahal" : ""), r.tk === null ? "–" : nf(r.tk, 2) + "%"));
+    const cT = el("td", "rd-kiri");
+    if (r.kunci) cT.appendChild(el("span", "sc-tg ara", "ARA terkunci"));
+    else if (r.keAra !== null && r.keAra <= 3) cT.appendChild(el("span", "sc-tg ara", "dekat ARA"));
+    if (r.lemah) cT.appendChild(el("span", "sc-tg turun", "melemah"));
+    if (r.n && r.n < 5e9) cT.appendChild(el("span", "sc-tg", "value kecil"));
+    if (FCA && FCA[r.em]) cT.appendChild(el("span", "sc-tg turun", "FCA"));
+    tr.appendChild(cT);
+    tb.appendChild(tr);
+  });
+  t.appendChild(tb); bung.appendChild(t); p.appendChild(bung);
+  p.appendChild(el("div", "bantu",
+    "Skor akhir sesi (0–100) = M momentum 12.00→15.00 (naik ≥ 3 poin = 30, tetap = 18, turun ≥ 5 poin = 0; kalau baru satu tangkapan = 15) + " +
+    "K kekuatan (% naik 8% s/d sebelum ARA = 20, ARA terkunci = 10, 5–8% = 12, < 5% = 5) + L likuiditas (Value Rp2 M = 0, Rp50 M ke atas = 25) + " +
+    "T tick (≤ 0,4% = 15, ≥ 1% = 0) + F frekuensi (5 ribu ke atas = 10) − potongan (FCA −20, harga < Rp50 −10, sanksi OJK −5). " +
+    "Kandidat beli menjelang penutupan untuk dijual menit-menit awal besok (uji 416 hari: naik kuat & tutup di high → 81% sempat +5% besok pagi, open→close rata-rata turun). " +
+    "Data hanya emiten di tangkapan layar & tersimpan di perangkat ini. Pola historis, bukan nasihat keuangan."));
+  return p;
+}
 function panelScalping(w) {
   pakaiFcaGudang();
+  w.appendChild(panelTopGainer());
   const p = el("div", "panel");
   const R = hitungScalping();
   p.appendChild(el("h2", null, "Scalping — kandidat hari bursa berikutnya"));
@@ -8899,7 +9098,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-21-19";
+const VERSI_APP = "2026-10-22-1";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
