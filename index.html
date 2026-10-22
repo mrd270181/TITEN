@@ -853,6 +853,7 @@ tbody tr:hover{background:var(--oranye-muda)}
   .jv-pojok{bottom:18px}
   .jv-panel{bottom:80px}
 }
+.ts1-dua{display:grid;grid-template-columns:1fr 1fr;gap:10px}@media(max-width:700px){.ts1-dua{grid-template-columns:1fr}}.ts1-judul{font-weight:700;margin:4px 0}.ts1-tb{max-height:60vh}
 </style>
 </head>
 <body>
@@ -8870,17 +8871,140 @@ function panelKalenderForeign(w) {
   kfPanelPeringkat(w);
 }
 
+/* 22 Okt 2026: CEK VOLUME > TOP STOCK SESI 1 — data sesi I (sampai 12.00).
+   All Investor dari data/ts1.json (unggah_ts.py; Claude menulis masuk\ts1-TANGGAL.txt dari Stockbit pukul 12.35):
+   {dibuat, tanggal: {"2026-10-22": {waktu, nilai, baris: [[kode, tval, tlot, tfreq, avg], ...]}}}.
+   Foreign dari MF1 (titenMF, sudah tersinkron dengan mf1.json). Domestic = kebalikan net asing per saham,
+   karena setiap lot yang dibeli asing dijual pihak domestik (Stockbit baru memberi Domestic sesudah tutup). */
+let ts1Mode = "all", ts1Tgl = "", ts1Data = null, ts1Waktu = 0, ts1Jalan = false;
+let ts1Urut = {all: {k: "tv", a: -1}, beli: {k: "nf", a: -1}, jual: {k: "nf", a: 1}};
+async function ts1Sinkron() {
+  if (ts1Jalan || (ts1Data && Date.now() - ts1Waktu < 5 * 60 * 1000)) return false;
+  ts1Jalan = true;
+  try { const J = await ambilGudang("ts1.json"); ts1Waktu = Date.now();
+    const baru = JSON.stringify(J.tanggal || {}) !== JSON.stringify((ts1Data || {}).tanggal || {});
+    ts1Data = J; return baru; }
+  catch (e) { ts1Waktu = Date.now(); if (!ts1Data) ts1Data = {tanggal: {}}; return false; }
+  finally { ts1Jalan = false; }
+}
+function ts1Angka(v) {
+  if (v === null || v === undefined || isNaN(v)) return "–";
+  const a = Math.abs(v), s = v < 0 ? "−" : "";
+  const f = (x, t) => s + x.toLocaleString("id-ID", {maximumFractionDigits: x < 10 ? 1 : x < 100 ? 1 : 0}) + t;
+  if (a >= 1e6) return f(a / 1e6, " jt"); if (a >= 1e3) return f(a / 1e3, " rb"); return s + nf(a);
+}
+function ts1Rp(v) { if (v === null || v === undefined || isNaN(v)) return "–";
+  return (v > 0 ? "+" : v < 0 ? "−" : "") + rpSingkat(Math.abs(v)); }
+function ts1Tabel(baris, kol, kunci) {
+  const U = ts1Urut[kunci];
+  const bung = el("div", "tbl-bungkus tbl-kunci rd-tabel ts1-tb"), t = el("table"), th = el("thead"), trh = el("tr");
+  kol.forEach(([k, j, sub]) => {
+    const h = el("th", k === "em" ? "rd-kiri" : "num", j + (U.k === k ? (U.a < 0 ? " ▼" : " ▲") : ""));
+    if (sub) h.appendChild(el("span", "rd-subjudul", sub));
+    h.style.cursor = "pointer"; h.title = "Urutkan (ketuk lagi untuk membalik)";
+    h.onclick = () => { if (U.k === k) U.a = -U.a; else { U.k = k; U.a = k === "em" ? 1 : -1; } halVolume(); };
+    trh.appendChild(h);
+  });
+  th.appendChild(trh); t.appendChild(th);
+  const tb = el("tbody");
+  baris.slice().sort((x, y) => { const u = x[U.k], v = y[U.k];
+    if (u === null || u === undefined) return 1; if (v === null || v === undefined) return -1;
+    return (typeof u === "string" ? u.localeCompare(v) : u - v) * U.a; }).forEach(r => {
+    const tr = el("tr", "klik"); tr.title = "Buka REKOMENDASI " + r.em; tr.onclick = () => rekBukaDari(r.em);
+    kol.forEach(([k]) => {
+      const v = r[k];
+      if (k === "em") { const td = el("td", "rd-kiri"); td.appendChild(el("span", "kode", r.em));
+        td.appendChild(el("span", "nm", (DATA.nama && DATA.nama[r.em]) || "")); tr.appendChild(td); return; }
+      if (k === "nf" || k === "nd") { tr.appendChild(el("td", "num " + arah(v).k, ts1Rp(v))); return; }
+      if (k === "pnf") { tr.appendChild(el("td", "num " + arah(v).k, v === null ? "–" : (v > 0 ? "+" : v < 0 ? "−" : "") + nf(Math.abs(v), 1) + "%")); return; }
+      if (k === "lot") { tr.appendChild(el("td", "num", v === null ? "–" : (v > 0 ? "+" : "") + ts1Angka(v))); return; }
+      if (k === "tv") { tr.appendChild(el("td", "num", rpSingkat(v))); return; }
+      if (k === "avg") { tr.appendChild(el("td", "num", v ? nf(v) : "–")); return; }
+      tr.appendChild(el("td", "num", ts1Angka(v)));
+    });
+    tb.appendChild(tr);
+  });
+  t.appendChild(tb); bung.appendChild(t);
+  if (!baris.length) bung.appendChild(el("div", "bantu", "Tidak ada emiten."));
+  return bung;
+}
+function panelTopStock1(w) {
+  ts1Sinkron().then(b => { if (b && subVol === "ts1") halVolume(); });
+  mfSinkronServer().then(b => { if (b && subVol === "ts1") halVolume(); });
+  const MF = mfMuat(), TS = (ts1Data && ts1Data.tanggal) || {};
+  const tgl = [...new Set(Object.keys(MF).filter(t => ((MF[t] || {}).baris || []).length).concat(Object.keys(TS)))].sort();
+  const p = el("div", "panel"); w.appendChild(p);
+  if (!tgl.length) { p.appendChild(el("h2", null, "Top Stock sesi I"));
+    p.appendChild(el("div", "bantu", ts1Data ? "Belum ada data MF1 / Top Stock sesi I." : "Memuat data…")); return; }
+  if (!ts1Tgl || tgl.indexOf(ts1Tgl) < 0) ts1Tgl = tgl[tgl.length - 1];
+  const i = tgl.indexOf(ts1Tgl);
+  p.appendChild(el("h2", null, "Top Stock sesi I · " + tglID(ts1Tgl)));
+  const alat = el("div", "alat");
+  const nav = el("div", "saklar rd-saklar");
+  const bK = el("button", null, "‹"), bT = el("button", "aktif", tglID(ts1Tgl)), bN = el("button", null, "›");
+  bK.disabled = i <= 0; bN.disabled = i >= tgl.length - 1;
+  bK.onclick = () => { ts1Tgl = tgl[i - 1]; halVolume(); }; bN.onclick = () => { ts1Tgl = tgl[i + 1]; halVolume(); };
+  bT.onclick = () => { ts1Tgl = tgl[tgl.length - 1]; halVolume(); }; bT.title = "Ke tanggal terbaru";
+  [bK, bT, bN].forEach(b => nav.appendChild(b)); alat.appendChild(nav);
+  const sk = el("div", "saklar rd-saklar");
+  [["all", "All Investor"], ["for", "Foreign"], ["dom", "Domestic"]].forEach(([k, j]) => {
+    const b = el("button", ts1Mode === k ? "aktif" : null, j); b.onclick = () => { ts1Mode = k; halVolume(); }; sk.appendChild(b); });
+  alat.appendChild(sk); p.appendChild(alat);
+
+  const H = MF[ts1Tgl] || {}, T = TS[ts1Tgl] || null;
+  const asing = {}; (H.baris || []).forEach(r => { if (r.em && r.nf !== null && r.nf !== undefined && !isNaN(r.nf)) asing[r.em] = r; });
+  const pasar = H.pasar && H.pasar.nf !== null && H.pasar.nf !== undefined ? H.pasar.nf
+    : (Object.keys(asing).length ? Object.values(asing).reduce((a, r) => a + r.nf, 0) : null);
+  const rg = el("div", "nw-ring rd-ring");
+  const kotak = (isi, ket, kelas) => { const d = el("div"); d.appendChild(el("b", kelas, isi)); d.appendChild(el("span", null, ket)); rg.appendChild(d); };
+  const nilai = T ? (T.nilai || null) : null;
+  kotak(nilai ? "Rp" + rpSingkat(nilai) : "–", "nilai transaksi sesi I" + (nilai ? "" : " (belum ada)"));
+  kotak(pasar === null ? "–" : ts1Rp(pasar), "net foreign pasar sesi I" + (H.pasar && H.pasar.nf !== undefined ? "" : " (jumlah baris MF1)"), pasar === null ? null : arah(pasar).k);
+  kotak(pasar === null ? "–" : ts1Rp(-pasar), "net domestik (= kebalikan asing)", pasar === null ? null : arah(-pasar).k);
+  p.appendChild(rg);
+
+  if (ts1Mode === "all") {
+    if (!T || !(T.baris || []).length) {
+      p.appendChild(el("div", "bantu", "Data All Investor tanggal ini belum ada. Data ini diambil otomatis setiap hari bursa pukul 12.35 dan diunggah 12.45 (berkas ts1-TANGGAL.txt). Pilih Foreign atau Domestic untuk melihat MF1."));
+      return;
+    }
+    const baris = T.baris.map(b => { const a = asing[b[0]];
+      const o = {em: b[0], tv: b[1], tl: b[2], tf: b[3], avg: b[4], nf: a ? a.nf : null};
+      o.pnf = o.nf !== null && o.tv ? o.nf / o.tv * 100 : null; return o; });
+    p.appendChild(ts1Tabel(baris, [["em", "Emiten"], ["tv", "T.Val", "nilai transaksi"], ["tl", "T.Lot"], ["tf", "T.Freq"],
+      ["avg", "Avg", "harga rata-rata"], ["nf", "Net asing", "dari MF1"], ["pnf", "%NF", "net asing ÷ T.Val"]], "all"));
+    p.appendChild(el("div", "bantu", T.baris.length + " emiten teraktif sesi I menurut nilai transaksi (Stockbit › Top Stock › All Investor" +
+      (T.waktu ? ", diambil " + T.waktu : "") + "). Net asing kosong kalau emiten tidak ada di MF1. Ketuk emiten untuk membuka REKOMENDASI."));
+    return;
+  }
+  const sisi = Object.values(asing).map(r => ({em: r.em, nf: ts1Mode === "dom" ? -r.nf : r.nf,
+    lot: r.lot === null || r.lot === undefined ? null : (ts1Mode === "dom" ? -r.lot : r.lot)}));
+  if (!sisi.length) { p.appendChild(el("div", "bantu", "Data MF1 tanggal ini belum ada.")); return; }
+  const kata = ts1Mode === "dom" ? "domestik" : "asing";
+  const kolNv = ts1Mode === "dom" ? "N.Val" : "N.Foreign";
+  const dua = el("div", "ts1-dua");
+  const blok = (judul, data, kunci) => { const d = el("div"); d.appendChild(el("div", "ts1-judul", judul + " (" + data.length + ")"));
+    d.appendChild(ts1Tabel(data, [["em", "Emiten"], ["nf", kolNv], ["lot", "N.Lot"]], kunci)); dua.appendChild(d); };
+  blok("Beli " + kata, sisi.filter(r => r.nf > 0), "beli");
+  blok("Jual " + kata, sisi.filter(r => r.nf < 0), "jual");
+  p.appendChild(dua);
+  p.appendChild(el("div", "bantu", ts1Mode === "dom"
+    ? "Domestic dihitung dari MF1: per saham, net domestik = kebalikan net asing, karena setiap lot yang dibeli asing dijual pihak domestik dan sebaliknya. Stockbit baru menampilkan Domestic sesudah bursa tutup."
+    : "Foreign = MF1 (net asing sesi I, Stockbit › Top Stock › Foreign › Half Time Sesi 1). Ketuk emiten untuk membuka REKOMENDASI."));
+}
+
 function halVolume() {
   const w = $("#hal-volume"); w.innerHTML = "";
 
   const tab = el("div", "sub-tab");
-  [["volume", "VOLUME"], ["kalfor", "KALENDER FOREIGN"],
+  [["volume", "TOP STOCK"], ["ts1", "TOP STOCK SESI 1"], ["kalfor", "KALENDER FOREIGN"],
    ["harian", "VOLUME HARIAN"], ["persen", "%HARGA"], ["mini", "EMITEN MINI"]].forEach(([k, judul]) => {
     const b = el("button", subVol === k ? "aktif" : null, judul);
     b.onclick = () => { if (k === "persen" && subVol !== "persen") phAkhir = ""; subVol = k; halVolume(); };
     tab.appendChild(b);
   });
   w.appendChild(tab);
+  if (subVol === "ts1") { panelTopStock1(w); return; }
   if (subVol === "harian") { panelVolumeHarian(w); return; }
   if (subVol === "mini") { panelEmitenMini(w); return; }
   if (subVol === "persen") { panelPersenHarga(w, phMode); return; }
@@ -9126,7 +9250,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-22-2";
+const VERSI_APP = "2026-10-22-3";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
