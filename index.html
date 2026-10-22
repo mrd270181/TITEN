@@ -2464,8 +2464,36 @@ function tgSkor(r) {
   return {skor: n, skr: "M" + M + " K" + K + " L" + L + " T" + T + " F" + F + pot.map(x => " " + x[0] + " " + x[1]).join(""),
     kunci, tk, keAra: araP && r.c ? (araP / r.c - 1) * 100 : null, araP};
 }
+/* 22 Okt 2026: data/tg.json dari laptop (unggah_tg.py, dijalankan jadwal "TITEN siang" 12:15 & 15:15
+   sesudah Claude menulis masuk\tg-TANGGAL-1200/1500.txt dari Stockbit). Bentuk:
+   {dibuat, tanggal: {"2026-10-22": {s1: {waktu, baris: [[kode, harga, pct, value, volume, freq], ...]}, s2: ...}}}.
+   Slot dari server menggantikan slot lokal yang KOSONG atau yang juga dari server; isian manual
+   di perangkat ini tidak ditimpa. Diambil paling sering tiap 5 menit. */
+let tgSrvWaktu = 0, tgSrvJalan = false;
+async function tgSinkronServer() {
+  if (tgSrvJalan || Date.now() - tgSrvWaktu < 5 * 60 * 1000) return false;
+  tgSrvJalan = true;
+  try {
+    const J = await ambilGudang("tg.json"); tgSrvWaktu = Date.now();
+    const o = tgMuat(); let ubah = false;
+    Object.keys(J.tanggal || {}).forEach(t => ["s1", "s2"].forEach(k => {
+      const sv = (J.tanggal[t] || {})[k]; if (!sv) return;
+      const h = o[t] || {}; const lok = h[k];
+      const tanda = JSON.stringify(sv.baris);
+      if (lok && lok.src !== "server") return;
+      if (lok && lok.tanda === tanda) return;
+      h[k] = {waktu: sv.waktu, src: "server", tanda,
+        baris: (sv.baris || []).map(b => ({em: b[0], c: b[1], pct: b[2], n: b[3], vol: b[4], f: b[5]}))};
+      o[t] = h; ubah = true;
+    }));
+    if (ubah) tgSimpan(o);
+    return ubah;
+  } catch (e) { tgSrvWaktu = Date.now(); return false; }
+  finally { tgSrvJalan = false; }
+}
 function panelTopGainer() {
   pakaiFcaGudang();
+  tgSinkronServer().then(ub => { if (ub && subScr === "scalping") halScreener(); });
   const tgl = tgHariIni(), S = tgMuat(), H = S[tgl] || {};
   const p = el("div", "panel");
   p.appendChild(el("h2", null, "Top Gainers intraday · " + tglID(tgl)));
@@ -2486,7 +2514,7 @@ function panelTopGainer() {
       b.disabled = false; halScreener();
     };
     alat.appendChild(b); alat.appendChild(fi);
-    if (H[k]) alat.appendChild(el("span", "tg-ok", "✓ " + H[k].baris.length + " emiten (" + H[k].waktu + ")"));
+    if (H[k]) alat.appendChild(el("span", "tg-ok", "✓ " + H[k].baris.length + " emiten (" + H[k].waktu + (H[k].src === "server" ? ", otomatis" : "") + ")"));
   });
   const det = el("details", "pt-mf-manual"); det.appendChild(el("summary", null, "Ketik / tempel manual"));
   const ta = el("textarea", "mf-ta"); ta.rows = 4;
@@ -9098,7 +9126,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-22-1";
+const VERSI_APP = "2026-10-22-2";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
