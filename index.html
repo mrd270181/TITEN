@@ -2080,9 +2080,10 @@ function hitungRadar() {
 }
 /* 3 broker net beli terbesar (lot, REGULER) satu emiten satu tanggal */
 function rdBroker(em, t) {
-  const net = {};
-  ((semuaTrx().REG) || []).forEach(r => { if (r.em === em && r.tgl === t) net[r.br] = (net[r.br] || 0) + r.beli - r.jual; });
-  const top = Object.keys(net).filter(b => net[b] > 0).sort((a, b) => net[b] - net[a]).slice(0, 3);
+  /* 22 Okt 2026: pakai daftar pembeli terbesar dari pbHitung (sekali hitung, tersimpan) -
+     dulu menyaring SEMUA transaksi broker untuk tiap baris sinyal */
+  const a = (pbHitung().top || {})[em + "|" + t] || [];
+  const top = a.slice(0, 3).map(x => x.br);
   return top.length ? top : null;
 }
 function panelRadar(w) {
@@ -3166,47 +3167,59 @@ function pbHitung() {
   const reg = (semuaTrx().REG || []);
   const kunci = reg.length + "|" + daftarHari.length + "|" + (daftarHari[0] || {}).tgl;
   if (pbCache && pbCache.kunci === kunci) return pbCache;
-  const vol = {};   /* em|tgl -> volume lembar */
-  daftarHari.forEach(r => { const b = r.baris || {}; Object.keys(b).forEach(e => { if (b[e] && b[e].v) vol[e + "|" + r.tgl] = b[e].v; }); });
-  const net = new Map(), adaBlok = new Set(), tglSet = new Set();
-  reg.forEach(x => {
-    const k = x.em + "|" + x.br + "|" + x.tgl;
-    const o = net.get(k) || {n: 0, ab: 0, bl: 0};
+  /* 22 Okt 2026: versi cepat - kunci angka (emiten, broker, tanggal) menggantikan kunci teks
+     "em|br|tgl" (dulu ~4 detik tiap kali POTENSI 3 HARI dibuka). Hasilnya sama persis. */
+  const tSet = new Set(); reg.forEach(x => tSet.add(x.tgl));
+  const TB = [...tSet].sort(), ixT = {}; TB.forEach((t, i) => ixT[t] = i);
+  const NT = TB.length + 1, NB = 4096;
+  const emI = new Map(), brI = new Map(), emN = [], brN = [];
+  const idE = k => { let v = emI.get(k); if (v === undefined) { v = emN.length; emI.set(k, v); emN.push(k); } return v; };
+  const idB = k => { let v = brI.get(k); if (v === undefined) { v = brN.length; brI.set(k, v); brN.push(k); } return v; };
+  const net = new Map(), adaBlok = new Set();
+  for (let q = 0; q < reg.length; q++) {
+    const x = reg[q], e = idE(x.em), b = idB(x.br), t = ixT[x.tgl];
+    const k = (e * NB + b) * NT + t;
+    let o = net.get(k); if (!o) { o = {n: 0, ab: 0, bl: 0, e, b, t}; net.set(k, o); }
     o.n += (x.beli || 0) - (x.jual || 0);
     if (x.beli) { o.ab = (o.ab * o.bl + x.avgB * x.beli) / (o.bl + x.beli); o.bl += x.beli; }
-    net.set(k, o); adaBlok.add(x.em + "|" + x.tgl); tglSet.add(x.tgl);
-  });
-  const TB = [...tglSet].sort(), ixT = {}; TB.forEach((t, i) => ixT[t] = i);
+    adaBlok.add(e * NT + t);
+  }
+  const vol = new Map();   /* e*NT+t -> volume lembar, hanya emiten & tanggal yang punya data broker */
+  daftarHari.forEach(r => { const t = ixT[r.tgl]; if (t === undefined) return; const bb = r.baris || {};
+    emI.forEach((e, em) => { const d = bb[em]; if (d && d.v && !vol.has(e * NT + t)) vol.set(e * NT + t, d.v); }); });
+  const kunciN = (em, br, t) => { const e = emI.get(em), b = brI.get(br), i = ixT[t];
+    return e === undefined || b === undefined || i === undefined ? null : {e, b, i}; };
   /* persen: lot x 100 lembar / volume lembar x 100 */
-  const porsi = (em, br, t) => { const o = net.get(em + "|" + br + "|" + t), v = vol[em + "|" + t]; return o && v ? o.n * 100 / v * 100 : 0; };
+  const porsiN = (e, b, i) => { const o = net.get((e * NB + b) * NT + i), v = vol.get(e * NT + i); return o && v ? o.n * 100 / v * 100 : 0; };
+  const porsi = (em, br, t) => { const z = kunciN(em, br, t); return z ? porsiN(z.e, z.b, z.i) : 0; };
   /* statistik beli-buang per broker */
   const st = {};
-  net.forEach((o, k) => {
+  net.forEach(o => {
     if (o.n <= 0) return;
-    const [em, br, t] = k.split("|"), v = vol[em + "|" + t];
+    const v = vol.get(o.e * NT + o.t);
     if (!v || o.n * 100 / v < PB_MIN_PORSI || o.n * 100 * (o.ab || 0) < PB_MIN_NILAI) return;
-    const i = ixT[t]; if (i + 3 >= TB.length) return;
-    const nx = TB.slice(i + 1, i + 4);
-    if (!nx.every(t2 => adaBlok.has(em + "|" + t2))) return;   /* data bolong */
-    let jual = 0, j1 = 0; nx.forEach((t2, q) => { const o2 = net.get(em + "|" + br + "|" + t2); if (o2 && o2.n < 0) { jual -= o2.n; if (!q) j1 = -o2.n; } });
-    const s = st[br] || (st[br] = {n: 0, f: 0, f1: 0}); s.n++; if (jual / o.n >= 0.7) s.f++; if (j1 / o.n >= 0.7) s.f1++;
+    const i = o.t; if (i + 3 >= TB.length) return;
+    if (!(adaBlok.has(o.e * NT + i + 1) && adaBlok.has(o.e * NT + i + 2) && adaBlok.has(o.e * NT + i + 3))) return;   /* data bolong */
+    let jual = 0, j1 = 0; const dasar = (o.e * NB + o.b) * NT;
+    for (let q = 0; q < 3; q++) { const o2 = net.get(dasar + i + 1 + q); if (o2 && o2.n < 0) { jual -= o2.n; if (!q) j1 = -o2.n; } }
+    const br = brN[o.b], s = st[br] || (st[br] = {n: 0, f: 0, f1: 0}); s.n++; if (jual / o.n >= 0.7) s.f++; if (j1 / o.n >= 0.7) s.f1++;
   });
   const lab = {};
   Object.keys(st).forEach(b => { const s = st[b]; s.pf = s.f / s.n * 100; s.p1 = s.f1 / s.n * 100;
     s.lab = s.n < PB_MIN_N ? "" : s.pf <= 25 ? "penahan" : s.pf >= 50 ? "pembuang" : ""; lab[b] = s; });
   /* AKUM (keputusan user 7 Okt 2026): hari net beli berturut-turut BERAPA PUN besarnya.
      runtunBesar = hanya hari net beli >= 2% volume - versi yang terbukti sebagai sinyal. */
-  const runtun = (em, br, t) => { let i = ixT[t], n = 0; if (i === undefined) return 0;
-    while (i - n >= 0) { const o = net.get(em + "|" + br + "|" + TB[i - n]); if (!o || o.n <= 0) break; n++; } return n; };
-  const runtunBesar = (em, br, t) => { let i = ixT[t], n = 0; if (i === undefined) return 0;
-    while (i - n >= 0 && porsi(em, br, TB[i - n]) >= PB_MIN_PORSI * 100) n++; return n; };
+  const runtun = (em, br, t) => { const z = kunciN(em, br, t); if (!z) return 0; const dasar = (z.e * NB + z.b) * NT; let n = 0;
+    while (z.i - n >= 0) { const o = net.get(dasar + z.i - n); if (!o || o.n <= 0) break; n++; } return n; };
+  const runtunBesar = (em, br, t) => { const z = kunciN(em, br, t); if (!z) return 0; let n = 0;
+    while (z.i - n >= 0 && porsiN(z.e, z.b, z.i - n) >= PB_MIN_PORSI * 100) n++; return n; };
   /* pembeli terbesar per emiten per tanggal */
   const top = {};
-  net.forEach((o, k) => { if (o.n <= 0) return; const [em, br, t] = k.split("|"); const kk = em + "|" + t;
-    (top[kk] || (top[kk] = [])).push({br, n: o.n}); });
+  net.forEach(o => { if (o.n <= 0) return; const kk = emN[o.e] + "|" + TB[o.t];
+    (top[kk] || (top[kk] = [])).push({br: brN[o.b], n: o.n}); });
   Object.values(top).forEach(a => a.sort((x, y) => y.n - x.n));
-  const akhirEm = {}; adaBlok.forEach(k => { const [em, t] = k.split("|"); if (!akhirEm[em] || t > akhirEm[em]) akhirEm[em] = t; });
-  pbCache = {kunci, lab, top, runtun, runtunBesar, porsi, akhirEm, TB, vol, net};
+  const akhirEm = {}; adaBlok.forEach(k => { const e = Math.floor(k / NT), t = TB[k % NT], em = emN[e]; if (!akhirEm[em] || t > akhirEm[em]) akhirEm[em] = t; });
+  pbCache = {kunci, lab, top, runtun, runtunBesar, porsi, akhirEm, TB};
   return pbCache;
 }
 /* kotak broker berlabel */
@@ -9385,7 +9398,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-22-8";
+const VERSI_APP = "2026-10-22-9";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
