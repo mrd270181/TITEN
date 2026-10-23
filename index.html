@@ -605,6 +605,13 @@ td.sc-hb{background:rgba(88,166,255,.07)}th.sc-hb{background:#3a5a8c!important}.
 .rek-fca{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;padding:8px 10px;border-radius:9px;
   background:var(--turun-bg);border:1px solid var(--turun);color:var(--turun);font-size:12.5px;font-weight:600}
 .rek-fca-tg{background:var(--turun);color:#fff;border-radius:5px;padding:2px 9px;font-size:13px;letter-spacing:.06em}
+/* 24 Okt 2026: pita nama emiten di atas kotak pemegang & tabel harian REKOMENDASI */
+.rek-pita{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin:14px 0 6px;padding:7px 10px;
+  background:var(--merek-muda);border-left:4px solid var(--merek);border-radius:6px}
+.rek-pita-kd{font-weight:800;font-size:16px;letter-spacing:.5px;color:var(--merek-tua)}
+.rek-pita-nm{color:var(--ink-2);font-size:12.5px;flex:1;min-width:120px}
+.rek-pita-hg{font-weight:700;font-size:13px;white-space:nowrap}
+.rek-pita-tg{color:var(--ink-3);font-weight:500;font-size:12px}
 .op-hijau{color:var(--naik)}.op-kuning{color:#a87400}.op-merah{color:var(--turun)}
 .rek-op-kt{font-size:10.5px;font-weight:700;margin:-1px 0 2px;line-height:1.25}
 .sn-it{border-left:3px solid var(--garis);padding:6px 10px;margin:8px 0;font-size:13px}.sn-it.op-merah{border-color:var(--turun);color:inherit}.sn-it.op-kuning{border-color:#a87400;color:inherit}.sn-it b{display:block}
@@ -5907,6 +5914,20 @@ function rekKotakLevel(ath, res, sup, kini, tglAkhir) {
   return d;
 }
 
+/* 24 Okt 2026: pita "KODE · nama · harga %hari · tanggal" supaya di tengah halaman tetap
+   kelihatan emiten mana yang dilihat. Tampilan saja - memakai baris harga terakhir rentang. */
+function rekPita(em, akhir) {
+  const d = el("div", "rek-pita");
+  d.appendChild(el("span", "rek-pita-kd", em));
+  d.appendChild(el("span", "rek-pita-nm", (DATA.nama && DATA.nama[em]) || ""));
+  const h = el("span", "rek-pita-hg", akhir && akhir.c !== null ? "Rp " + rp(akhir.c) + " " : "— ");
+  const pct = akhir && akhir.c && akhir.p ? (akhir.c / akhir.p - 1) * 100 : null;
+  if (pct !== null) h.appendChild(el("span", arah(pct).k, rekPersen(pct)));
+  if (akhir && akhir.tgl) h.appendChild(el("span", "rek-pita-tg", " · " + tglID(akhir.tgl) + " " + akhir.tgl.slice(0, 4)));
+  d.appendChild(h);
+  return d;
+}
+
 function panelRekomendasi(w) {
   const p = el("div", "panel");
   p.appendChild(el("h2", null, "Rekomendasi"));
@@ -6098,6 +6119,7 @@ function panelRekomendasi(w) {
     const sampaiPos = hasilPos.akhir ? tglID(hasilPos.akhir) : "—";
     const kotakUW = rekKotakUW(rek.em, pos, sampaiPos);
     if (kotakUW) p.appendChild(kotakUW);
+    p.appendChild(rekPita(rek.em, akhir));
     const strip = el("div", "rek-strip");
     /* Papan disebut di judul. Tanpa itu, angka di sini gampang dikira sudah
        mencakup NEGO - dan untuk emiten yang crossing-nya besar, selisihnya
@@ -6146,6 +6168,7 @@ function panelRekomendasi(w) {
     "Uji 404 hari bursa: berguna kalau ASING JUGA NET BELI (%NF tinggi) \u2014 keduanya bersama unggul \u00b11% dalam 3 hari. " +
     "Sendirian tidak berarti; lonjakan volume satu hari justru cenderung diikuti ambil untung. Ketuk judul kolom lagi untuk menutup.");
   vmaKet.style.display = "none";
+  p.appendChild(rekPita(rek.em, akhir));
   p.appendChild(vmaKet);
   const bungkus = el("div", "tbl-bungkus tbl-kunci");
   const t = el("table");
@@ -9410,7 +9433,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-23-1";
+const VERSI_APP = "2026-10-24-1";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
