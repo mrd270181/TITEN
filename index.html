@@ -6035,11 +6035,13 @@ function panelRekomendasi(w) {
     kartu.appendChild(kl); lkPastikan(halScreener); }
   kartu.appendChild(rekKartuOpini(rek.em));
   kartu.appendChild(rekKartuBuyback(rek.em));
+  kartu.appendChild(rekKartuAksi(rek.em));
   kartu.appendChild(rekKartuSentimen(rek.em));
   kartu.appendChild(rekKartuNews(rek.em));
   p.appendChild(kartu);
   if (rekOpBuka) p.appendChild(rekPanelOpini(rek.em));
   if (rekBbBuka) p.appendChild(rekPanelBuyback(rek.em));
+  if (rekAkBuka) p.appendChild(rekPanelAksi(rek.em));
   if (rekSnBuka) p.appendChild(rekPanelSentimen(rek.em));
   if (rekNewsBuka) p.appendChild(rekPanelNews(rek.em));
 
@@ -9408,7 +9410,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-22-10";
+const VERSI_APP = "2026-10-23-1";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -14169,7 +14171,8 @@ function muatProfilRinci() {
   prSedang = true;
   ambilGudang("profil_rinci.json").then(j => { PROFIL_RINCI = j || {data: {}}; })
     .catch(() => { prGagal = true; })
-    .finally(() => { prSedang = false; if (cariSub === "profil" || cariSub === "dividen" || cariSub === "aksi") halCari(); });
+    .finally(() => { prSedang = false; if (cariSub === "profil" || cariSub === "dividen" || cariSub === "aksi") halCari();
+      if (subScr === "rekomendasi" && !$("#hal-screener").hidden) halScreener(); });
 }
 /* 21 Okt 2026: data IPO dari e-IPO (ipo_eipo.py -> data/ipo.json), sejak 2021 */
 let IPO_DATA = null, ipoSedang = false, ipoGagal = false, pjeUrut = {k: "", a: 1};
@@ -15757,7 +15760,8 @@ function muatDividen() {
   dvSedang = true;
   ambilGudang("dividen.json").then(j => { DIVIDEN = j || {jadwal: []}; })
     .catch(() => { dvGagal = true; })
-    .finally(() => { dvSedang = false; if (cariSub === "dividen") halCari();
+    .finally(() => { dvSedang = false; if (cariSub === "dividen" || cariSub === "aksi") halCari();
+      if (subScr === "rekomendasi" && !$("#hal-screener").hidden) halScreener();
       const hd = document.querySelector("#hal-data"); if (hd && !hd.hidden && typeof halData === "function") halData(); });
 }
 /* 20 Okt 2026: jadwal dividen = PDF pengumuman (dividen.json) DIGABUNG tabel dividen profil IDX
@@ -16008,21 +16012,63 @@ function dvTabel(baris, kode) {
    issue, warrant, bonus belum punya sumber khusus - tampil sebagai "penyesuaian harga lain". */
 let akSaring = "semua", akUrut = {k: "tgl", a: -1};
 const AK_SPLIT_LAMA = {PTRO: [["2025-01-03", 10]], CUAN: [["2025-07-15", 10]]};   /* sebelum riwayat harga di HP */
+/* 23 Okt 2026: data/aksi.json (aksi_idx.py: pengumuman IDX right issue / HMETD, private placement,
+   stock split, reverse split, saham bonus - rasio, harga, jadwal) -> CARI > AKSI dan kotak AKSI di REKOMENDASI */
+let AKSI = null, aksiSedang = false, aksiGagal = false, rekAkBuka = false;
+function muatAksi() {
+  if (AKSI || aksiSedang || aksiGagal) return;
+  aksiSedang = true;
+  ambilGudang("aksi.json").then(j => { AKSI = j || {data: []}; })
+    .catch(() => { aksiGagal = true; })
+    .finally(() => { aksiSedang = false; if (cariSub === "aksi") halCari();
+      if (subScr === "rekomendasi" && !$("#hal-screener").hidden) halScreener(); });
+}
+const AK_G = {right: "right", pmthmetd: "lain", split: "split", reverse: "reverse", bonus: "lain"};
+function akRasio(r) { return r && r.length === 2 ? r.map(x => nf(x, Math.abs(x - Math.round(x)) < 1e-6 ? 0 : 2)).join(" : ") : ""; }
+function akStatusIdx(a) {
+  const h = dvHariIni(), kunci = a.cum || a.efektif || (a.hmetd && a.hmetd[0]) || null;
+  const lbl = a.cum ? "cum" : a.efektif ? "berlaku" : "HMETD";
+  if (kunci && kunci >= h) { const n = dvSelisih(kunci, h);
+    return n <= 7 ? {k: "dekat", t: n === 0 ? lbl + " HARI INI" : lbl + " " + n + " hari lagi", u: 3} : {k: "akan", t: "akan datang", u: 2}; }
+  if (a.hmetd && a.hmetd[1] >= h) return {k: "akan", t: "perdagangan HMETD", u: 2};
+  if (!kunci) return dvSelisih(h, a.akhir || a.umum) <= 120 ? {k: "akan", t: "diumumkan", u: 2} : {k: "lewat", t: "lama", u: 0};
+  return {k: "lewat", t: "sudah lewat", u: 0};
+}
 function aksiBaris(kode) {
   const L = [];
+  muatAksi();
+  const hrg = barisScr[kode] ? ambilM(barisScr[kode], "Harga penutupan") : null;
   dvJadwal().filter(r => r.e === kode).forEach(r => {
     L.push({tgl: r.cum || r.umum, jenis: "Dividen" + (r.jenis ? " " + r.jenis : ""), g: "dividen",
-      rinci: r.rp ? "Rp " + nf(r.rp, r.rp % 1 ? 1 : 0) + " / saham" : "lihat PDF",
-      cum: r.cum, ex: r.ex, rec: r.rec, bayar: r.bayar, st: dvStatus(r), pdf: r.pdf, umum: r.umum});
+      rinci: r.rp ? "Rp " + nf(r.rp, r.rp % 1 ? 1 : 0) + " / saham" + (hrg > 0 ? " \u00b7 yield " + nf(r.rp / hrg * 100, 1) + "%" : "") : "lihat PDF",
+      cum: r.cum, ex: r.ex, rec: r.rec, bayar: r.bayar, st: dvStatus(r), pdf: r.pdf, umum: r.umum, rp: r.rp, yld: r.rp && hrg > 0 ? r.rp / hrg * 100 : null});
+  });
+  const umumkan = ((AKSI && AKSI.data) || []).filter(a => a.e === kode);
+  umumkan.forEach(a => {
+    const bag = [];
+    if (a.rasio) bag.push(akRasio(a.rasio) + (a.jenis === "right" ? " (saham lama : HMETD)" : ""));
+    if (a.harga) bag.push((a.jenis === "right" ? "harga pelaksanaan" : "harga") + " Rp " + nf(a.harga));
+    if (a.jenis === "right" && a.rasio && a.harga && hrg > 0) {
+      const [x, y] = a.rasio, terp = (x * hrg + y * a.harga) / (x + y);
+      bag.push("harga teoretis Rp " + nf(Math.round(terp)) + " (dari harga " + nf(hrg) + ")"); }
+    if (a.nominal) bag.push("nominal Rp " + nf(a.nominal[0]) + " \u2192 Rp " + nf(a.nominal[1]));
+    const d0 = (a.dok || [])[0] || {};
+    L.push({tgl: a.cum || a.efektif || (a.hmetd && a.hmetd[0]) || a.akhir || a.umum, jenis: a.nama || a.jenis, g: AK_G[a.jenis] || "lain", jk: a.jenis,
+      rinci: bag.join(" \u00b7 ") || "lihat PDF", cum: a.cum, ex: a.ex, rec: a.rec,
+      bayar: a.hmetd ? a.hmetd[0] : a.efektif || a.bayar, bayarT: a.hmetd ? "HMETD " + lksTglPendek(a.hmetd[0]) + " \u2013 " + lksTglPendek(a.hmetd[1]) : a.efektif ? "berlaku " + lksTglPendek(a.efektif) : "",
+      st: akStatusIdx(a), pdf: d0.pdf || "", umum: a.umum, rasio: a.rasio, harga: a.harga,
+      ket: "Diumumkan " + lksTglPendek(a.umum) + ((a.dok || []).length > 1 ? " \u00b7 " + a.dok.length + " pengumuman" : "") + " \u00b7 " + (d0.judul || "")});
   });
   const ev = (SPLIT_EV[kode] || []).map(e => [e.tgl, e.r, e.split]);
   (AK_SPLIT_LAMA[kode] || []).forEach(([t, r]) => { if (!ev.some(e => e[0] === t)) ev.push([t, r, true]); });
-  ev.forEach(([t, r, sp]) => {
+  /* split yang sudah tercatat dari pengumuman (tanggal berlaku <= 10 hari) tidak ditulis dua kali */
+  const sudah = umumkan.filter(a => (a.jenis === "split" || a.jenis === "reverse") && a.efektif).map(a => a.efektif);
+  ev.filter(([t]) => !sudah.some(x => Math.abs(dvSelisih(x, t)) <= 10)).forEach(([t, r, sp]) => {
     const rev = r < 1, g = !sp && Math.abs(r - 1) < 0.8 ? "lain" : rev ? "reverse" : "split";
     const rasio = rev ? Math.round(1 / r) + " : 1" : "1 : " + (Math.abs(r - Math.round(r)) < 0.06 ? Math.round(r) : nf(r, 2));
-    L.push({tgl: t, jenis: g === "split" ? "Stock split" : g === "reverse" ? "Reverse split" : "Penyesuaian harga",
+    L.push({tgl: t, jenis: (g === "split" ? "Stock split" : g === "reverse" ? "Reverse split" : "Penyesuaian harga") + " (terdeteksi)",
       g, rinci: g === "lain" ? "harga dasar ÷ " + nf(r, 2) + " (rights issue / bonus / lainnya)" : rasio,
-      ex: t, st: {k: "lewat", t: "berlaku " + lksTglPendek(t), u: 0}});
+      ex: t, bayar: t, bayarT: "berlaku " + lksTglPendek(t), st: {k: "lewat", t: "berlaku " + lksTglPendek(t), u: 0}});
   });
   return L;
 }
@@ -16033,7 +16079,7 @@ function panelAksi(kode) {
   const semua = aksiBaris(kode);
   const alat = el("div", "alat ph-alat");
   const sk = el("div", "saklar rd-saklar");
-  [["semua", "Semua"], ["dividen", "Dividen"], ["split", "Stock split"], ["reverse", "Reverse split"], ["lain", "Penyesuaian lain"]]
+  [["semua", "Semua"], ["dividen", "Dividen"], ["right", "Right issue"], ["split", "Stock split"], ["reverse", "Reverse split"], ["lain", "Lainnya"]]
     .forEach(([v, j]) => {
       const n = v === "semua" ? semua.length : semua.filter(x => x.g === v).length;
       const b = el("button", akSaring === v ? "aktif" : null, j + " (" + n + ")");
@@ -16045,9 +16091,10 @@ function panelAksi(kode) {
   p.appendChild(el("div", "bantu",
     (DIVIDEN ? "" : dvSedang ? "Memuat jadwal dividen… " : "Jadwal dividen belum ada di server (jalankan dividen_idx.py di laptop). ") +
     "Dividen dari pengumuman jadwal dividen IDX sejak 1 Jan 2025 (sama dengan CARI › DIVIDEN). " +
-    "Stock split, reverse split, dan penyesuaian harga lain DIDETEKSI dari loncatan harga dasar dan jumlah saham tercatat " +
-    "pada riwayat harga di HP ini (± 13 bulan) — rasio 1 : 5 artinya 1 saham lama jadi 5 saham baru. " +
-    "Penyesuaian harga kecil biasanya rights issue atau saham bonus; rinciannya belum tersedia. " +
+    "Right issue (HMETD), private placement, stock split, reverse split, dan saham bonus dari pengumuman IDX sejak 1 Jan 2026 " +
+    "(aksi_idx.py: rasio, harga pelaksanaan, jadwal" + (AKSI ? "" : aksiSedang ? " \u2014 memuat\u2026" : " \u2014 aksi.json belum ada di server, jalankan python aksi_idx.py") + "). " +
+    "Yang bertanda (terdeteksi) dibaca dari loncatan harga dasar dan jumlah saham tercatat di riwayat harga HP ini " +
+    "\u2014 rasio 1 : 5 artinya 1 saham lama jadi 5 saham baru. Harga teoretis right issue = (rasio lama \u00d7 harga terakhir + rasio HMETD \u00d7 harga pelaksanaan) \u00f7 jumlah rasio. " +
     "Ketuk judul kolom untuk mengurutkan (ketuk lagi untuk membalik)."));
   return p;
 }
@@ -16056,7 +16103,7 @@ function akTabel(baris) {
   const t = el("table"), thead = el("thead"), trh = el("tr");
   const tg = x => x ? lksTglPendek(x) : "–";
   const KOL = [["tgl", "Tanggal", "cum / berlaku"], ["jenis", "Jenis", ""], ["rinci", "Rincian", "Rp / saham atau rasio"],
-    ["cum", "Cum", ""], ["ex", "Ex", ""], ["rec", "Recording", ""], ["bayar", "Bayar", ""], ["st", "Status", ""], ["", "PDF", ""]];
+    ["cum", "Cum", ""], ["ex", "Ex", ""], ["rec", "Recording", ""], ["bayar", "Bayar / pelaksanaan", ""], ["st", "Status", ""], ["", "PDF", ""]];
   KOL.forEach(([k, j, sub]) => {
     const th = el("th", "rd-kiri", j + (akUrut.k === k && k ? (akUrut.a < 0 ? " ▼" : " ▲") : ""));
     if (sub) th.appendChild(el("span", "rd-subjudul", sub));
@@ -16079,7 +16126,9 @@ function akTabel(baris) {
     tr.appendChild(el("td", "rd-kiri", tg(r.tgl)));
     tr.appendChild(el("td", "rd-kiri", r.jenis));
     tr.appendChild(el("td", "rd-kiri", r.rinci));
-    ["cum", "ex", "rec", "bayar"].forEach(k => tr.appendChild(el("td", "rd-kiri", tg(r[k]))));
+    ["cum", "ex", "rec"].forEach(k => tr.appendChild(el("td", "rd-kiri", tg(r[k]))));
+    tr.appendChild(el("td", "rd-kiri", r.bayarT || tg(r.bayar)));
+    if (r.ket) tr.title = r.ket;
     const cS = el("td", "rd-kiri"); cS.appendChild(el("span", "dv-tg " + r.st.k, r.st.t)); tr.appendChild(cS);
     const cP = el("td", "rd-kiri");
     if (r.pdf) { const a = el("a", null, "buka"); a.href = r.pdf; a.target = "_blank"; a.rel = "noopener"; cP.appendChild(a); }
@@ -16092,6 +16141,49 @@ function akTabel(baris) {
   return bungkus;
 }
 
+/* 23 Okt 2026: kotak AKSI di Rekomendasi - satu kotak untuk dividen, right issue, private placement,
+   stock split, reverse split, saham bonus. Kotak = aksi TERDEKAT yang belum lewat (+N aksi lain);
+   kalau tidak ada, aksi terakhir 90 hari ke belakang; selain itu "-". Rincian = tabel CARI > AKSI. */
+function rekKartuAksi(em) {
+  muatDividen(); muatProfilRinci(); muatAksi();
+  const L = aksiBaris(em), h = dvHariIni();
+  const depan = L.filter(r => r.st && r.st.u >= 2).sort((a, b) => (a.tgl || "9") < (b.tgl || "9") ? -1 : 1);
+  const lalu = L.filter(r => !(r.st && r.st.u >= 2) && r.tgl && dvSelisih(h, r.tgl) <= 90).sort((a, b) => a.tgl < b.tgl ? 1 : -1);
+  const r = depan[0] || lalu[0] || null;
+  const k = el("div", "rek-k rek-news" + (rekAkBuka ? " aktif" : ""));
+  k.appendChild(el("div", "rek-kj", "AKSI"));
+  if (!r) {
+    k.appendChild(el("div", "rek-kn", "\u2013"));
+    k.appendChild(el("div", "rek-kk", (dvSedang || aksiSedang) ? "memuat\u2026" : L.length ? L.length + " aksi lama" : "tidak ada aksi korporasi"));
+  } else {
+    const kls = r.st.u < 2 ? "" : r.g === "dividen" ? "op-hijau" : r.g === "right" || r.jk === "pmthmetd" ? "op-kuning" : "";
+    const judul = r.g === "dividen" ? "Dividen" + (r.rp ? " Rp" + nf(r.rp, r.rp % 1 ? 1 : 0) : "")
+      : r.g === "right" ? "Right issue" : r.g === "split" ? "Stock split" : r.g === "reverse" ? "Reverse split" : (r.jk === "pmthmetd" ? "Private placement" : r.jenis.replace(" (terdeteksi)", ""));
+    k.appendChild(el("div", "rek-kn " + kls, judul));
+    const sub = [];
+    if (r.g === "dividen") { if (r.cum) sub.push("cum " + lksTglPendek(r.cum).replace(/ 20\d\d$/, "")); if (r.yld) sub.push("yield " + nf(r.yld, 1) + "%"); }
+    else { if (r.rasio) sub.push(akRasio(r.rasio)); else if (/ : /.test(r.rinci)) sub.push(r.rinci.split(" \u00b7 ")[0]);
+      if (r.harga) sub.push("Rp" + nf(r.harga));
+      if (r.cum) sub.push("cum " + lksTglPendek(r.cum).replace(/ 20\d\d$/, "")); else if (r.bayarT) sub.push(r.bayarT); }
+    if (r.st.u < 2) sub.push(r.st.t);
+    if (depan.length > 1) sub.push("+" + (depan.length - 1) + " aksi lain");
+    k.appendChild(el("div", "rek-kk", sub.join(" \u00b7 ") || r.st.t));
+  }
+  k.title = "Ketuk untuk rincian aksi korporasi";
+  k.style.cursor = "pointer";
+  k.onclick = () => { rekAkBuka = !rekAkBuka; halScreener(); };
+  return k;
+}
+function rekPanelAksi(em) {
+  const p = el("div", "rek-ng rek-op");
+  p.appendChild(el("h2", null, "Aksi korporasi \u2014 " + em));
+  const L = aksiBaris(em);
+  p.appendChild(akTabel(L));
+  p.appendChild(el("div", "bantu", "Dividen dari jadwal dividen IDX; right issue, private placement, split, reverse split, dan saham bonus dari pengumuman IDX (aksi_idx.py)" +
+    (AKSI ? "" : aksiSedang ? " \u2014 memuat\u2026" : " \u2014 aksi.json belum ada di server") +
+    ". Untuk mendapat dividen atau HMETD, saham harus dibeli paling lambat tanggal cum (pasar reguler). Ketuk lama / arahkan kursor ke baris untuk judul pengumumannya. Isi sama dengan CARI \u203a AKSI."));
+  return p;
+}
 /* ---- halaman utama ---- */
 /* 17 Okt 2026: kalau satu panel gagal digambar, tampilkan pesannya - jangan diam saja
    (user melapor "klik BUMI tidak muncul") */
