@@ -2060,6 +2060,7 @@ function hitungPotensi(tglSinyal) {
    Hasil uji 6 bulan: ~1 dari 12 sinyal naik > 50%, 65% berakhir minus - ini
    daftar PANTAUAN, bukan tanda beli. Rekam jejak dihitung ulang dari data HP. */
 let rdHari = 10, rdTier = 0, rdMin = 1e9, rdUrut = {k: "k", a: -1}, rdCache = null, rdAkhir = "";
+let rdTglPilih = "";   /* 26 Okt 2026: "" = rentang N hari terakhir; berisi tanggal = sinyal tanggal itu saja */
 function hitungRadar() {
   const tgl = [...new Set(daftarHari.map(r => r.tgl))].filter(Boolean).sort();
   const kunci = tgl.length + "|" + tgl[tgl.length - 1] + "|" + daftarHari.length;
@@ -2108,20 +2109,23 @@ function rdBroker(em, t) {
 }
 function panelRadar(w) {
   const p = el("div", "panel");
-  p.appendChild(el("h2", null, "Radar breakout — sinyal " + rdHari + " hari bursa terakhir"));
+  const h2 = el("h2", null, "Radar breakout — sinyal " + rdHari + " hari bursa terakhir");
+  p.appendChild(h2);
   lkPastikan(() => { if (subScr === "radar") halScreener(); });
   const R = hitungRadar(), nT = R.tgl.length;
+  if (rdTglPilih && R.tgl.indexOf(rdTglPilih) < 0) rdTglPilih = "";
+  if (rdTglPilih) h2.textContent = "Radar breakout — sinyal tanggal " + tglID(rdTglPilih) + " " + rdTglPilih.slice(0, 4);
   rdAkhir = R.tgl[nT - 1] || "";
   if (nT < 70) { p.appendChild(el("div", "bantu", "Riwayat harga di HP belum cukup (perlu minimal 70 hari bursa).")); w.appendChild(p); return; }
   const batas = R.tgl[Math.max(0, nT - rdHari)];
-  const kini = R.sinyal.filter(s => s.t >= batas && s.n >= rdMin);
+  const kini = R.sinyal.filter(s => (rdTglPilih ? s.t === rdTglPilih : s.t >= batas) && s.n >= rdMin);
   const tampil = kini.filter(s => s.k >= rdTier);
   /* rekam jejak: sinyal yang sudah berumur >= 20 hari bursa */
   const lama = R.sinyal.filter(s => nT - 1 - s.iT >= 20);
   const pct = f => lama.length ? Math.round(100 * lama.filter(f).length / lama.length) : null;
   const rg = el("div", "nw-ring rd-ring");
   const kotak = (isi, ket, kelas) => { const d = el("div"); d.appendChild(el("b", kelas, isi)); d.appendChild(el("span", null, ket)); rg.appendChild(d); };
-  kotak(String(kini.length), "sinyal " + rdHari + " hari terakhir");
+  kotak(String(kini.length), rdTglPilih ? "sinyal tanggal " + tglID(rdTglPilih) : "sinyal " + rdHari + " hari terakhir");
   kotak(String(kini.filter(s => s.k >= 3).length), "Tier A (cocok 3 ciri)", "rd-or");
   const p50 = pct(s => s.s > 50);
   kotak(p50 === null ? "–" : (p50 ? "1 dari " + Math.max(1, Math.round(100 / p50)) : "0"), "sinyal lalu yang naik >50% (" + p50 + "%)");
@@ -2134,6 +2138,23 @@ function panelRadar(w) {
     const o = el("option", null, t); o.value = v; if (rdHari === v) o.selected = true; sR.appendChild(o); });
   sR.onchange = () => { rdHari = +sR.value; halScreener(); };
   lR.appendChild(sR); alat.appendChild(lR);
+  /* 26 Okt 2026: pilih satu tanggal sinyal; ‹ › lompat ke tanggal sebelum/sesudahnya yang ADA sinyalnya */
+  { const tS = [...new Set(R.sinyal.filter(s => s.n >= rdMin).map(s => s.t))].sort();
+    const lT = el("label", "bantu", "Sinyal tanggal: ");
+    lT.style.cssText = "display:inline-flex;align-items:center;gap:4px;flex-wrap:nowrap";
+    const pakai = t => { rdTglPilih = t || ""; halScreener(); };
+    const acuan = rdTglPilih || R.tgl[nT - 1];
+    const bP = el("button", "kecil", "\u2039"), bN = el("button", "kecil", "\u203a");
+    const sbl = tS.filter(t => t < acuan), ssd = tS.filter(t => t > acuan);
+    bP.title = "Tanggal sebelumnya yang ada sinyal"; bN.title = "Tanggal sesudahnya yang ada sinyal";
+    bP.disabled = !sbl.length; bN.disabled = !rdTglPilih || !ssd.length;
+    bP.onclick = () => pakai(sbl[sbl.length - 1]); bN.onclick = () => pakai(ssd[0]);
+    lT.appendChild(bP);
+    lT.appendChild(kotakTanggal(rdTglPilih, R.tgl.slice(60), t => pakai(t)));
+    lT.appendChild(bN);
+    alat.appendChild(lT);
+    if (rdTglPilih) { const bS = el("button", "kecil", "\u2715 Semua"); bS.title = "Kembali ke rentang " + rdHari + " hari terakhir"; bS.onclick = () => pakai(""); alat.appendChild(bS); }
+    sR.disabled = !!rdTglPilih; }
   const sk = el("div", "saklar rd-saklar");
   [[0, "Semua"], [3, "Tier A"], [2, "A + B"]].forEach(([v, j]) => {
     const b = el("button", rdTier === v ? "aktif" : null, j);
@@ -2163,7 +2184,9 @@ function panelRadar(w) {
     "Tanda \u2460\u2461\u2462 di judul kolom = kolom yang dipakai untuk ciri \u2460\u2461\u2462. " +
     "Broker = 3 broker net beli terbesar (lot, REGULER) hari sinyal — hanya emiten yang punya data broker. " +
     "LK = kesimpulan laporan keuangan (Bagus 75–100, Sedang 60–74, Jelek < 60). " +
-    "Ketuk judul kolom untuk mengurutkan; ketuk baris untuk membuka Rekomendasi emiten itu dari tanggal sinyal."));
+    "Ketuk judul kolom untuk mengurutkan; ketuk baris untuk membuka Rekomendasi emiten itu dari tanggal sinyal. " +
+    "Sinyal tanggal: pilih satu tanggal (atau \u2039 \u203a ke tanggal sebelum/sesudahnya yang ada sinyal) untuk melihat sinyal hari itu saja \u2014 " +
+    "Harga kini dan % sejak sinyal memperlihatkan hasilnya sampai hari ini. \u2715 Semua = kembali ke rentang hari terakhir."));
   p.appendChild(el("div", "bantu rd-awas",
     "Peringatan: rekam jejak di atas dihitung dari " + lama.length + " sinyal sejak " + (R.tgl[60] ? tglID(R.tgl[60]) : "–") +
     " (dicek sampai " + tglID(R.tgl[nT - 1]) + "). Kebanyakan sinyal gagal; radar ini daftar PANTAUAN, bukan tanda beli — siapkan batas rugi."));
@@ -9568,7 +9591,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-26-2";
+const VERSI_APP = "2026-10-26-3";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
