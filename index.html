@@ -648,6 +648,11 @@ td.sc-hb{background:rgba(88,166,255,.07)}th.sc-hb{background:#3a5a8c!important}.
 .lk-bd.on{outline:2px solid currentColor}
 .pt-lk{text-align:left}
 .pt-hpc{font-size:.85em;font-weight:600}
+/* 26 Okt 2026: High H+1..H+3 + hasil berhasil/gagal di POTENSI 3 HARI */
+td.pt-hi{background:rgba(88,166,255,.07)}th.pt-hi{background:#3a5a8c!important}
+td.pt-mx{outline:2px solid var(--naik);outline-offset:-3px;border-radius:4px;font-weight:800}
+.pt-hi-p{display:block;font-size:.82em;font-weight:600}
+.sc-ok.s{background:var(--surface-2);color:var(--ink-3)}
 .rek-kn.lk-kn.Bagus{color:var(--naik)}.rek-kn.lk-kn.Sedang{color:#a87400}.rek-kn.lk-kn.Jelek{color:var(--turun)}
 .lk-kepala{display:flex;align-items:center;gap:12px}
 .lk-rinci{margin:10px 0 4px;border:1px solid var(--garis);border-radius:9px;padding:8px 10px;font-size:12.5px;background:var(--surface-2)}
@@ -811,6 +816,12 @@ td.rek-lawan{outline:1.5px solid currentColor;outline-offset:-3px;font-weight:80
 .rek-nf b{margin-right:6px}
 .rek-vma{background:rgba(88,166,255,.07);width:1%;white-space:nowrap;padding-left:6px!important;padding-right:6px!important}.rek-vma-kuat{font-weight:700}
 .rek-avg{margin-left:4px;font-weight:400;opacity:.7;font-size:.88em;white-space:nowrap}
+/* 26 Okt 2026: akumulasi volume/value hari naik vs hari turun di tabel REKOMENDASI */
+.rek-akum{display:block;font-size:10.5px;font-weight:500;opacity:.85;white-space:nowrap}
+.rek-bar{display:flex;height:6px;border-radius:3px;overflow:hidden;margin:4px 0 2px;min-width:120px;background:var(--garis)}
+.rek-bar i{display:block;height:100%}
+.rek-akum-tg{display:inline-block;margin-top:3px;padding:1px 7px;border-radius:5px;font-size:10.5px;font-weight:800}
+.rek-akum-tg.naik{background:var(--naik-bg)}.rek-akum-tg.turun{background:var(--turun-bg)}
 tfoot td{border-top:2px solid var(--garis);font-weight:800;background:var(--surface-2)}
 #barisVersi{
   position:fixed; left:0; right:0; z-index:60;
@@ -1965,6 +1976,7 @@ const PT_STAT = {
   lain: {r3: -0.23, p03: 39.9, m2: 38.5, n: 60325}
 };
 const PT_GAP_MAX = 2;   /* % - di atas ini jangan dibeli */
+const PT_OK = 3;        /* % - 26 Okt 2026: high H+1..H+3 >= +3% dari buka H+1 = "berhasil" (sama dengan SCALPING) */
 let ptTgl = "", ptAkhir = "", ptCariEm = "";   /* ptCariEm: tampilkan satu emiten saja */
 let ptUrut = {k: "", a: -1};
 let ptSaTinggi = false;   /* saring: hanya emiten "Searah asing" Tinggi */
@@ -2023,6 +2035,7 @@ function hitungPotensi(tglSinyal) {
     semesta.push({em: k, c: a.c, batas: batasBeli(a.c), nf1, sa, nf10, r10, lonjak: m10 && m50 ? m10 / m50 : null, v520: m5 && m20 ? m5 / m20 : null, val20,
       lot0: a.v / LOT, lotm1: am1 && am1.v ? am1.v / LOT : null, val0: a.n || 0,
       gap, o1, c1, c2, c3,
+      hi1: d1 && d1.h > 0 ? d1.h : null, hi2: d2 && d2.h > 0 ? d2.h : null, hi3: d3 && d3.h > 0 ? d3.h : null,
       h1: o1 && c1 ? (c1 / o1 - 1) * 100 : null,
       h3: o1 && c3 ? (c3 / o1 - 1) * 100 : null,
       /* hasil sampai tutup TERAKHIR yang sudah ada (H+3, atau H+2/H+1 kalau belum sampai) */
@@ -3019,6 +3032,20 @@ function panelPotensi(w) {
     x.aneh = !!(x.beli && (x.beli < x.c * 0.65 || x.beli > x.c * 1.35));
     const akh = x.c3 || x.c2 || x.c1;
     x.hb = x.beli && akh ? (akh / x.beli - 1) * 100 : null;
+    /* 26 Okt 2026: high H+1..H+3 terhadap harga beli = buka H+1. Berhasil = salah satu >= +PT_OK%.
+       ok: 1 berhasil, 0 gagal, null belum ada data; okT = teks (dilewati / menunggu H+3) */
+    const hs = [x.hi1, x.hi2, x.hi3];
+    x.hp = hs.map(h => h && x.o1 ? (h / x.o1 - 1) * 100 : null);
+    [x.hp1, x.hp2, x.hp3] = x.hp;
+    const hAda = x.hp.filter(v => v !== null);
+    x.hpMax = hAda.length ? Math.max(...hAda) : null;
+    x.ok = null; x.okT = ""; x.okU = 9;
+    if (x.o1 && hAda.length) {
+      if (x.gap !== null && x.gap > PT_GAP_MAX) { x.okT = "lewat"; x.okU = 3; }
+      else if (x.hpMax >= PT_OK) { x.ok = 1; x.okU = 1; }
+      else if (H.sesudah < 3) { x.okT = "tunggu"; x.okU = 4; }
+      else { x.ok = 0; x.okU = 2; }
+    }
   });
   if (adaMF) { K.length = 0; H.semesta.filter(x => x.grup && x.grup < 9).forEach(x => K.push(x)); }
   if (mfT) {
@@ -3054,6 +3081,19 @@ function panelPotensi(w) {
       sp.appendChild(el("span", kls(v3).trim(), "s/d tutup H+" + Math.min(H.sesudah, 3) + " " + pr(v3)));
       hn.appendChild(sp);
     });
+    { const sp = el("span"); sp.appendChild(el("b", null, "High H+1\u2013H+" + Math.min(H.sesudah, 3) + " \u2265 +" + PT_OK + "% dari buka H+1: "));
+      ["A", "B"].forEach((j, n) => {
+        const a = K.filter(x => x.tk === j && (x.ok === 0 || x.ok === 1));
+        if (n) sp.appendChild(document.createTextNode(" \u00b7 "));
+        if (!a.length) { sp.appendChild(document.createTextNode(j + " \u2013")); return; }
+        const b = a.filter(x => x.ok === 1).length, rr = a.reduce((s, x) => s + x.hpMax, 0) / a.length;
+        sp.appendChild(el("span", b / a.length >= 0.5 ? "naik" : "turun", j + " " + b + " dari " + a.length + " berhasil (" + Math.round(b / a.length * 100) + "%)"));
+        sp.appendChild(document.createTextNode(", rata-rata tertinggi "));
+        sp.appendChild(el("span", kls(rr).trim(), pr(rr)));
+      });
+      const tg = K.filter(x => x.tk && x.okT === "tunggu").length;
+      if (tg) sp.appendChild(document.createTextNode(" \u00b7 " + tg + " belum ada yang tembus, menunggu H+3"));
+      hn.appendChild(sp); }
     p.appendChild(hn);
   }
   /* pilihan emiten: tampilkan emiten itu saja, kandidat atau bukan */
@@ -3069,20 +3109,22 @@ function panelPotensi(w) {
   const kol = (adaMF ? [["Tr POTENSI", "tk"], ["Tr MF", "tmU"], ["Emiten", "em"], ["LK", "lks"], ["Searah asing", "sa"], ["VALUE MF", "mf"], ["VOL MF1", "mfLot"], ["MF \u00f7 Value 20h", "r"]] : [["Tr", "tk"], ["Emiten", "em"], ["LK", "lks"], ["Searah asing", "sa"]])
     .concat([["%NF " + tglID(ptTgl), "nf1"], ["VMA10/VMA50 \u2605", "lonjak"], ["Harga " + tglID(ptTgl), "c"], ["Batas beli (+" + PT_GAP_MAX + "%)", "batas"]])
     .concat(adaMF ? [["Harga beli", "beli"]] : [])
-    .concat(lalu ? [["H+1 \u00b7 " + tPendek(H.tglNanti[0]), "c1"], ["H+2 \u00b7 " + tPendek(H.tglNanti[1]), "c2"], ["H+3 \u00b7 " + tPendek(H.tglNanti[2]), "c3"]] : [])
+    .concat(lalu ? [["Tutup H+1 \u00b7 " + tPendek(H.tglNanti[0]), "c1"], ["Tutup H+2 \u00b7 " + tPendek(H.tglNanti[1]), "c2"], ["Tutup H+3 \u00b7 " + tPendek(H.tglNanti[2]), "c3"],
+      ["High H+1 \u00b7 " + tPendek(H.tglNanti[0]), "hp1"], ["High H+2 \u00b7 " + tPendek(H.tglNanti[1]), "hp2"], ["High H+3 \u00b7 " + tPendek(H.tglNanti[2]), "hp3"],
+      ["Hasil (\u2265 +" + PT_OK + "%)", "okU"]] : [])
     .concat(adaMF && lalu ? [["Hasil harga beli\u2192" + (H.sesudah >= 3 ? "H+3" : "H+" + H.sesudah), "hb"]] : [])
     .concat([["%NF 2 mg", "nf10"], ["%Harga 2 mg", "r10"], ["Volume " + tPendek(H.tglLalu), "lotm1"], ["Volume " + tglID(ptTgl), "lot0"], ["Value " + tglID(ptTgl), "val0"]])
     .concat(adaMF ? [["Keputusan sesi II", "grup"]] : []);
   if (ptUrut.k && !kol.some(c => c[1] === ptUrut.k)) ptUrut.k = "";   /* kolom hasil hilang di tanggal terbaru */
   kol.forEach(([j, k], n) => {
     const tanda = ptUrut.k === k ? (ptUrut.a < 0 ? " \u25bc" : " \u25b2") : "";
-    const h = el("th", n > (adaMF ? 2 : 1) ? "num" : null, j + tanda);
+    const h = el("th", (n > (adaMF ? 2 : 1) ? "num" : "") + (/^hp|^okU/.test(k) ? " pt-hi" : ""), j + tanda);
     if (k === "em" || k === "sa" || k === "lks") h.style.textAlign = "left";
     if (k === "sa") h.title = "Searah asing: seberapa kuat harga emiten ini biasanya ikut arah asing DI HARI YANG SAMA (korelasi %NF harian dengan perubahan harga, 120 hari bursa). Tinggi \u2265 0,35 \u00b7 Sedang 0,20\u20130,35 \u00b7 Rendah < 0,20. Ketuk untuk mengurutkan.";
     h.style.cursor = "pointer"; h.title = k === "lks" ? "Kesimpulan laporan keuangan terakhir: Bagus (skor 75\u2013100), Sedang (60\u201374), Jelek (< 60); \u26a0 = ada tanda bahaya. Ketuk untuk mengurutkan menurut skor." : "Urutkan menurut " + j;
     h.onclick = () => {
       if (ptUrut.k === k) ptUrut.a = -ptUrut.a;
-      else { ptUrut.k = k; ptUrut.a = (k === "em" || k === "tk" || k === "tmU" || k === "grup") ? 1 : -1; }
+      else { ptUrut.k = k; ptUrut.a = (k === "em" || k === "tk" || k === "tmU" || k === "grup" || k === "okU") ? 1 : -1; }
       halScreener();
     };
     th.appendChild(h);
@@ -3161,6 +3203,19 @@ function panelPotensi(w) {
       [x.c1, x.c2, x.c3].forEach(v => { const td = hg(v, x.c);
         if (v && x.c) td.appendChild(el("span", "pt-hpc", " (" + pr((v / x.c - 1) * 100) + ")"));
         if (x.o1) td.title = "Buka H+1: " + rp(x.o1) + (x.gap !== null ? " (gap " + pr(x.gap) + ")" : ""); tr.appendChild(td); });
+      /* High H+1..H+3: harga + % dari buka H+1; hari tertinggi diberi kotak hijau */
+      [x.hi1, x.hi2, x.hi3].forEach((v, n) => {
+        const pc = x.hp[n], mx = x.okT !== "lewat" && pc !== null && pc === x.hpMax;
+        const td = el("td", "num pt-hi" + (x.okT === "lewat" ? "" : kls(pc)) + (mx ? " pt-mx" : ""), v ? rp(v) : "\u2013");
+        if (pc !== null) td.appendChild(el("span", "pt-hi-p", pr(pc)));
+        tr.appendChild(td); });
+      { const td = el("td", "num pt-hi");
+        if (x.ok === 1) td.appendChild(el("span", "sc-ok y", "\u2713 berhasil"));
+        else if (x.ok === 0) td.appendChild(el("span", "sc-ok n", "\u2717 gagal"));
+        else if (x.okT === "lewat") td.appendChild(el("span", "sc-ok s", "dilewati \u00b7 gap " + pr(x.gap)));
+        else if (x.okT === "tunggu") td.appendChild(el("span", "sc-ok s", "menunggu H+3"));
+        else td.textContent = "\u2013";
+        tr.appendChild(td); }
       if (adaMF) tr.appendChild(el("td", "num" + kls(x.hb) + (x.aneh ? " pt-coret" : ""), pr(x.hb)));
     }
     tr.appendChild(el("td", "num" + kls(x.nf10), pr(x.nf10)));
@@ -3191,8 +3246,10 @@ function panelPotensi(w) {
     "LK = kesimpulan laporan keuangan terakhir (sama dengan panel Kesimpulan LK di menu CARI): Bagus skor 75\u2013100, Sedang 60\u201374, Jelek di bawah 60; \u26a0 = ada tanda bahaya. LK menilai kesehatan perusahaan, bukan sinyal harga 3 hari. " +
     "Urutan bawaan: tingkat A lalu B, masing-masing %NF terbesar; ketuk judul kolom untuk mengurutkan, ketuk lagi untuk membalik. Batas beli = tutup sinyal + " + PT_GAP_MAX + "%, dibulatkan ke fraksi harga BEI: " +
     "pagi hari bandingkan harga pembukaan di aplikasi sekuritas dengan angka ini. " +
-    "Volume = jumlah lot yang ditransaksikan pada hari bursa sebelum tanggal sinyal dan pada tanggal sinyal; Value = nilai transaksi (Rp) pada tanggal sinyal. H+1, H+2, H+3 = harga tutup hari-hari sesudah tanggal sinyal, dalam kurung naik/turunnya terhadap harga tutup tanggal sinyal (arahkan ke angkanya untuk melihat harga buka H+1 dan gap-nya). Angka di kartu dari uji luar sampel 1 Jul 2025 – 30 Sep 2026: " +
+    "Volume = jumlah lot yang ditransaksikan pada hari bursa sebelum tanggal sinyal dan pada tanggal sinyal; Value = nilai transaksi (Rp) pada tanggal sinyal. Tutup H+1, H+2, H+3 = harga tutup hari-hari sesudah tanggal sinyal, dalam kurung naik/turunnya terhadap harga tutup tanggal sinyal (arahkan ke angkanya untuk melihat harga buka H+1 dan gap-nya). Angka di kartu dari uji luar sampel 1 Jul 2025 – 30 Sep 2026: " +
     "peluang per saham di bawah 50%, keunggulannya pada rata-rata; tingkat B impas sesudah biaya ±0,3%. " +
+    "High H+1, H+2, H+3 = harga TERTINGGI tiap hari (bukan tutup), persennya dari harga buka H+1 = harga beli; kotak hijau = hari paling tinggi. " +
+    "Hasil: \u2713 berhasil = salah satu high itu \u2265 +" + PT_OK + "% (sempat ada kesempatan jual untung " + PT_OK + "%), \u2717 gagal = tidak ada; dilewati = buka H+1 di atas batas beli, jadi tidak dibeli dan tidak ikut dihitung. " +
     "Pilih tanggal lampau untuk melihat hasil nyata. Ketuk baris untuk membuka Rekomendasi. " +
     "VALUE MF (UNGGAH MF1) = nilai net foreign sesi I hari bursa sesudah tanggal sinyal, dari screenshot Stockbit Half Time \u00b7 Sesi 1. VOL MF1 = N.Lot (net lot asing) sesi I dari layar yang sama - keterangan saja. MF \u00f7 Value 20h = MF dibagi rata-rata nilai transaksi 20 hari. " +
     
@@ -6276,6 +6333,16 @@ function panelRekomendasi(w) {
      diulang di tiap baris, kolomnya penuh angka sama yang tidak berarti apa-apa
      pada tanggal-tanggal lama itu. */
   const tbody = el("tbody");
+  /* 26 Okt 2026: volume & value dikelompokkan menurut arah harga hari itu (prinsip OBV).
+     BUKAN volume beli/jual - tiap lot punya pembeli dan penjual. Arah = tutup vs tutup sebelumnya. */
+  const ak = {vN: 0, vT: 0, vD: 0, nN: 0, nT: 0, nD: 0};
+  const akSel = (txt, kls, sigma, fmt) => {
+    const td = el("td", "num " + kls, txt);
+    td.appendChild(el("span", "rek-akum " + arah(sigma).k, "\u03a3 " + fmt(sigma)));
+    return td;
+  };
+  const akVol = v => rekLot(Math.round(v / LOT));
+  const akVal = v => (v > 0 ? "+" : "") + rpSingkat(v);
   hr.forEach((x, i) => {
     const tr = el("tr");
     tr.appendChild(el("td", null, tglID(x.tgl)));
@@ -6287,8 +6354,13 @@ function panelRekomendasi(w) {
     { const td = el("td", "num " + arah(x.nf).k, rekLot(x.nf / LOT));
       if (x.v) td.appendChild(el("span", "rek-avg", "(" + rekPersen(x.nf / x.v * 100) + ")"));
       tr.appendChild(td); }
-    tr.appendChild(el("td", "num", lotSingkat(Math.round(x.v / LOT))));
-    tr.appendChild(el("td", "num", x.n ? rpSingkat(x.n) : "\u2013"));
+    { const ref = x.p > 0 ? x.p : sblm, ah = x.c && ref ? Math.sign(x.c - ref) : 0;
+      const kH = ah > 0 ? "naik" : ah < 0 ? "turun" : "datar";
+      if (ah > 0) { ak.vN += x.v || 0; ak.nN += x.n || 0; }
+      else if (ah < 0) { ak.vT += x.v || 0; ak.nT += x.n || 0; }
+      else { ak.vD += x.v || 0; ak.nD += x.n || 0; }
+      tr.appendChild(akSel(lotSingkat(Math.round(x.v / LOT)), kH, ak.vN - ak.vT, akVol));
+      tr.appendChild(akSel(x.n ? rpSingkat(x.n) : "\u2013", kH, ak.nN - ak.nT, akVal)); }
     { const q = vmaRasio[x.tgl] || [null, null]; tr.appendChild(selVma(q[0])); tr.appendChild(selVma(q[1])); }
     if (adaBroker) {
       const hari = brk.perTgl[x.tgl] || {};
@@ -6316,8 +6388,25 @@ function panelRekomendasi(w) {
   { const td = el("td", "num " + arah(nfTot).k, rekLot(nfTot / LOT));
     if (volTot) td.appendChild(el("span", "rek-avg", "(" + rekPersen(nfTot / volTot * 100) + ")"));
     trf.appendChild(td); }
-  trf.appendChild(el("td", "num", lotSingkat(Math.round(volTot / LOT))));
-  trf.appendChild(el("td", "num", valTot ? rpSingkat(valTot) : "\u2013"));
+  { const akTot = (txt, n, t, d, fmt) => {
+      const td = el("td", "num", txt), tot = n + t + d;
+      if (!tot) return td;
+      const bar = el("div", "rek-bar");
+      [[n, "var(--naik)"], [d, "var(--datar)"], [t, "var(--turun)"]].forEach(([v, w]) => {
+        const i = el("i"); i.style.width = (v / tot * 100) + "%"; i.style.background = w; bar.appendChild(i); });
+      td.appendChild(bar);
+      const kc = el("span", "rek-akum");
+      kc.appendChild(el("span", "naik", "naik " + fmt(n) + " (" + Math.round(n / tot * 100) + "%)"));
+      kc.appendChild(document.createTextNode(" \u00b7 "));
+      kc.appendChild(el("span", "turun", "turun " + fmt(t) + " (" + Math.round(t / tot * 100) + "%)"));
+      td.appendChild(kc);
+      const sel = (n - t) / tot * 100;
+      td.appendChild(el("span", "rek-akum-tg " + (Math.abs(sel) < 1 ? "datar" : sel > 0 ? "naik" : "turun"),
+        Math.abs(sel) < 1 ? "seimbang" : (sel > 0 ? "dominan NAIK +" : "dominan TURUN \u2212") + Math.round(Math.abs(sel)) + "%"));
+      return td;
+    };
+    trf.appendChild(akTot(lotSingkat(Math.round(volTot / LOT)), ak.vN, ak.vT, ak.vD, v => lotSingkat(Math.round(v / LOT))));
+    trf.appendChild(akTot(valTot ? rpSingkat(valTot) : "\u2013", ak.nN, ak.nT, ak.nD, rpSingkat)); }
   trf.appendChild(el("td", "num rek-vma", "")); trf.appendChild(el("td", "num rek-vma", ""));
   if (adaBroker) {
     brBeli.forEach(k => trf.appendChild(rekSelLot("num rek-b " + arah(brk.total[k]).k,
@@ -6327,6 +6416,12 @@ function panelRekomendasi(w) {
   }
   tfoot.appendChild(trf); t.appendChild(tfoot);
   bungkus.appendChild(t); p.appendChild(bungkus);
+  p.appendChild(el("div", "bantu",
+    "Kolom Volume & Value: hijau = hari harga naik, merah = hari harga turun (tutup dibanding tutup sebelumnya). " +
+    "\u03a3 = akumulasi berjalan sejak awal rentang: volume hari naik dikurangi volume hari turun. Baris TOTAL membandingkan " +
+    "volume/value hari naik dengan hari turun (prinsip OBV). Ini BUKAN volume beli lawan jual \u2014 tiap lot selalu punya " +
+    "pembeli dan penjual; warna hanya menunjukkan pihak mana yang lebih agresif hari itu. Indikasi, belum diuji sebagai sinyal; " +
+    "untuk siapa yang mengumpulkan, lihat kolom broker."));
 
 
   if (adaBroker) {
@@ -9473,7 +9568,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-24-2";
+const VERSI_APP = "2026-10-26-2";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
