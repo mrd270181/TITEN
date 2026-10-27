@@ -755,6 +755,16 @@ input.bk-kode{width:86px;flex:0 0 auto;font-size:18px;font-weight:800;letter-spa
 .rek-kj{font-size:9px;letter-spacing:.5px;color:var(--ink-3);font-weight:700}
 .rek-kn{font-size:17px;font-weight:800;margin:2px 0 1px;line-height:1.15;
   overflow-wrap:anywhere}
+/* 27 Okt 2026: kotak VALUASI */
+.val-bar{position:relative;height:8px;background:var(--garis);border-radius:4px;min-width:110px;margin-top:3px}
+.val-bar .iq{position:absolute;top:0;bottom:0;left:25%;width:50%;background:var(--merek);opacity:.45;border-radius:4px}
+.val-bar .tt{position:absolute;top:-3px;width:3px;height:14px;background:var(--ink-1);border-radius:2px;margin-left:-1px}
+.val-pos{display:block;font-size:10.5px;color:var(--ink-3);white-space:nowrap}
+.val-sek{font-size:12px;color:var(--ink-2);margin:2px 0 8px}
+.val-vonis{margin:10px 0 4px;padding:7px 10px;border-radius:7px;background:var(--surface-2);font-size:12.5px}
+.val-awas{margin-top:6px;padding:7px 10px;border-radius:7px;background:rgba(210,153,34,.14);color:var(--ink-1);font-size:12px}
+.val-ok{margin-top:6px;padding:7px 10px;border-radius:7px;background:var(--naik-bg);color:var(--ink-1);font-size:12px}
+.val-tbl td.val-u:first-child::after{content:" \2605";color:var(--oranye)}
 .rek-kk{font-size:9.5px;color:var(--ink-3)}
 .rek-strip{display:grid;gap:6px;grid-template-columns:1fr;margin-top:8px}
 .fca-k{display:inline-block;min-width:16px;text-align:center;font-size:10px;font-weight:800;color:#fff;background:#b91c1c;border-radius:4px;padding:0 4px;margin-right:3px;line-height:15px}
@@ -3607,6 +3617,10 @@ function lksNilai(kode) {
   const sub = pr.subsektor || "";
   r.prop = /Real Estate|Propert/.test(sub);
   r.sub = sub;
+  /* 27 Okt 2026: sektor padat modal (H properti, J infrastruktur termasuk utilitas & telko, K transportasi;
+     kode lama 6./7.) - utang proyek jangka panjang wajar, batas utang dilonggarkan */
+  r.padat = /^[HJK]\.|^[67]\./.test(pr.sektor || "") && !/^J2\./.test(pr.subsektor || "");   /* kontraktor (J2 konstruksi berat) bukan utang proyek jangka panjang */
+  r.akInv = T.ak_investasi;
   return r;
 }
 
@@ -3648,18 +3662,31 @@ function lkSkor(kode) {
   if (KEU) tambah("Kualitas laba", null, 20, tk);
   else { const c = r.cfoNi; tambah("Kualitas laba", c !== null && c >= 1 ? 20 : c !== null && c >= 0.7 ? 12 : c !== null && c > 0 ? 4 : 0, 20,
     c !== null ? "arus kas operasi " + f1(c) + "× laba bersih" : "laba atau arus kas operasi negatif"); }
+  /* 27 Okt 2026: (1) sektor padat modal: DER <= 2 penuh, <= 3,5 setengah (lainnya <= 1 / <= 2);
+     (3) ROE >= 30% dengan laba & arus kas operasi positif (modal kecil karena dividen besar, mis. UNVR):
+     utang tidak dihukum. Aturan baru hanya melonggarkan, skor tidak pernah turun. */
+  /* 27 Okt 2026 (keputusan user): aturan ROE >= 30% hanya sampai DER 4x; tanda "Utang besar" tetap di atas 3x untuk semua sektor */
+  const derLonggar = !KEU && roe !== null && roe >= 30 && li !== null && li > 0 && r.cfo !== null && r.cfo > 0 && r.der !== null && r.der <= 4;
+  const dB1 = r.padat ? 2 : 1, dB2 = r.padat ? 3.5 : 2, dBahaya = 3;
   if (KEU) tambah("Utang & likuiditas", null, 15, tk);
   else {
-    const pd = r.der !== null && r.der <= 1 ? 10 : r.der !== null && r.der <= 2 ? 5 : 0;
-    if (r.cr !== null) tambah("Utang & likuiditas", pd + (r.cr >= 1.5 ? 5 : r.cr >= 1 ? 2 : 0), 15, "DER " + f1(r.der) + "×, rasio lancar " + f1(r.cr) + "×");
-    else tambah("Utang & likuiditas", pd + 2, 15, "DER " + f1(r.der) + "×; rasio lancar tidak tersedia, diberi nilai tengah 2");
+    const pd = derLonggar ? 10 : r.der !== null && r.der <= dB1 ? 10 : r.der !== null && r.der <= dB2 ? 5 : 0;
+    const kDer = derLonggar ? " (ROE " + f1(roe) + "% \u2014 modal kecil karena laba dibagikan, utang tidak dihukum)" : r.padat ? " (sektor padat modal: batas DER " + f1(dB1) + "/" + f1(dB2) + "×)" : "";
+    if (r.cr !== null) tambah("Utang & likuiditas", pd + (r.cr >= 1.5 ? 5 : r.cr >= 1 ? 2 : 0), 15, "DER " + f1(r.der) + "×" + kDer + ", rasio lancar " + f1(r.cr) + "×");
+    else tambah("Utang & likuiditas", pd + 2, 15, "DER " + f1(r.der) + "×" + kDer + "; rasio lancar tidak tersedia, diberi nilai tengah 2");
   }
   tambah("Konsistensi", KEU ? [0, 3, 7, 12, 20][r.kons] : [0, 2, 4, 7, 10][r.kons], KEU ? 20 : 10, "untung " + r.kons + " dari " + r.konsN + " tahun terakhir");
   if (!r.pendAda) tambah("Arah margin", KEU ? 10 : 5, KEU ? 20 : 10, "pendapatan tidak tersedia di data IDX, diberi nilai tengah");
   else { const mg = r.npm !== null && r.npm1 !== null && r.npm >= r.npm1 && r.npm > 0 ? 2 : r.npm !== null && r.npm > 0 ? 1 : 0;
     tambah("Arah margin", KEU ? [0, 8, 20][mg] : [0, 4, 10][mg], KEU ? 20 : 10, "margin bersih " + f1(r.npm) + "% (tahun lalu " + f1(r.npm1) + "%)"); }
   if (KEU) tambah("Arus kas bebas", null, 5, tk);
-  else tambah("Arus kas bebas", r.fcf !== null && r.fcf > 0 ? 5 : 0, 5, r.fcf === null ? "-" : r.fcf > 0 ? "positif" : "negatif");
+  else {
+    /* 27 Okt 2026 (2): arus kas bebas negatif KARENA belanja investasi, sedangkan arus kas operasi positif
+       = uangnya dipakai ekspansi, bukan habis untuk operasi -> tidak dihukum */
+    const fcfEksp = r.fcf !== null && r.fcf <= 0 && r.cfo !== null && r.cfo > 0 && r.akInv !== null && r.akInv < 0;
+    tambah("Arus kas bebas", r.fcf !== null && (r.fcf > 0 || fcfEksp) ? 5 : 0, 5,
+      r.fcf === null ? "-" : r.fcf > 0 ? "positif" : fcfEksp ? "negatif karena belanja investasi (ekspansi); arus kas operasi positif, tidak dihukum" : "negatif");
+  }
   /* tanda bahaya: [judul, angka bukti, arti] */
   const rpx = x => {
     let v = x / 1e9 * (r.mu === "USD" ? kursUSD() : 1); const t = v < 0 ? "minus " : ""; v = Math.abs(v);
@@ -3675,8 +3702,19 @@ function lkSkor(kode) {
   if (r.piutLari) F.push(["Piutang melonjak", "piutang usaha naik " + Math.round(r.gPiut) + "% setahun, sedangkan pendapatan " +
     (r.gp < 0 ? "turun " + Math.round(-r.gp) + "%" : "hanya naik " + Math.round(r.gp) + "%"),
     "Penjualan banyak yang belum dibayar pembeli. Bisa karena memberi kredit lebih longgar untuk mendongkrak penjualan, atau pembeli sulit bayar — laba ada di atas kertas tapi uangnya belum masuk."]);
-  if (!KEU && r.der !== null && r.der > 3) F.push(["Utang besar", "DER " + f1(r.der) + "× (utang " + f1(r.der) + " kali modal)",
-    "Utang lebih dari 3 kali modal sendiri. Beban bunga berat, dan kalau usaha melemah sedikit saja perusahaan bisa kesulitan bayar."]);
+  if (!KEU && !derLonggar && r.der !== null && r.der > dBahaya) F.push(["Utang besar", "DER " + f1(r.der) + "× (utang " + f1(r.der) + " kali modal)",
+    "Utang lebih dari " + dBahaya + " kali modal sendiri. Beban bunga berat, dan kalau usaha melemah sedikit saja perusahaan bisa kesulitan bayar."]);
+  /* 27 Okt 2026: keterangan patokan di samping tiap ukuran mengikuti jenis emiten (umum / padat modal / lembaga keuangan) */
+  const jenisNilai = KEU ? "keu" : r.padat ? "padat" : "umum";
+  cat.forEach(c => {
+    if (KEU && c.p === null) c.acu = c.n === "Utang & likuiditas" ? "tidak dinilai: utang bank/lembaga keuangan sebagian besar dana nasabah, DER tinggi itu normal"
+      : "";
+    else if (c.n === "Profitabilitas" && KEU) c.acu = "bagus jika ROE \u2265 15% (bobot 40 untuk lembaga keuangan)";
+    else if (c.n === "Utang & likuiditas") c.acu = (r.padat ? "sektor padat modal (properti, infrastruktur, transportasi): penuh jika DER \u2264 2\u00d7, setengah jika \u2264 3,5\u00d7"
+      : "penuh jika DER \u2264 1\u00d7, setengah jika \u2264 2\u00d7") + "; ditambah rasio lancar \u2265 1,5\u00d7. Tanda \u26a0 Utang besar jika DER > 3\u00d7. " +
+      "Pengecualian: ROE \u2265 30% dengan laba & arus kas operasi positif dan DER \u2264 4\u00d7 (modal kecil karena dividen besar) tidak dihukum";
+    else if (c.n === "Arus kas bebas") c.acu = "bagus jika positif, atau negatif karena belanja investasi (ekspansi) sementara arus kas operasi positif";
+  });
   const maks = cat.reduce((a, c) => a + (c.p === null ? 0 : c.m), 0);
   /* 15 Okt 2026: tanda bahaya dibagi dua. BERAT (ekuitas negatif, rugi) -> skor paling tinggi 59.
      RINGAN (utang besar, piutang melonjak, arus kas operasi negatif) -> -10 poin per tanda.
@@ -3709,8 +3747,17 @@ function lkSkor(kode) {
   if (kuat.length) kal += " Kuat di " + kuat.join(", ") + ".";
   if (lemah.length) kal += " Lemah di " + lemah.join(", ") + ".";
   if (F.length) kal += " Waspada: " + F.map(f => f[0].toLowerCase()).join("; ") + ".";
+  /* 27 Okt 2026 (4): penyebab utama kalau skornya tidak Bagus - kelompok yang paling banyak kehilangan poin */
+  let sebab = "";
+  if (label !== "Bagus") {
+    const G = [["laba (profitabilitas, pertumbuhan, konsistensi, margin)", ["Profitabilitas", "Pertumbuhan", "Konsistensi", "Arah margin"]],
+      ["kualitas laba (laba belum jadi uang tunai)", ["Kualitas laba"]],
+      ["utang & arus kas (sering karena ekspansi)", ["Utang & likuiditas", "Arus kas bebas"]]];
+    const hilang = G.map(([j, ns]) => [j, cat.filter(c => ns.indexOf(c.n) >= 0 && c.p !== null).reduce((a, c) => a + (c.m - c.p), 0)]).sort((a, b) => b[1] - a[1]);
+    if (hilang[0][1] > 0) { sebab = hilang[0][0]; kal += " Penyebab utama: " + sebab + "."; }
+  }
   if (lama) kal += " LK terakhir yang tersedia per " + r.akhir + " (sudah lama).";
-  return (lksCache[kode] = {skor, label, kal, cat, F, r, maks, lama, asli, rinci});
+  return (lksCache[kode] = {skor, label, kal, cat, F, r, maks, lama, asli, rinci, sebab, jenisNilai});
 }
 
 /* lencana kecil Bagus/Sedang/Jelek (dipakai tabel & kartu) */
@@ -3740,7 +3787,11 @@ function panelKesimpulanLK(kode) {
   kp.appendChild(el("div", "lk-angka " + k.label, String(k.skor)));
   const kn = el("div");
   const j = el("div"); j.appendChild(el("b", null, k.label));
-  j.appendChild(el("span", "lk-sub", " · LK " + r.jenis + " " + r.akhir.slice(0, 4) + (r.bank ? " · lembaga keuangan" : "") + (r.sub ? " · " + r.sub : "")));
+  j.appendChild(el("span", "lk-sub", " · LK " + r.jenis + " " + r.akhir.slice(0, 4) + (r.sub ? " · " + r.sub : "")));
+  /* 27 Okt 2026: jenis penilaian ditulis jelas */
+  j.appendChild(el("div", "lk-sub", "Dinilai sebagai: " + (k.jenisNilai === "keu" ? "lembaga keuangan (bank, asuransi, pembiayaan, sekuritas) \u2014 utang & arus kas tidak dinilai"
+    : k.jenisNilai === "padat" ? "sektor padat modal (properti, infrastruktur, transportasi) \u2014 batas utang lebih longgar" : "emiten umum") +
+    (k.sebab ? " \u00b7 penyebab utama skor: " + k.sebab : "")));
   kn.appendChild(j); kn.appendChild(el("div", "lk-kal", k.kal.replace(/^LK [a-z]+ \(\d+\/100\)\. ?/, "")));
   kp.appendChild(kn); p.appendChild(kp);
   /* rincian skor: asli -> potongan tanda bahaya -> akhir (hanya kalau ada tanda bahaya) */
@@ -3784,7 +3835,9 @@ function panelKesimpulanLK(kode) {
   if (k.maks < 100) p.appendChild(el("div", "bantu", "Sebagian pos tidak tersedia di data LK IDX emiten ini, jadi skor dihitung dari " + k.maks + " poin yang bisa dinilai lalu diubah ke skala 100."));
   if (k.lama) p.appendChild(el("div", "lk-flag", "\u26a0 LK terakhir yang tersedia untuk " + kode + " per " + r.akhir + " \u2014 sudah lama; kesimpulan ini belum mencerminkan kinerja terbaru."));
   p.appendChild(el("div", "bantu", "Dihitung dari LK terakhir (laba rugi & arus kas = 4 kuartal terakhir, neraca = saldo akhir). " +
-    "Total poin 100. Lembaga keuangan (bank, asuransi, pembiayaan, sekuritas) dinilai dari ROE (40), pertumbuhan (20), konsistensi (20), dan margin (20), juga total 100. Skor menilai kesehatan perusahaan, bukan murah/mahalnya saham dan bukan sinyal harga." +
+    "Total poin 100. Lembaga keuangan (bank, asuransi, pembiayaan, sekuritas) dinilai dari ROE (40), pertumbuhan (20), konsistensi (20), dan margin (20), juga total 100 \u2014 utang tidak dinilai karena sebagian besar dana nasabah. " +
+    "Sektor padat modal (properti, infrastruktur, transportasi; kontraktor tidak termasuk) mendapat batas utang lebih longgar: poin penuh sampai DER 2\u00d7. Tanda Utang besar tetap di atas DER 3\u00d7 untuk semua sektor. " +
+    "Arus kas bebas negatif tidak dihukum kalau penyebabnya belanja investasi dan arus kas operasinya positif (perusahaan sedang ekspansi). Skor menilai kesehatan perusahaan, bukan murah/mahalnya saham dan bukan sinyal harga." +
     (r.mu === "USD" ? " Emiten melapor dalam dolar; rupiah di atas memakai kurs " + kursUSD().toLocaleString("id-ID") + "." : "")));
   return p;
 }
@@ -6206,12 +6259,14 @@ function panelRekomendasi(w) {
   kartu.appendChild(rekKartuOpini(rek.em));
   kartu.appendChild(rekKartuBuyback(rek.em));
   kartu.appendChild(rekKartuAksi(rek.em));
+  kartu.appendChild(rekKartuValuasi(rek.em));
   kartu.appendChild(rekKartuSentimen(rek.em));
   kartu.appendChild(rekKartuNews(rek.em));
   p.appendChild(kartu);
   if (rekOpBuka) p.appendChild(rekPanelOpini(rek.em));
   if (rekBbBuka) p.appendChild(rekPanelBuyback(rek.em));
   if (rekAkBuka) p.appendChild(rekPanelAksi(rek.em));
+  if (rekValBuka) p.appendChild(rekPanelValuasi(rek.em));
   if (rekSnBuka) p.appendChild(rekPanelSentimen(rek.em));
   if (rekNewsBuka) p.appendChild(rekPanelNews(rek.em));
 
@@ -9620,7 +9675,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-26-4";
+const VERSI_APP = "2026-10-27-3";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -16383,6 +16438,128 @@ function rekKartuAksi(em) {
   k.style.cursor = "pointer";
   k.onclick = () => { rekAkBuka = !rekAkBuka; halScreener(); };
   return k;
+}
+/* ===== VALUASI (27 Okt 2026) =====
+   PER / PBV / ROE emiten dibanding emiten SEJENIS (industri IDX-IC dari profil.json; kalau pembanding
+   < 8, naik ke subsektor lalu sektor), hanya yang kapitalisasinya >= Rp5 T (keputusan user 27 Okt).
+   Kisaran wajar = persentil 25-75 pembanding (rasio harus positif). Angka dari data fundamental IDX
+   di awal-lk.json (PER/PBV sudah dihitung ulang awal.py dengan harga penutupan terbarunya).
+   Rasio utama: Keuangan = PBV; Energi & Barang Baku (komoditas) = PER + PBV; lainnya = PER.
+   Kesimpulan dari rata-rata posisi rasio utama: < 25 = MURAH, > 75 = MAHAL, selebihnya WAJAR.
+   EV/EBITDA & dividend yield belum dipakai: kolom EV/EBITDA kosong, data dividen belum lengkap. */
+let rekValBuka = false;
+const VAL_MCAP = 5000, VAL_MIN = 8;   /* Rp miliar (= Rp5 T), minimal pembanding */
+function valKuantil(xs, p) { const a = xs.slice().sort((x, y) => x - y), k = (a.length - 1) * p, f = Math.floor(k), c = Math.min(f + 1, a.length - 1); return a[f] + (a[c] - a[f]) * (k - f); }
+function valHitung(em) {
+  const P = PROFIL && PROFIL.data, pr = P && P[em];
+  if (!pr) return {tunggu: !PROFIL};
+  const mc = k => metrik(k, "Kapitalisasi pasar (Rp miliar)") || 0;
+  let tingkat = null, kel = [];
+  for (const key of ["industri", "subsektor", "sektor"]) {
+    const g = pr[key]; if (!g) continue;
+    kel = Object.keys(barisScr).filter(k => P[k] && P[k][key] === g && mc(k) >= VAL_MCAP);
+    if (kel.length >= VAL_MIN) { tingkat = key; break; }
+  }
+  if (!tingkat) return {pr, kurang: true};
+  const keu = /^Keuangan/i.test(pr.sektor || ""), kom = /Energi|Barang Baku/i.test(pr.sektor || "");
+  const utama = keu ? ["PBV"] : kom ? ["PER", "PBV"] : ["PER"];
+  const R = [["PER", "PER (x)", "\u00d7", true], ["PBV", "PBV (x)", "\u00d7", true], ["ROE", "ROE (%)", "%", false]].map(([j, m, sf, val]) => {
+    const v = metrik(em, m);
+    const xs = kel.map(k => metrik(k, m)).filter(x => x !== null && (!val || x > 0));
+    const o = {j, v, sf, val, utama: utama.indexOf(j) >= 0, n: xs.length};
+    if (xs.length < 5) { o.kurang = true; return o; }
+    o.q25 = valKuantil(xs, 0.25); o.q50 = valKuantil(xs, 0.5); o.q75 = valKuantil(xs, 0.75);
+    o.pos = v === null ? null : xs.filter(x => x < v).length / xs.length * 100;
+    return o;
+  });
+  const per = R[0], rugi = !keu && per.v !== null && per.v <= 0;
+  const U = R.filter(r => r.utama && !r.kurang && r.v !== null && r.v > 0);
+  const pU = U.length ? U.reduce((a, r) => a + r.pos, 0) / U.length : null;
+  const vonis = pU === null ? null : pU < 25 ? "MURAH" : pU > 75 ? "MAHAL" : "WAJAR";
+  return {pr, tingkat, grup: pr[tingkat], n: kel.length, R, U, vonis, keu, kom, rugi, roe: R[2]};
+}
+const valKls = v => v === "MURAH" ? "op-hijau" : v === "MAHAL" ? "op-merah" : v === "WAJAR" ? "op-kuning" : "";
+const valAngka = (v, sf) => v === null || v === undefined ? "\u2013" : nf(v, Math.abs(v) < 10 ? 2 : 1) + sf;
+function valPosTeks(r) {
+  if (r.pos === null || r.pos === undefined) return "";
+  if (!r.val) return r.pos >= 50 ? "lebih tinggi dari " + Math.round(r.pos) + "% pembanding" : "lebih rendah dari " + Math.round(100 - r.pos) + "% pembanding";
+  return r.pos < 50 ? "lebih murah dari " + Math.round(100 - r.pos) + "% pembanding" : "lebih mahal dari " + Math.round(r.pos) + "% pembanding";
+}
+function rekKartuValuasi(em) {
+  const H = valHitung(em);
+  const k = el("div", "rek-k rek-news" + (rekValBuka ? " aktif" : ""));
+  k.appendChild(el("div", "rek-kj", "VALUASI"));
+  if (H.tunggu) { k.appendChild(el("div", "rek-kn", "\u2013")); k.appendChild(el("div", "rek-kk", "memuat profil\u2026")); }
+  else if (H.kurang || !H.vonis) {
+    k.appendChild(el("div", "rek-kn", H.rugi ? "RUGI" : "\u2013"));
+    k.appendChild(el("div", "rek-kk", H.rugi ? "PER tidak berarti (laba negatif)" : H.kurang ? "pembanding \u2265 Rp5 T kurang" : "rasio tidak tersedia"));
+  } else {
+    k.appendChild(el("div", "rek-kn " + valKls(H.vonis), H.vonis));
+    const r = H.U[0];
+    let sub = r.j + " " + valPosTeks(r).replace(" pembanding", "") + " " + H.grup;
+    if (H.vonis === "MAHAL" && H.roe.pos !== null && H.roe.pos >= 75) sub += " \u00b7 ROE juga tinggi";
+    k.appendChild(el("div", "rek-kk", sub));
+  }
+  k.title = "Ketuk untuk rincian valuasi dibanding emiten sejenis";
+  k.style.cursor = "pointer";
+  k.onclick = () => { rekValBuka = !rekValBuka; halScreener(); };
+  return k;
+}
+let valUrut = {k: "", a: 1};
+function rekPanelValuasi(em) {
+  const p = el("div", "rek-ng rek-op");
+  p.appendChild(el("h2", null, "Valuasi \u2014 " + em));
+  const H = valHitung(em);
+  if (H.tunggu) { p.appendChild(el("div", "bantu", "Memuat profil sektor\u2026")); return p; }
+  if (!H.pr) { p.appendChild(el("div", "bantu", "Sektor " + em + " tidak tercatat di profil IDX.")); return p; }
+  const jalur = [H.pr.sektor, H.pr.subsektor, H.pr.industri].filter(Boolean).join(" \u203a ");
+  if (H.kurang) { p.appendChild(el("div", "val-sek", jalur));
+    p.appendChild(el("div", "bantu", "Pembanding dengan kapitalisasi \u2265 Rp5 T kurang dari " + VAL_MIN + " emiten, bahkan sampai tingkat sektor \u2014 valuasi relatif tidak dihitung.")); return p; }
+  const tg = {industri: "industri", subsektor: "subsektor", sektor: "sektor"}[H.tingkat];
+  p.appendChild(el("div", "val-sek", jalur + " \u00b7 dibanding " + H.n + " emiten " + tg + " " + H.grup + " (kapitalisasi \u2265 Rp5 T)" +
+    (H.tingkat !== "industri" ? " \u2014 pembanding seindustri kurang dari " + VAL_MIN + ", jadi dipakai " + tg : "")));
+  const bung = el("div", "tbl-bungkus tbl-kunci"), t = el("table", "val-tbl"), th = el("thead"), tr0 = el("tr");
+  const KOL = [["j", "Rasio"], ["v", em], ["q", "Kisaran wajar " + tg], ["q50", "Median"], ["pos", "Posisi"]];
+  KOL.forEach(([k, j], i) => { const h = el("th", i ? "num" : null, j + (valUrut.k === k ? (valUrut.a < 0 ? " \u25bc" : " \u25b2") : ""));
+    h.style.cursor = "pointer"; h.title = "Urutkan";
+    h.onclick = () => { if (valUrut.k === k) valUrut.a = -valUrut.a; else valUrut = {k, a: 1}; halScreener(); }; tr0.appendChild(h); });
+  th.appendChild(tr0); t.appendChild(th);
+  const tb = el("tbody"), baris = H.R.slice();
+  if (valUrut.k) baris.sort((x, y) => { const f = r => valUrut.k === "q" ? r.q25 : r[valUrut.k];
+    const a = f(x), b = f(y); if (a === undefined || a === null) return 1; if (b === undefined || b === null) return -1;
+    return (typeof a === "string" ? a.localeCompare(b) : a - b) * valUrut.a; });
+  baris.forEach(r => {
+    const tr = el("tr");
+    tr.appendChild(el("td", r.utama ? "val-u" : null, r.j + (r.val ? "" : " (kualitas)")));
+    const kv = r.v === null || r.pos === undefined || r.pos === null ? "" : r.val ? (r.pos < 25 ? " op-hijau" : r.pos > 75 ? " op-merah" : " op-kuning") : (r.pos >= 75 ? " op-hijau" : r.pos < 25 ? " op-merah" : " op-kuning");
+    tr.appendChild(el("td", "num" + (r.val && r.v !== null && r.v <= 0 ? " op-merah" : kv), r.val && r.v !== null && r.v <= 0 ? valAngka(r.v, r.sf) + " (rugi)" : valAngka(r.v, r.sf)));
+    if (r.kurang) { const td = el("td", "num", "pembanding kurang"); td.colSpan = 3; tr.appendChild(td); }
+    else {
+      tr.appendChild(el("td", "num", valAngka(r.q25, "") + " \u2013 " + valAngka(r.q75, r.sf)));
+      tr.appendChild(el("td", "num", valAngka(r.q50, r.sf)));
+      const td = el("td", "num");
+      if (r.pos !== null && !(r.val && r.v <= 0)) { const bar = el("div", "val-bar"); bar.appendChild(el("div", "iq")); const m = el("div", "tt"); m.style.left = Math.max(0, Math.min(100, r.pos)) + "%"; bar.appendChild(m);
+        td.appendChild(bar); td.appendChild(el("span", "val-pos", valPosTeks(r))); } else td.textContent = "\u2013";
+      tr.appendChild(td);
+    }
+    tb.appendChild(tr);
+  });
+  t.appendChild(tb); bung.appendChild(t); p.appendChild(bung);
+  const vz = el("div", "val-vonis"); vz.appendChild(document.createTextNode("Kesimpulan: "));
+  if (H.vonis) { vz.appendChild(el("b", valKls(H.vonis), H.vonis)); vz.appendChild(document.createTextNode(" dibanding " + tg + " " + H.grup + " (rasio utama \u2605: " + H.U.map(r => r.j).join(" + ") + ")."));
+  } else vz.appendChild(document.createTextNode(H.rugi ? "PER tidak bisa dipakai karena laba negatif (rugi) \u2014 lihat PBV." : "rasio utama tidak tersedia."));
+  p.appendChild(vz);
+  if (H.kom) p.appendChild(el("div", "val-awas", "\u26a0 Sektor komoditas: laba ikut harga komoditas. PER rendah bisa berarti laba sedang tinggi (puncak siklus) \u2014 kalau harga komoditas turun, laba dan PER bisa berubah cepat. PBV lebih tahan siklus."));
+  if (H.vonis === "MAHAL" && H.roe.pos !== null && H.roe.pos >= 75) p.appendChild(el("div", "val-ok", "\u2713 ROE-nya juga lebih tinggi dari " + Math.round(H.roe.pos) + "% pembanding. Perusahaan yang laba per modalnya jauh lebih tinggi biasanya memang dihargai lebih mahal \u2014 premium kualitas, bukan otomatis kemahalan."));
+  { const q = lkSkor(em);
+    if (H.vonis === "MURAH" && q && q.label === "Jelek") p.appendChild(el("div", "val-awas", "\u26a0 Murah, tapi LK Jelek (skor " + q.skor + "). Saham bisa murah karena ada alasannya \u2014 cek rincian LK di menu CARI.")); }
+  p.appendChild(el("div", "bantu", "\u2605 = rasio utama untuk sektor ini (Keuangan: PBV; komoditas Energi & Barang Baku: PER + PBV; lainnya: PER). " +
+    "Kisaran wajar = rentang tengah 50% pembanding (persentil 25\u201375), hanya emiten sejenis dengan kapitalisasi \u2265 Rp5 T dan rasio positif; " +
+    "kalau seindustri kurang dari " + VAL_MIN + " emiten, dipakai subsektor lalu sektor. Kesimpulan dari posisi rasio utama: di bawah persentil 25 = MURAH, di atas 75 = MAHAL. " +
+    "\"Wajar\" artinya wajar dibanding saham sejenis, bukan nilai mutlak \u2014 kalau seluruh sektor sedang mahal, yang wajar pun ikut mahal. " +
+    "Data fundamental IDX per " + (DATA.funda_per ? lksTglPendek(DATA.funda_per) : "\u2013") + " (PER/PBV dengan harga penutupan saat data itu dibuat). " +
+    "EV/EBITDA dan dividend yield belum ditampilkan karena datanya belum lengkap. Bukan rekomendasi investasi."));
+  return p;
 }
 function rekPanelAksi(em) {
   const p = el("div", "rek-ng rek-op");
