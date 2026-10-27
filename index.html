@@ -9675,7 +9675,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-27-3";
+const VERSI_APP = "2026-10-27-4";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -16454,18 +16454,25 @@ function valHitung(em) {
   const P = PROFIL && PROFIL.data, pr = P && P[em];
   if (!pr) return {tunggu: !PROFIL};
   const mc = k => metrik(k, "Kapitalisasi pasar (Rp miliar)") || 0;
-  let tingkat = null, kel = [];
-  for (const key of ["industri", "subsektor", "sektor"]) {
-    const g = pr[key]; if (!g) continue;
-    kel = Object.keys(barisScr).filter(k => P[k] && P[k][key] === g && mc(k) >= VAL_MCAP);
-    if (kel.length >= VAL_MIN) { tingkat = key; break; }
-  }
-  if (!tingkat) return {pr, kurang: true};
   const keu = /^Keuangan/i.test(pr.sektor || ""), kom = /Energi|Barang Baku/i.test(pr.sektor || "");
   const utama = keu ? ["PBV"] : kom ? ["PER", "PBV"] : ["PER"];
+  /* 27 Okt 2026: pembanding yang dipakai menyusun kisaran harus WAJAR: PER 0-100x dengan data konsisten
+     (EPS dan laba bertanda sama - EMTK/BUKA/EDGE rugi tapi EPS positif), PBV 0-20x. Emiten yang dinilai tetap
+     dihitung apa adanya. Kalau pembanding valid rasio utama < 5 di >= Rp5 T, batas turun ke >= Rp1 T (keputusan
+     user: pilihan b); kalau masih < 5, tidak diberi kesimpulan. */
+  const konsisten = k => { const e = metrik(k, "EPS (Rp)"), l = metrik(k, "Laba periode (Rp miliar)"); return e !== null && l !== null && (e > 0) === (l > 0); };
+  const valid = (k, j) => { const x = metrik(k, j === "PER" ? "PER (x)" : j === "PBV" ? "PBV (x)" : "ROE (%)");
+    if (x === null) return false; if (j === "PER") return x > 0 && x <= 100 && konsisten(k); if (j === "PBV") return x > 0 && x <= 20; return true; };
+  let tingkat = null, kel = [], batas = VAL_MCAP;
+  cari: for (const bt of [VAL_MCAP, 1000]) for (const key of ["industri", "subsektor", "sektor"]) {
+    const g = pr[key]; if (!g) continue;
+    const kk = Object.keys(barisScr).filter(k => P[k] && P[k][key] === g && mc(k) >= bt);
+    if (kk.length >= VAL_MIN && utama.every(j => kk.filter(k => valid(k, j)).length >= 5)) { tingkat = key; kel = kk; batas = bt; break cari; }
+  }
+  if (!tingkat) return {pr, kurang: true};
   const R = [["PER", "PER (x)", "\u00d7", true], ["PBV", "PBV (x)", "\u00d7", true], ["ROE", "ROE (%)", "%", false]].map(([j, m, sf, val]) => {
     const v = metrik(em, m);
-    const xs = kel.map(k => metrik(k, m)).filter(x => x !== null && (!val || x > 0));
+    const xs = kel.filter(k => valid(k, j)).map(k => metrik(k, m));
     const o = {j, v, sf, val, utama: utama.indexOf(j) >= 0, n: xs.length};
     if (xs.length < 5) { o.kurang = true; return o; }
     o.q25 = valKuantil(xs, 0.25); o.q50 = valKuantil(xs, 0.5); o.q75 = valKuantil(xs, 0.75);
@@ -16473,10 +16480,15 @@ function valHitung(em) {
     return o;
   });
   const per = R[0], rugi = !keu && per.v !== null && per.v <= 0;
-  const U = R.filter(r => r.utama && !r.kurang && r.v !== null && r.v > 0);
+  const tdkKons = !keu && per.v !== null && per.v > 0 && !konsisten(em);   /* PER emiten ini sendiri tidak bisa dipercaya */
+  if (tdkKons) per.tdkKons = true;
+  let U = R.filter(r => r.utama && !r.kurang && !r.tdkKons && r.v !== null && r.v > 0);
+  /* PER tidak bisa dipakai (rugi atau datanya tidak konsisten) -> kesimpulan dari PBV, ditandai */
+  let pakaiPBV = false;
+  if (!U.length && !keu && (rugi || tdkKons || per.v === null) && !R[1].kurang && R[1].v !== null && R[1].v > 0) { U = [R[1]]; pakaiPBV = true; }
   const pU = U.length ? U.reduce((a, r) => a + r.pos, 0) / U.length : null;
   const vonis = pU === null ? null : pU < 25 ? "MURAH" : pU > 75 ? "MAHAL" : "WAJAR";
-  return {pr, tingkat, grup: pr[tingkat], n: kel.length, R, U, vonis, keu, kom, rugi, roe: R[2]};
+  return {pr, tingkat, grup: pr[tingkat], n: kel.length, R, U, vonis, keu, kom, rugi, roe: R[2], batas, tdkKons, pakaiPBV};
 }
 const valKls = v => v === "MURAH" ? "op-hijau" : v === "MAHAL" ? "op-merah" : v === "WAJAR" ? "op-kuning" : "";
 const valAngka = (v, sf) => v === null || v === undefined ? "\u2013" : nf(v, Math.abs(v) < 10 ? 2 : 1) + sf;
@@ -16496,7 +16508,7 @@ function rekKartuValuasi(em) {
   } else {
     k.appendChild(el("div", "rek-kn " + valKls(H.vonis), H.vonis));
     const r = H.U[0];
-    let sub = r.j + " " + valPosTeks(r).replace(" pembanding", "") + " " + H.grup;
+    let sub = r.j + " " + valPosTeks(r).replace(" pembanding", "") + " " + H.grup + (H.pakaiPBV ? " (PER tak terpakai)" : "");
     if (H.vonis === "MAHAL" && H.roe.pos !== null && H.roe.pos >= 75) sub += " \u00b7 ROE juga tinggi";
     k.appendChild(el("div", "rek-kk", sub));
   }
@@ -16514,9 +16526,10 @@ function rekPanelValuasi(em) {
   if (!H.pr) { p.appendChild(el("div", "bantu", "Sektor " + em + " tidak tercatat di profil IDX.")); return p; }
   const jalur = [H.pr.sektor, H.pr.subsektor, H.pr.industri].filter(Boolean).join(" \u203a ");
   if (H.kurang) { p.appendChild(el("div", "val-sek", jalur));
-    p.appendChild(el("div", "bantu", "Pembanding dengan kapitalisasi \u2265 Rp5 T kurang dari " + VAL_MIN + " emiten, bahkan sampai tingkat sektor \u2014 valuasi relatif tidak dihitung.")); return p; }
+    p.appendChild(el("div", "bantu", "Pembanding yang wajar terlalu sedikit (kurang dari " + VAL_MIN + " emiten sejenis, atau kurang dari 5 yang rasionya bisa dipakai), bahkan dengan batas kapitalisasi \u2265 Rp1 T sampai tingkat sektor \u2014 kesimpulan valuasi tidak diberikan.")); return p; }
   const tg = {industri: "industri", subsektor: "subsektor", sektor: "sektor"}[H.tingkat];
-  p.appendChild(el("div", "val-sek", jalur + " \u00b7 dibanding " + H.n + " emiten " + tg + " " + H.grup + " (kapitalisasi \u2265 Rp5 T)" +
+  p.appendChild(el("div", "val-sek", jalur + " \u00b7 dibanding " + H.n + " emiten " + tg + " " + H.grup + " (kapitalisasi \u2265 Rp" + (H.batas / 1000) + " T" +
+    (H.batas < VAL_MCAP ? " \u2014 diperluas karena pembanding \u2265 Rp5 T yang rasionya wajar kurang dari 5" : "") + ")" +
     (H.tingkat !== "industri" ? " \u2014 pembanding seindustri kurang dari " + VAL_MIN + ", jadi dipakai " + tg : "")));
   const bung = el("div", "tbl-bungkus tbl-kunci"), t = el("table", "val-tbl"), th = el("thead"), tr0 = el("tr");
   const KOL = [["j", "Rasio"], ["v", em], ["q", "Kisaran wajar " + tg], ["q50", "Median"], ["pos", "Posisi"]];
@@ -16532,7 +16545,8 @@ function rekPanelValuasi(em) {
     const tr = el("tr");
     tr.appendChild(el("td", r.utama ? "val-u" : null, r.j + (r.val ? "" : " (kualitas)")));
     const kv = r.v === null || r.pos === undefined || r.pos === null ? "" : r.val ? (r.pos < 25 ? " op-hijau" : r.pos > 75 ? " op-merah" : " op-kuning") : (r.pos >= 75 ? " op-hijau" : r.pos < 25 ? " op-merah" : " op-kuning");
-    tr.appendChild(el("td", "num" + (r.val && r.v !== null && r.v <= 0 ? " op-merah" : kv), r.val && r.v !== null && r.v <= 0 ? valAngka(r.v, r.sf) + " (rugi)" : valAngka(r.v, r.sf)));
+    tr.appendChild(el("td", "num" + (r.val && r.v !== null && r.v <= 0 ? " op-merah" : r.tdkKons ? "" : kv),
+      r.val && r.v !== null && r.v <= 0 ? valAngka(r.v, r.sf) + " (rugi)" : r.tdkKons ? valAngka(r.v, r.sf) + " \u26a0" : valAngka(r.v, r.sf)));
     if (r.kurang) { const td = el("td", "num", "pembanding kurang"); td.colSpan = 3; tr.appendChild(td); }
     else {
       tr.appendChild(el("td", "num", valAngka(r.q25, "") + " \u2013 " + valAngka(r.q75, r.sf)));
@@ -16546,15 +16560,18 @@ function rekPanelValuasi(em) {
   });
   t.appendChild(tb); bung.appendChild(t); p.appendChild(bung);
   const vz = el("div", "val-vonis"); vz.appendChild(document.createTextNode("Kesimpulan: "));
-  if (H.vonis) { vz.appendChild(el("b", valKls(H.vonis), H.vonis)); vz.appendChild(document.createTextNode(" dibanding " + tg + " " + H.grup + " (rasio utama \u2605: " + H.U.map(r => r.j).join(" + ") + ")."));
+  if (H.vonis) { vz.appendChild(el("b", valKls(H.vonis), H.vonis)); vz.appendChild(document.createTextNode(" dibanding " + tg + " " + H.grup +
+      (H.pakaiPBV ? " \u2014 dari PBV, karena PER " + (H.rugi ? "negatif (rugi)" : H.tdkKons ? "tidak bisa dipercaya" : "tidak tersedia di data IDX") + "." : " (rasio utama \u2605: " + H.U.map(r => r.j).join(" + ") + ").")));
   } else vz.appendChild(document.createTextNode(H.rugi ? "PER tidak bisa dipakai karena laba negatif (rugi) \u2014 lihat PBV." : "rasio utama tidak tersedia."));
   p.appendChild(vz);
+  if (H.tdkKons) p.appendChild(el("div", "val-awas", "\u26a0 PER " + em + " tidak dipakai untuk kesimpulan: data IDX mencatat EPS dan laba dengan tanda berbeda (mis. laba periode rugi tetapi EPS positif), jadi PER-nya tidak bisa dipercaya."));
   if (H.kom) p.appendChild(el("div", "val-awas", "\u26a0 Sektor komoditas: laba ikut harga komoditas. PER rendah bisa berarti laba sedang tinggi (puncak siklus) \u2014 kalau harga komoditas turun, laba dan PER bisa berubah cepat. PBV lebih tahan siklus."));
   if (H.vonis === "MAHAL" && H.roe.pos !== null && H.roe.pos >= 75) p.appendChild(el("div", "val-ok", "\u2713 ROE-nya juga lebih tinggi dari " + Math.round(H.roe.pos) + "% pembanding. Perusahaan yang laba per modalnya jauh lebih tinggi biasanya memang dihargai lebih mahal \u2014 premium kualitas, bukan otomatis kemahalan."));
   { const q = lkSkor(em);
     if (H.vonis === "MURAH" && q && q.label === "Jelek") p.appendChild(el("div", "val-awas", "\u26a0 Murah, tapi LK Jelek (skor " + q.skor + "). Saham bisa murah karena ada alasannya \u2014 cek rincian LK di menu CARI.")); }
   p.appendChild(el("div", "bantu", "\u2605 = rasio utama untuk sektor ini (Keuangan: PBV; komoditas Energi & Barang Baku: PER + PBV; lainnya: PER). " +
-    "Kisaran wajar = rentang tengah 50% pembanding (persentil 25\u201375), hanya emiten sejenis dengan kapitalisasi \u2265 Rp5 T dan rasio positif; " +
+    "Kisaran wajar = rentang tengah 50% pembanding (persentil 25\u201375), hanya emiten sejenis dengan kapitalisasi \u2265 Rp5 T (diperluas ke \u2265 Rp1 T kalau pembanding wajar kurang dari 5). " +
+    "Pembanding dengan PER di atas 100\u00d7, PBV di atas 20\u00d7, atau data EPS yang tidak sejalan dengan laba tidak dipakai menyusun kisaran (agar tidak menarik kisaran secara ekstrem); emiten yang dinilai tetap dihitung apa adanya. " +
     "kalau seindustri kurang dari " + VAL_MIN + " emiten, dipakai subsektor lalu sektor. Kesimpulan dari posisi rasio utama: di bawah persentil 25 = MURAH, di atas 75 = MAHAL. " +
     "\"Wajar\" artinya wajar dibanding saham sejenis, bukan nilai mutlak \u2014 kalau seluruh sektor sedang mahal, yang wajar pun ikut mahal. " +
     "Data fundamental IDX per " + (DATA.funda_per ? lksTglPendek(DATA.funda_per) : "\u2013") + " (PER/PBV dengan harga penutupan saat data itu dibuat). " +
