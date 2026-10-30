@@ -653,6 +653,9 @@ td.sc-hb{background:rgba(88,166,255,.07)}th.sc-hb{background:#3a5a8c!important}.
 .pb-hs{display:block;font-size:10px;font-weight:400;color:var(--ink-3)}
 .pb-tabel .pb-em{position:sticky;left:0;z-index:1;text-align:left}.pb-tabel thead .pb-em{z-index:3}
 .pb-tabel .pb-kiri{text-align:left}
+.pb-tabel td.pb-klik{cursor:pointer}.pb-tabel td.pb-klik:hover{outline:1px dashed var(--merek);outline-offset:-3px}
+.pb-tabel td.pb-buka{outline:2px solid var(--oranye);outline-offset:-2px}
+.pb-rinci{margin-top:10px;border:2px solid var(--oranye);border-radius:10px;padding:8px 10px}
 .pb-tabel td.bd-baik{color:var(--naik);background:var(--naik-bg);font-weight:700}
 .pb-tabel tbody tr:hover td{background:var(--surface-2,var(--surface-1))}
 .pb-kode{background:none;border:0;padding:0;font:inherit;font-weight:800;color:var(--merek-tua);cursor:pointer;display:block}
@@ -7039,15 +7042,16 @@ function panelBrokerAkum(w) {
 }
 
 /* ================= PERBANDINGAN (30 Okt 2026) =================
-   Isi REKOMENDASI yang diringkas, beberapa emiten berdampingan: kolom = emiten (maks 8, pilihan user,
+   Isi REKOMENDASI yang diringkas, beberapa emiten berdampingan: emiten maks 15 (30 Okt: dari 8), pilihan user,
    tersimpan di HP - terpisah dari BANDING di CARI), baris = satu kartu/kotak REKOMENDASI jadi satu angka/label.
    Rentang tanggal & papan MEMAKAI rek.dari/rek.sampai/rek.pasar, jadi sama dengan REKOMENDASI dan ikut terbawa
    saat kode emiten diketuk. Baris berlabel (LK, valuasi, opini, aksi, buyback, sentimen, berita) dibaca dari
    kartu REKOMENDASI-nya sendiri supaya aturannya tidak dobel. */
-const PBN_MAKS = 8;
+const PBN_MAKS = 15;
 let pbnDaftar = (() => { try { const v = JSON.parse(localStorage.getItem("titenPerbandingan") || "[]");
   return Array.isArray(v) ? v.filter(x => typeof x === "string").slice(0, PBN_MAKS) : []; } catch (e) { return []; } })();
 let pbnUrut = {k: "", a: -1};
+let pbnBuka = null, pbnGeser = 0;   /* {id, em}: rincian kartu yang sedang dibuka di bawah tabel */
 function pbnSimpan() { try { localStorage.setItem("titenPerbandingan", JSON.stringify(pbnDaftar)); } catch (e) {} }
 function pbnKartu(fn, em) {   /* kartu REKOMENDASI -> {t, k, s} (teks utama, kelas warna, keterangan) */
   let k = null; try { k = fn(em); } catch (e) { k = null; }
@@ -7174,14 +7178,14 @@ function panelPerbandingan(w) {
     ]],
     ["FUNDAMENTAL", () => "", [
       {id: "lk", n: "LK", ket: "skor laporan keuangan", v: o => { const q = lkSkor(o.em); return q ? q.skor : null; }, arah: 1, lk: true},
-      {id: "val", n: "Valuasi", ket: "dibanding industrinya", kartu: rekKartuValuasi},
-      {id: "op", n: "Opini auditor", kartu: rekKartuOpini},
+      {id: "val", n: "Valuasi", ket: "dibanding industrinya", kartu: rekKartuValuasi, panel: rekPanelValuasi},
+      {id: "op", n: "Opini auditor", kartu: rekKartuOpini, panel: rekPanelOpini},
     ]],
     ["PERISTIWA", () => "", [
-      {id: "aksi", n: "Aksi korporasi", ket: "terdekat yang belum lewat", kartu: rekKartuAksi},
-      {id: "bb", n: "Buyback", kartu: rekKartuBuyback},
-      {id: "sn", n: "Sentimen", kartu: rekKartuSentimen},
-      {id: "news", n: "Berita " + REK_NEWS_HARI + " hari", kartu: rekKartuNews},
+      {id: "aksi", n: "Aksi korporasi", ket: "terdekat yang belum lewat", kartu: rekKartuAksi, panel: rekPanelAksi},
+      {id: "bb", n: "Buyback", kartu: rekKartuBuyback, panel: rekPanelBuyback},
+      {id: "sn", n: "Sentimen", kartu: rekKartuSentimen, panel: rekPanelSentimen},
+      {id: "news", n: "Berita " + REK_NEWS_HARI + " hari", kartu: rekKartuNews, panel: rekPanelNews},
     ]],
   ];
   /* 30 Okt 2026 (permintaan user): tabel DIBALIK seperti daftar Stockbit - emiten menurun ke bawah
@@ -7244,10 +7248,17 @@ function panelPerbandingan(w) {
     KOL.forEach(b => {
       const td = el("td", b.kartu || b.br || b.lk ? "pb-kiri" : "num");
       if (b.lk) { td.appendChild(lkLencana(k)); const q = lkSkor(k); if (q) td.appendChild(el("span", "pb-sub", "skor " + q.skor));
+        if (q) { td.classList.add("pb-klik"); td.title = q.kal + " Ketuk untuk melihat rinciannya di menu CARI.";
+          td.onclick = () => { if (typeof bukaCariLK === "function") bukaCariLK(k); }; }
         if (q && terbaik.lk !== undefined && q.skor === terbaik.lk) td.classList.add("bd-baik"); tr.appendChild(td); return; }
       if (b.kartu) { const c = kartuC[b.id][k];
         if (!c) td.textContent = "–";
         else { td.appendChild(el("span", "pb-lbl " + c.k, c.t)); if (c.s) { td.appendChild(el("span", "pb-sub", c.s)); td.title = c.t + " \u00b7 " + c.s; } }
+        if (c && b.panel) { const buka = pbnBuka && pbnBuka.id === b.id && pbnBuka.em === k;
+          td.classList.add("pb-klik"); if (buka) td.classList.add("pb-buka");
+          td.title = (td.title ? td.title + " \u2014 " : "") + (buka ? "ketuk untuk menutup rincian" : "ketuk untuk rincian");
+          td.onclick = () => { pbnBuka = buka ? null : {id: b.id, em: k}; ulang();
+            if (!buka) setTimeout(() => { const x = document.querySelector(".pb-rinci"); if (x) x.scrollIntoView({behavior: "smooth", block: "nearest"}); }, 60); }; }
         tr.appendChild(td); return; }
       if (o.kosong) { td.textContent = "—"; td.title = "Tidak ada data harian " + k + " di rentang ini"; tr.appendChild(td); return; }
       if (b.br) { const L = o[b.br];
@@ -7267,8 +7278,21 @@ function panelPerbandingan(w) {
     tb.appendChild(tr);
   });
   t.appendChild(tb); bung.appendChild(t); p.appendChild(bung);
+  /* posisi geser tabel dipertahankan saat halaman digambar ulang (mis. sesudah sel diketuk) */
+  bung.onscroll = () => { pbnGeser = bung.scrollLeft; };
+  requestAnimationFrame(() => { bung.scrollLeft = pbnGeser; });
+  /* rincian kartu yang diketuk (sama dengan panel di REKOMENDASI), di bawah tabel */
+  if (pbnBuka) { const b = KOL.find(x => x.id === pbnBuka.id);
+    if (b && b.panel && pbnDaftar.indexOf(pbnBuka.em) >= 0) {
+      const wr = el("div", "pb-rinci");
+      const tutup = el("button", "kecil", "\u00d7 Tutup rincian"); tutup.onclick = () => { pbnBuka = null; ulang(); };
+      wr.appendChild(tutup);
+      let pn = null; try { pn = b.panel(pbnBuka.em); } catch (e) { pn = el("div", "bantu", "Rincian gagal dibuat."); }
+      if (pn) wr.appendChild(pn); p.appendChild(wr);
+    } else pbnBuka = null; }
   lkPastikan(halScreener);
   p.appendChild(el("div", "bantu",
+    "Ketuk sel LK, Valuasi, Opini, Aksi, Buyback, Sentimen, atau Berita untuk membuka rinciannya (LK membuka menu CARI). " +
     "Satu baris = satu emiten; tiap kolom = satu kartu/kotak REKOMENDASI yang diringkas. Hijau = terbaik di kolom itu (terbesar; untuk Ke S1 = support paling dekat). " +
     "Ketuk judul kolom untuk mengurutkan (ketuk lagi untuk membalik). Ketuk kode emiten untuk membuka REKOMENDASI lengkapnya dengan rentang yang sama. " +
     "Rentang tanggal & papan dipakai bersama dengan REKOMENDASI. Ke R1 / Ke S1 = jarak ke resistance / support terdekat, dihitung dari " + REK_SUP_HARI +
@@ -9933,7 +9957,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-30-2";
+const VERSI_APP = "2026-10-30-4";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
