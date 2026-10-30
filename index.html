@@ -644,6 +644,14 @@ td.sc-hb{background:rgba(88,166,255,.07)}th.sc-hb{background:#3a5a8c!important}.
 .bd-ket{display:block;font-size:10px;font-weight:400;opacity:.65;white-space:normal;max-width:220px}
 .bd-tabel td.bd-baik{color:var(--naik);background:var(--naik-bg);font-weight:700}
 .bd-tabel td.bd-buruk{color:var(--turun)}
+.pb-tabel th{vertical-align:bottom}.pb-tabel td{vertical-align:top}
+.pb-kode{background:none;border:0;padding:0;font:inherit;font-weight:800;color:var(--merek-tua);cursor:pointer;display:block;margin-left:auto}
+.pb-nm{display:block;font-size:10px;font-weight:400;color:var(--ink-3);max-width:110px;white-space:normal;margin-left:auto}
+.pb-sub{display:block;font-size:10.5px;color:var(--ink-3);font-weight:400;white-space:normal;max-width:150px;margin-left:auto}
+.pb-lbl{font-weight:800}
+.pb-urut{cursor:pointer}.pb-urut.aktif{color:var(--merek-tua)}.pb-ur{font-size:10px;color:var(--ink-3)}.pb-urut.aktif .pb-ur{color:var(--merek-tua)}
+.pb-tabel .bd-ket{max-width:150px}
+.pb-br div{line-height:1.45}.pb-br b{font-weight:700}.pb-bk{font-weight:700}
 .lk-bd.Jelek{background:var(--turun-bg);color:var(--turun)}.lk-bd.kosong{color:var(--ink-3)}
 .lk-bd.on{outline:2px solid currentColor}
 .pt-lk{text-align:left}
@@ -3910,7 +3918,7 @@ function muatOpini() {
   opSedang = true;
   ambilGudang("opini.json").then(j => { OPINI = (j && j.emiten) || {}; OPINI_DIBUAT = (j && j.dibuat) || ""; })
     .catch(() => { opGagal = true; })
-    .finally(() => { opSedang = false; if (subScr === "rekomendasi") halScreener();
+    .finally(() => { opSedang = false; if (subScr === "rekomendasi" || subScr === "perbandingan") halScreener();
       const hd = document.querySelector("#hal-data"); if (hd && !hd.hidden && typeof halData === "function") halData(); });
 }
 function opiniEmiten(em) {
@@ -3971,7 +3979,7 @@ function muatBuyback() {
   bbSedang = true;
   ambilGudang("buyback.json").then(j => { BUYBACK = j || {data: []}; })
     .catch(() => { bbGagal = true; })
-    .finally(() => { bbSedang = false; if (subScr === "rekomendasi") halScreener(); });
+    .finally(() => { bbSedang = false; if (subScr === "rekomendasi" || subScr === "perbandingan") halScreener(); });
 }
 const BB_JENIS = {rencana: "rencana / keterbukaan", laporan: "laporan pelaksanaan", selesai: "pengakhiran",
   pengalihan: "pengalihan saham hasil buyback", iklan: "bukti iklan", pers: "siaran pers"};
@@ -7020,12 +7028,224 @@ function panelBrokerAkum(w) {
   w.appendChild(hs);
 }
 
+/* ================= PERBANDINGAN (30 Okt 2026) =================
+   Isi REKOMENDASI yang diringkas, beberapa emiten berdampingan: kolom = emiten (maks 8, pilihan user,
+   tersimpan di HP - terpisah dari BANDING di CARI), baris = satu kartu/kotak REKOMENDASI jadi satu angka/label.
+   Rentang tanggal & papan MEMAKAI rek.dari/rek.sampai/rek.pasar, jadi sama dengan REKOMENDASI dan ikut terbawa
+   saat kode emiten diketuk. Baris berlabel (LK, valuasi, opini, aksi, buyback, sentimen, berita) dibaca dari
+   kartu REKOMENDASI-nya sendiri supaya aturannya tidak dobel. */
+const PBN_MAKS = 8;
+let pbnDaftar = (() => { try { const v = JSON.parse(localStorage.getItem("titenPerbandingan") || "[]");
+  return Array.isArray(v) ? v.filter(x => typeof x === "string").slice(0, PBN_MAKS) : []; } catch (e) { return []; } })();
+let pbnUrut = "";
+function pbnSimpan() { try { localStorage.setItem("titenPerbandingan", JSON.stringify(pbnDaftar)); } catch (e) {} }
+function pbnKartu(fn, em) {   /* kartu REKOMENDASI -> {t, k, s} (teks utama, kelas warna, keterangan) */
+  let k = null; try { k = fn(em); } catch (e) { k = null; }
+  if (!k) return null;
+  const n = k.querySelector(".rek-kn"), s = k.querySelector(".rek-kk");
+  return {t: n ? n.textContent : "–", k: n ? n.className.replace(/\brek-kn\b/, "").trim() : "", s: s ? s.textContent : ""};
+}
+function pbnHitung(em) {
+  const o = {em};
+  const hr = rekHarga(em, rek.dari, rek.sampai);
+  if (!hr.length) { o.kosong = true; return o; }
+  const akhir = hr[hr.length - 1]; o.c = akhir.c; o.tgl = akhir.tgl;
+  const volTot = hr.reduce((a, x) => a + x.v, 0), nfTot = hr.reduce((a, x) => a + x.nf, 0);
+  o.pct = hr[0].p && akhir.c ? (akhir.c / hr[0].p - 1) * 100 : null;
+  o.nf = volTot ? nfTot / volTot * 100 : null;
+  o.vol = volTot / hr.length / LOT;
+  /* akumulasi volume: sama dengan baris TOTAL tabel REKOMENDASI (arah = tutup vs tutup sebelumnya) */
+  let vN = 0, vT = 0, vD = 0;
+  hr.forEach((x, i) => { const ref = x.p > 0 ? x.p : (i ? hr[i - 1].c : null), ah = x.c && ref ? Math.sign(x.c - ref) : 0;
+    if (ah > 0) vN += x.v || 0; else if (ah < 0) vT += x.v || 0; else vD += x.v || 0; });
+  o.akum = vN + vT + vD ? (vN - vT) / (vN + vT + vD) * 100 : null;
+  /* VMA5/VMA20 pada tanggal terakhir - rata-rata hari SEBELUM tanggal itu, sama dengan tabel REKOMENDASI */
+  { const L = daftarHari.filter(r => r.tgl && r.tgl <= akhir.tgl && r.baris && r.baris[em] && r.baris[em].v > 0)
+      .map(r => [r.tgl, r.baris[em].v]).sort((a, b) => a[0] < b[0] ? -1 : 1);
+    const u = []; L.forEach(x => { if (!u.length || u[u.length - 1][0] !== x[0]) u.push(x); });
+    const i = u.length - 1, rata = n => { if (i < n) return null; let j = 0; for (let k = i - n; k < i; k++) j += u[k][1]; return j / n; };
+    const v5 = rata(5), v20 = rata(20); o.vma = v5 && v20 ? v5 / v20 : null; }
+  const res = rekResist(em, rek.sampai), sup = rekSupport(em, rek.sampai);
+  if (akhir.c && res.length) { o.res = res[0]; o.resP = (res[0] / akhir.c - 1) * 100; }
+  if (akhir.c && sup.length) { o.sup = sup[0]; o.supP = (sup[0] / akhir.c - 1) * 100; }
+  const agg = kumpulkan(em, rek.pasar, rek.dari, rek.sampai);
+  let gross = 0, pindah = 0;
+  Object.keys(agg).forEach(k => { gross += agg[k].beli; const d = agg[k].beli - agg[k].jual; if (d > 0) pindah += d; });
+  o.nett = gross ? pindah / gross * 100 : null;
+  const brk = rekBroker(em, rek.dari, rek.sampai), kb = Object.keys(brk.total);
+  o.beli = kb.filter(k => brk.total[k] > 0).sort((a, b) => brk.total[b] - brk.total[a]).slice(0, 3).map(k => [k, brk.total[k]]);
+  o.jual = kb.filter(k => brk.total[k] < 0).sort((a, b) => brk.total[a] - brk.total[b]).slice(0, 3).map(k => [k, brk.total[k]]);
+  o.adaBroker = kb.length > 0;
+  return o;
+}
+function panelPerbandingan(w) {
+  const p = el("div", "panel");
+  p.appendChild(el("h2", null, "Perbandingan"));
+  const semuaTgl = rekTanggal(), daftarEm = kfDaftarEmiten();
+  if (!semuaTgl.length || !daftarEm.length) {
+    p.appendChild(el("div", "bantu", "Belum ada data harian. Unduh dulu datanya lewat menu PERBARUI."));
+    w.appendChild(p); return;
+  }
+  if (!rek.sampai || semuaTgl.indexOf(rek.sampai) < 0) rek.sampai = semuaTgl[semuaTgl.length - 1];
+  if (!rek.dari || semuaTgl.indexOf(rek.dari) < 0) rek.dari = semuaTgl[Math.max(0, semuaTgl.indexOf(rek.sampai) - REK_HARI_BAWAAN)];
+  if (rek.dari > rek.sampai) { const x = rek.dari; rek.dari = rek.sampai; rek.sampai = x; }
+  const ada = new Set(daftarEm);
+  pbnDaftar = pbnDaftar.filter(k => ada.has(k));
+  const nama = k => (DATA.nama && DATA.nama[k]) || (barisScr[k] && barisScr[k][1]) || "";
+  const ulang = () => halScreener();
+  muatDividen(); muatProfilRinci(); muatAksi(); muatOpini(); muatBuyback();
+
+  /* ---- alat: tambah emiten, papan, rentang ---- */
+  const alat = el("div", "alat");
+  const inp = el("input", "cari");
+  inp.placeholder = pbnDaftar.length >= PBN_MAKS ? "Maksimal " + PBN_MAKS + " emiten" : "Ketik kode/nama emiten untuk ditambahkan";
+  inp.setAttribute("autocapitalize", "characters");
+  inp.disabled = pbnDaftar.length >= PBN_MAKS;
+  const saran = el("div");
+  const tambah = v => { v = String(v || "").trim().toUpperCase();
+    if (!v || !ada.has(v) || pbnDaftar.indexOf(v) >= 0 || pbnDaftar.length >= PBN_MAKS) return false;
+    pbnDaftar.push(v); pbnSimpan(); ulang(); return true; };
+  inp.oninput = () => { saran.innerHTML = ""; const q = inp.value.trim().toUpperCase(); if (!q) return;
+    daftarEm.filter(k => pbnDaftar.indexOf(k) < 0 && (k.indexOf(q) === 0 || nama(k).toUpperCase().indexOf(q) >= 0)).slice(0, 8).forEach(k => {
+      const t = el("button", "tambah", k + " — " + nama(k));
+      t.style.display = "block"; t.style.width = "100%"; t.style.textAlign = "left";
+      t.onclick = () => tambah(k); saran.appendChild(t); }); };
+  inp.onkeydown = e => { if (e.key === "Enter" && !tambah(inp.value)) inp.select(); };
+  alat.appendChild(inp);
+  const bPasar = el("label", "bantu", "Papan: "), selPasar = el("select");
+  REK_PASAR.forEach(v => { const o = el("option", null, v); o.value = v; if (v === rek.pasar) o.selected = true; selPasar.appendChild(o); });
+  selPasar.onchange = () => { rek.pasar = selPasar.value; ulang(); };
+  bPasar.appendChild(selPasar); alat.appendChild(bPasar);
+  [["dari", "Dari"], ["sampai", "Sampai"]].forEach(([kunci, label]) => {
+    const b = el("label", "bantu", label + ": ");
+    b.appendChild(kotakTanggal(rek[kunci], semuaTgl, t => { rek[kunci] = t; ulang(); }));
+    alat.appendChild(b);
+  });
+  p.appendChild(alat); p.appendChild(saran);
+
+  const chip = el("div", "alat");
+  pbnDaftar.forEach(k => { const b = el("button", "aktif", k + " ×"); b.style.padding = "5px 10px"; b.style.fontSize = "12px";
+    b.onclick = () => { pbnDaftar = pbnDaftar.filter(x => x !== k); pbnSimpan(); ulang(); }; chip.appendChild(b); });
+  if (pbnDaftar.length > 1) { const b = el("button", null, "Kosongkan"); b.style.padding = "5px 10px"; b.style.fontSize = "12px";
+    b.onclick = () => { pbnDaftar = []; pbnSimpan(); ulang(); }; chip.appendChild(b); }
+  { const wl = [...FAVORIT].filter(k => ada.has(k) && pbnDaftar.indexOf(k) < 0);
+    if (wl.length && pbnDaftar.length < PBN_MAKS) { const b = el("button", null, "+ isi dari WATCHLIST"); b.style.padding = "5px 10px"; b.style.fontSize = "12px";
+      b.title = "Menambahkan emiten watchlist sampai kolom penuh (" + PBN_MAKS + ")";
+      b.onclick = () => { pbnDaftar = pbnDaftar.concat(wl).slice(0, PBN_MAKS); pbnSimpan(); ulang(); }; chip.appendChild(b); } }
+  p.appendChild(chip);
+  if (!pbnDaftar.length) {
+    p.appendChild(el("div", "bantu", "Belum ada emiten yang dibandingkan. Ketik kode di kotak atas (mis. BBCA lalu BBRI, sampai " + PBN_MAKS +
+      " emiten) atau ketuk “+ isi dari WATCHLIST”. Daftar ini tersimpan di HP sampai dihapus."));
+    w.appendChild(p); return;
+  }
+
+  const H = {}; pbnDaftar.forEach(k => { H[k] = pbnHitung(k); });
+  const kartu = (fn, k) => pbnKartu(fn, k);
+  const lot = v => (v > 0 ? "+" : "−") + lotSingkat(Math.round(Math.abs(v)));
+  const pct = (v, n) => v === null || v === undefined ? null : rekPersen(v, n === undefined ? 1 : n);
+  /* arah: 1 terbesar terbaik, -1 terkecil terbaik; null = tidak dilombakan */
+  const BARIS = [
+    ["HARGA", () => tglID(rek.dari) + " – " + tglID(rek.sampai), [
+      {id: "c", n: "Harga terbaru", ket: "penutupan terakhir di rentang", v: o => o.c, isi: o => o.c ? [rp(o.c), tglID(o.tgl)] : null},
+      {id: "pct", n: "Tot. %harga", ket: "sebelum rentang → akhir", v: o => o.pct, arah: 1, warna: true, isi: o => o.pct === null ? null : [pct(o.pct)]},
+      {id: "res", n: "Ke resistance", ket: "jarak ke level atas terdekat (R1)", v: o => o.resP, arah: 1, isi: o => o.res ? [pct(o.resP), rp(o.res)] : null},
+      {id: "sup", n: "Ke support", ket: "jarak ke level bawah terdekat (S1)", v: o => o.supP, arah: 1, isi: o => o.sup ? [pct(o.supP), rp(o.sup)] : null},
+    ]],
+    ["ASING & BROKER", () => rek.pasar, [
+      {id: "nf", n: "%NF", ket: "net asing ÷ volume", v: o => o.nf, arah: 1, warna: true, isi: o => o.nf === null ? null : [pct(o.nf)]},
+      {id: "nett", n: "%NETT", ket: "net ÷ gross · lot yang benar-benar pindah", v: o => o.nett, arah: 1, isi: o => o.nett === null ? null : [nf(o.nett, 1) + "%"]},
+      {id: "beli", n: "3 broker net beli terbesar", ket: "net lot sepanjang rentang", br: "beli"},
+      {id: "jual", n: "3 broker net jual terbesar", ket: "net lot sepanjang rentang", br: "jual"},
+      {id: "akum", n: "Akumulasi volume", ket: "(vol hari naik − hari turun) ÷ total", v: o => o.akum, arah: 1, warna: true, isi: o => o.akum === null ? null : [pct(o.akum, 0)]},
+    ]],
+    ["VOLUME", () => "", [
+      {id: "vol", n: "Vol. rata-rata", ket: "lot per hari di rentang", v: o => o.vol, arah: 1, isi: o => o.vol ? [lotSingkat(Math.round(o.vol)) + " lot"] : null},
+      {id: "vma", n: "VMA5 / VMA20", ket: "> 1 = volume 5 hari di atas biasanya", v: o => o.vma, arah: 1, isi: o => o.vma ? [nf(o.vma, 2) + "×"] : null},
+    ]],
+    ["FUNDAMENTAL", () => "", [
+      {id: "lk", n: "LK", ket: "skor laporan keuangan", v: o => { const q = lkSkor(o.em); return q ? q.skor : null; }, arah: 1, lk: true},
+      {id: "val", n: "Valuasi", ket: "dibanding industrinya", kartu: rekKartuValuasi},
+      {id: "op", n: "Opini auditor", kartu: rekKartuOpini},
+    ]],
+    ["PERISTIWA", () => "", [
+      {id: "aksi", n: "Aksi korporasi", ket: "terdekat yang belum lewat", kartu: rekKartuAksi},
+      {id: "bb", n: "Buyback", kartu: rekKartuBuyback},
+      {id: "sn", n: "Sentimen", kartu: rekKartuSentimen},
+      {id: "news", n: "Berita " + REK_NEWS_HARI + " hari", kartu: rekKartuNews},
+    ]],
+  ];
+  /* urutan kolom: manual, atau menurut baris yang diketuk (terbaik dulu, kosong di belakang) */
+  let kolom = pbnDaftar.slice();
+  const bUrut = pbnUrut && BARIS.map(g => g[2]).flat().find(b => b.id === pbnUrut);
+  if (bUrut) kolom.sort((a, b) => { const x = H[a].kosong ? null : bUrut.v(H[a]), y = H[b].kosong ? null : bUrut.v(H[b]);
+    if (x === null || x === undefined) return 1; if (y === null || y === undefined) return -1; return (y - x) * bUrut.arah; });
+  else if (pbnUrut) pbnUrut = "";
+
+  const bung = el("div", "bd-bungkus pb-bungkus"), t = el("table", "bd-tabel pb-tabel");
+  const th = el("thead"), trh = el("tr");
+  trh.appendChild(el("th", null, "Pos"));
+  kolom.forEach(k => { const h = el("th");
+    const a = el("button", "pb-kode", k); a.title = "Buka REKOMENDASI " + k + " (rentang ini)";
+    a.onclick = () => rekBukaDari(k, rek.dari, rek.sampai);
+    h.appendChild(a); h.appendChild(el("span", "pb-nm", nama(k))); trh.appendChild(h); });
+  th.appendChild(trh); t.appendChild(th);
+  const tb = el("tbody");
+  BARIS.forEach(([judul, sub, baris]) => {
+    const tg = el("tr", "bd-grup"), tdg = el("td", null, judul + (sub() ? " · " + sub() : ""));
+    tdg.colSpan = kolom.length + 1; tg.appendChild(tdg); tb.appendChild(tg);
+    baris.forEach(b => {
+      const tr = el("tr"), td0 = el("td", b.arah ? "pb-urut" + (pbnUrut === b.id ? " aktif" : "") : null, b.n);
+      if (b.arah) td0.appendChild(el("span", "pb-ur", pbnUrut === b.id ? " \u25bc" : " \u21c5"));
+      if (b.ket) td0.appendChild(el("span", "bd-ket", b.ket));
+      if (b.arah) { td0.title = pbnUrut === b.id ? "Ketuk lagi untuk kembali ke urutan semula" : "Urutkan emiten menurut baris ini (terbaik dulu)";
+        td0.onclick = () => { pbnUrut = pbnUrut === b.id ? "" : b.id; ulang(); }; }
+      tr.appendChild(td0);
+      let terbaik = null;
+      if (b.arah) { const xs = kolom.map(k => H[k].kosong ? null : b.v(H[k])).filter(v => v !== null && v !== undefined && isFinite(v));
+        if (xs.length >= 2 && Math.max(...xs) !== Math.min(...xs)) terbaik = b.arah > 0 ? Math.max(...xs) : Math.min(...xs); }
+      kolom.forEach(k => {
+        const o = H[k], td = el("td");
+        if (b.lk) { td.appendChild(lkLencana(k)); const q = lkSkor(k); if (q) td.appendChild(el("span", "pb-sub", "skor " + q.skor));
+          if (q && terbaik !== null && q.skor === terbaik) td.className = "bd-baik"; tr.appendChild(td); return; }
+        if (b.kartu) { const c = pbnKartu(b.kartu, k);
+          if (!c) { td.textContent = "–"; tr.appendChild(td); return; }
+          td.appendChild(el("span", "pb-lbl " + c.k, c.t)); if (c.s) td.appendChild(el("span", "pb-sub", c.s)); tr.appendChild(td); return; }
+        if (o.kosong) { td.textContent = "—"; td.title = "Tidak ada data harian " + k + " di rentang ini"; tr.appendChild(td); return; }
+        if (b.br) { const L = o[b.br];
+          if (!L.length) { td.textContent = o.adaBroker ? "–" : "—"; if (!o.adaBroker) td.title = "Tidak ada data broker " + k + " di rentang & papan ini"; tr.appendChild(td); return; }
+          td.className = "pb-br";
+          L.forEach(([br, v]) => { const d = el("div"); const s = el("span", "pb-bk", br); s.title = namaBroker(br); d.appendChild(s);
+            d.appendChild(el("b", b.br === "beli" ? "naik" : "turun", " " + lot(v))); td.appendChild(d); });
+          tr.appendChild(td); return; }
+        const isi = b.isi(o);
+        if (!isi) { td.textContent = "—"; tr.appendChild(td); return; }
+        const v = b.v(o);
+        const span = el("span", b.warna && v !== null ? arah(v).k : null, isi[0]); td.appendChild(span);
+        if (isi[1]) td.appendChild(el("span", "pb-sub", isi[1]));
+        if (terbaik !== null && v === terbaik) td.className = "bd-baik";
+        tr.appendChild(td);
+      });
+      tb.appendChild(tr);
+    });
+  });
+  t.appendChild(tb); bung.appendChild(t); p.appendChild(bung);
+  lkPastikan(halScreener);
+  p.appendChild(el("div", "bantu",
+    "Tiap baris = satu kartu/kotak REKOMENDASI yang diringkas. Hijau = terbaik di baris itu (terbesar; untuk Ke support = paling dekat). " +
+    "Ketuk nama baris bertanda untuk mengurutkan emiten menurut baris itu, ketuk lagi untuk kembali ke urutan semula. " +
+    "Ketuk kode emiten untuk membuka REKOMENDASI lengkapnya dengan rentang yang sama. Rentang tanggal & papan dipakai bersama dengan REKOMENDASI. " +
+    "Support/resistance dihitung dari " + REK_SUP_HARI + " hari bursa terakhir s/d tanggal Sampai (tidak mengikuti Dari). " +
+    "Akumulasi volume = volume hari harga naik dikurangi hari harga turun, dibagi total volume — bukan volume beli lawan jual; baca bersama %NF dan broker. " +
+    "“—” = data tidak ada (mis. emiten tanpa data broker di TITEN). Bukan rekomendasi investasi."));
+  w.appendChild(p);
+}
+
 function halScreener() {
   const w = $("#hal-screener"); w.innerHTML = "";
 
   const tab = el("div", "sub-tab lima");
   [["saringan", "KRITERIA SARINGAN"], ["favorit", "ANALISA FAVORIT"],
-   ["rekomendasi", "REKOMENDASI"], ["forakum", "FOREIGN AKUM"],
+   ["rekomendasi", "REKOMENDASI"], ["perbandingan", "PERBANDINGAN"], ["forakum", "FOREIGN AKUM"],
    ["brkakum", "BROKER AKUM"], ["hargavol", "HARGA & VOL"], ["potensi", "POTENSI 3 HARI"], ["radar", "RADAR BREAKOUT"], ["scalping", "SCALPING"]]
     .forEach(([k, judul]) => {
       const b = el("button", subScr === k ? "aktif" : null, judul);
@@ -7035,6 +7255,7 @@ function halScreener() {
   w.appendChild(tab);
   if (subScr === "favorit") { panelFavorit(w); return; }
   if (subScr === "rekomendasi") { panelRekomendasi(w); return; }
+  if (subScr === "perbandingan") { panelPerbandingan(w); return; }
   if (subScr === "forakum") { panelForeignAkum(w); return; }
   if (subScr === "brkakum") { panelBrokerAkum(w); return; }
   if (subScr === "hargavol") { panelHargaVol(w); return; }
@@ -9675,7 +9896,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-27-4";
+const VERSI_APP = "2026-10-30-1";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -14437,7 +14658,7 @@ function muatProfilRinci() {
   ambilGudang("profil_rinci.json").then(j => { PROFIL_RINCI = j || {data: {}}; })
     .catch(() => { prGagal = true; })
     .finally(() => { prSedang = false; if (cariSub === "profil" || cariSub === "dividen" || cariSub === "aksi") halCari();
-      if (subScr === "rekomendasi" && !$("#hal-screener").hidden) halScreener(); });
+      if ((subScr === "rekomendasi" || subScr === "perbandingan") && !$("#hal-screener").hidden) halScreener(); });
 }
 /* 21 Okt 2026: data IPO dari e-IPO (ipo_eipo.py -> data/ipo.json), sejak 2021 */
 let IPO_DATA = null, ipoSedang = false, ipoGagal = false, pjeUrut = {k: "", a: 1};
@@ -16026,7 +16247,7 @@ function muatDividen() {
   ambilGudang("dividen.json").then(j => { DIVIDEN = j || {jadwal: []}; })
     .catch(() => { dvGagal = true; })
     .finally(() => { dvSedang = false; if (cariSub === "dividen" || cariSub === "aksi") halCari();
-      if (subScr === "rekomendasi" && !$("#hal-screener").hidden) halScreener();
+      if ((subScr === "rekomendasi" || subScr === "perbandingan") && !$("#hal-screener").hidden) halScreener();
       const hd = document.querySelector("#hal-data"); if (hd && !hd.hidden && typeof halData === "function") halData(); });
 }
 /* 20 Okt 2026: jadwal dividen = PDF pengumuman (dividen.json) DIGABUNG tabel dividen profil IDX
@@ -16286,7 +16507,7 @@ function muatAksi() {
   ambilGudang("aksi.json").then(j => { AKSI = j || {data: []}; })
     .catch(() => { aksiGagal = true; })
     .finally(() => { aksiSedang = false; if (cariSub === "aksi") halCari();
-      if (subScr === "rekomendasi" && !$("#hal-screener").hidden) halScreener(); });
+      if ((subScr === "rekomendasi" || subScr === "perbandingan") && !$("#hal-screener").hidden) halScreener(); });
 }
 const AK_G = {right: "right", pmthmetd: "lain", split: "split", reverse: "reverse", bonus: "lain"};
 function akRasio(r) { return r && r.length === 2 ? r.map(x => nf(x, Math.abs(x - Math.round(x)) < 1e-6 ? 0 : 2)).join(" : ") : ""; }
