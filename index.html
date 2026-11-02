@@ -4090,9 +4090,23 @@ const SN_MSCI_KELUAR = {GOTO: "dikeluarkan dari MSCI Global Standard", CPIN: "tu
   ARTO: "dikeluarkan dari MSCI Small Cap", BUKA: "dikeluarkan dari MSCI Small Cap", ESSA: "dikeluarkan dari MSCI Small Cap",
   FILM: "dikeluarkan dari MSCI Small Cap", HEAL: "dikeluarkan dari MSCI Small Cap", KPIG: "dikeluarkan dari MSCI Small Cap",
   RATU: "dikeluarkan dari MSCI Small Cap", SMGR: "dikeluarkan dari MSCI Small Cap", TCPI: "dikeluarkan dari MSCI Small Cap"};
+/* 2 Nov 2026: saham HSC (High Shareholding Concentration) - BEI mengeluarkan 81 saham ini dari perhitungan IHSG mulai
+   2 Nov 2026 (pengumuman 26 Okt 2026, evaluasi tiap 3 bulan; periode ini s/d 29 Jan 2027). Daftar ditulis MANUAL dari
+   pengumuman BEI - perbarui tiap evaluasi. BEDA dengan FCA: perdagangan tetap normal, hanya dikeluarkan dari indeks. */
+const SN_HSC_TGL = "2 Nov 2026", SN_HSC_EVAL = "29 Jan 2027";
+const SN_HSC = new Set(("AGII BREN DSSA IFSH RLCO ROCK SOTS WBSA TCPI MGRO SATU DGWG HATM STTP BTPN BBSI SILO FAPA RISE SOHO BBHI " +
+  "PGUN BINA BNLI SRAJ MORA DNET BYAN DCII MLPT GEMS MEGA BELI MPRO PRAY CMNP SMAR CMNT MKPI KONI YUPI FITT ALII KING ELPI POLU " +
+  "LIFE MCOL BNII AGAR ALKA BKDP BAJA MDIA BDKR SAFE NICK MSJA BIKE INDO BSWD SSMS SMMT BMAS TBIG CITA PSAB BALI MAYA CLAY ADES " +
+  "TMAS BBMD INPP SAME DMND MTEL EPMT SHIP DUTI TFCO").split(" "));
 function snDaftar(em) {
   const L = [];
-  if (SN_OJK[em]) L.push({k: "op-merah", j: "Sanksi OJK · 16 Okt 2026", t: SN_OJK[em], p: 3});
+  if (SN_OJK[em]) L.push({k: "op-merah", j: "Sanksi OJK \u00b7 16 Okt 2026", t: SN_OJK[em], p: 3});
+  if (SN_HSC.has(em)) L.push({k: "op-merah", j: "HSC \u00b7 keluar dari IHSG sejak " + SN_HSC_TGL,
+    t: "BEI menggolongkan " + em + " sebagai saham berkonsentrasi kepemilikan tinggi (High Shareholding Concentration): sahamnya " +
+       "dipegang segelintir pihak sehingga free float-nya semu dan harganya mudah digerakkan. Akibatnya dikeluarkan dari perhitungan " +
+       "IHSG (juga tidak bisa masuk LQ45, IDX30, IDX80) \u2014 dana yang mengikuti indeks tidak lagi wajib memegangnya. " +
+       "Perdagangan TETAP normal (bukan FCA, bukan delisting). Evaluasi BEI tiap 3 bulan, periode ini s/d " + SN_HSC_EVAL +
+       "; bisa pulih kalau struktur kepemilikan diperbaiki (mis. refloat).", p: 3});
   const ff = barisScr[em] ? ambilM(barisScr[em], "Free float (%)") : null;
   if (ff !== null && ff !== undefined && ff > 0 && ff < 0.15)
     L.push({k: "op-merah", j: "Free float " + (ff * 100).toFixed(2).replace(".", ",") + "% — di bawah batas minimum 15%",
@@ -4129,11 +4143,12 @@ function rekPanelSentimen(em) {
   const L = snDaftar(em);
   const p = el("div", "rek-ng rek-op");
   p.appendChild(el("h2", null, "Sentimen — " + em));
-  if (!L.length) p.appendChild(el("div", "bantu", "Tidak ada catatan sanksi OJK, keanggotaan MSCI, atau free float di bawah 15% untuk " + em + "."));
+  if (!L.length) p.appendChild(el("div", "bantu", "Tidak ada catatan sanksi OJK, saham HSC, keanggotaan MSCI, atau free float di bawah 15% untuk " + em + "."));
   L.forEach(x => { const d = el("div", "sn-it " + (x.k || "")); d.appendChild(el("b", x.k || null, x.j)); d.appendChild(el("div", null, x.t)); p.appendChild(d); });
   p.appendChild(el("div", "bantu", "Jadwal berikutnya: review MSCI diumumkan 11 Nov 2026 (berlaku 1 Des 2026); pembaruan FTSE Russell menjelang review Desember 2026 " +
-    "(status sekarang tetap Secondary Emerging, tidak di Watch List). Sumber: siaran pers OJK SP 193 (16 Okt 2026), MSCI (15 Okt 2026), review MSCI Agustus 2026. " +
-    "Daftar sanksi & MSCI ditulis manual — minta Claude memperbarui kalau ada kabar baru."));
+    "(status sekarang tetap Secondary Emerging, tidak di Watch List). Evaluasi saham HSC berikutnya oleh BEI: " + SN_HSC_EVAL + ". " +
+    "Sumber: siaran pers OJK SP 193 (16 Okt 2026), MSCI (15 Okt 2026), review MSCI Agustus 2026, pengumuman BEI saham HSC (26 Okt 2026). " +
+    "Daftar sanksi, HSC & MSCI ditulis manual — minta Claude memperbarui kalau ada kabar baru."));
   return p;
 }
 
@@ -9957,7 +9972,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-10-30-4";
+const VERSI_APP = "2026-11-02-1";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
