@@ -907,6 +907,10 @@ tbody tr:hover{background:var(--oranye-muda)}
   .jv-panel{bottom:80px}
 }
 .ts1-dua{display:grid;grid-template-columns:1fr 1fr;gap:10px}@media(max-width:700px){.ts1-dua{grid-template-columns:1fr}}.ts1-judul{font-weight:700;margin:4px 0}.ts1-tb{max-height:60vh}
+/* IHSG (13 Nov 2026) */
+.ih-atas{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:8px}.ih-besar{font-size:28px;font-weight:800;font-variant-numeric:tabular-nums}.ih-ubah{font-size:15px;font-weight:700}.ih-kotak{display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:7px}.ih-k{background:var(--surface-2);border-radius:8px;padding:7px 9px}.ih-k span{display:block;font-size:10.5px;color:var(--ink-3)}.ih-k b{font-size:14px;font-variant-numeric:tabular-nums}.ih-alat{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px}.ih-alat button{background:var(--surface-2);color:var(--ink-2);border:1px solid var(--garis);border-radius:6px;padding:4px 10px;font:700 11px inherit;font-family:inherit;cursor:pointer}.ih-alat button.aktif{background:var(--merek);color:#fff;border-color:var(--merek)}.ih-alat label{margin:0 0 0 6px}.ih-info{font-size:12px;color:var(--ink-2);margin:2px 0 4px;font-variant-numeric:tabular-nums;line-height:1.5}svg.ih-grafik{width:100%;height:auto;display:block;cursor:crosshair}.ih-sub{font-size:11px;font-weight:700;color:var(--ink-2);letter-spacing:.4px;margin:10px 0 4px;text-transform:uppercase}table.ih-tbl td,table.ih-tbl th{white-space:nowrap}
+/* 9 tombol menu: di HP boleh digeser mendatar, tidak terpotong */
+@media (max-width:899px){nav{overflow-x:auto;scrollbar-width:none}nav::-webkit-scrollbar{display:none}nav button{flex:1 0 auto;min-width:46px;padding-left:4px;padding-right:4px}}
 </style>
 </head>
 <body>
@@ -921,6 +925,7 @@ tbody tr:hover{background:var(--oranye-muda)}
 </header>
 
 <main>
+  <section id="hal-ihsg" hidden></section>
   <section id="hal-watchlist"></section>
   <section id="hal-screener" hidden></section>
   <section id="hal-volume" hidden></section>
@@ -937,6 +942,9 @@ tbody tr:hover{background:var(--oranye-muda)}
 </main>
 
 <nav>
+  <button data-hal="ihsg">
+    <svg viewBox="0 0 24 24"><path d="M3 18l5-5 4 3 8-9"/><path d="M15 7h5v5"/></svg>
+    IHSG</button>
   <button data-hal="watchlist" class="aktif">
     <svg viewBox="0 0 24 24"><path d="M3 17l5-6 4 4 5-8 4 5"/><path d="M3 21h18"/></svg>
     WATCHLIST</button>
@@ -9937,13 +9945,368 @@ function halVolume() {
   w.appendChild(panelVolPilihan(volPieJual, "Pie net jual", "pieJual", urutTgl));
 }
 
+/* ================= IHSG (13 Nov 2026) =================
+   Menu IHSG paling atas. Sumber data/indeks.json dari unduh_indeks.py (IDX
+   GetIndexSummary): 46 indeks, sejak 2 Jan 2025, bentuk kolom per indeks dengan
+   daftar tanggal bersama. IDX TIDAK memberi harga pembukaan indeks, jadi candle
+   memakai penutupan hari sebelumnya sebagai "open" (indeks hampir selalu dibuka
+   sangat dekat penutupan kemarin); High/Low/Close asli.
+   Net asing dan Naik/Turun/Tetap seluruh pasar dihitung dari harga harian yang
+   sudah ada di HP (daftarHari), jadi hanya ada untuk tanggal yang tersimpan. */
+let IDXDATA = null, ihGagal = false, ihMemuat = false, ihWaktu = 0;
+let ihSub = "harian", ihKode = "COMPOSITE", ihPer = 63, ihInfo = -1;
+let ihUrut = {k: "tgl", a: -1}, ihUrutS = {k: "d1", a: -1};
+let ihPasarCache = null, ihPasarKunci = "";
+const IH_NAMA = {
+  COMPOSITE: "IHSG", LQ45: "LQ45", IDX30: "IDX30", IDX80: "IDX80",
+  IDXENERGY: "Energi", IDXBASIC: "Barang Baku", IDXINDUST: "Perindustrian", IDXNONCYC: "Konsumen Primer",
+  IDXCYCLIC: "Konsumen Non-Primer", IDXHEALTH: "Kesehatan", IDXFINANCE: "Keuangan", IDXPROPERT: "Properti & Real Estat",
+  IDXTECHNO: "Teknologi", IDXINFRA: "Infrastruktur", IDXTRANS: "Transportasi & Logistik"
+};
+const IH_UTAMA = ["COMPOSITE", "LQ45", "IDX30", "IDX80", "KOMPAS100"];
+const IH_SEKTOR = ["IDXENERGY", "IDXBASIC", "IDXINDUST", "IDXNONCYC", "IDXCYCLIC", "IDXHEALTH",
+  "IDXFINANCE", "IDXPROPERT", "IDXTECHNO", "IDXINFRA", "IDXTRANS"];
+const IH_PERIODE = [["1B", 21], ["3B", 63], ["6B", 126], ["1T", 250], ["SEMUA", 0]];
+const ihNama = k => k === "COMPOSITE" ? "IHSG" : (IH_NAMA[k] && IH_NAMA[k] !== k ? k + " · " + IH_NAMA[k] : k);
+const ihBln = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+const ihTgl = t => t ? (+t.slice(8, 10)) + " " + ihBln[+t.slice(5, 7) - 1] + " " + t.slice(0, 4) : "–";
+const ihAng = (v, k) => (v === null || v === undefined || isNaN(v)) ? "–"
+  : v.toLocaleString("id-ID", {minimumFractionDigits: k || 0, maximumFractionDigits: k || 0});
+const ihPct = v => (v === null || v === undefined || isNaN(v)) ? "–" : (v > 0 ? "+" : v < 0 ? "−" : "") + ihAng(Math.abs(v), 2) + "%";
+const ihWarna = v => v > 0 ? "var(--naik)" : v < 0 ? "var(--turun)" : "";
+
+function muatIndeks(paksa) {
+  if (ihMemuat) return;
+  if (IDXDATA && !paksa && Date.now() - ihWaktu < 5 * 60 * 1000) return;
+  ihMemuat = true;
+  ambilGudang("indeks.json").then(j => {
+    IDXDATA = (j && j.tanggal && j.seri) ? j : null; ihGagal = !IDXDATA; ihWaktu = Date.now();
+  }).catch(() => { ihGagal = !IDXDATA; }).then(() => {
+    ihMemuat = false;
+    if (!$("#hal-ihsg").hidden) halIhsg();
+  });
+}
+
+/* baris harian satu indeks: [{tgl, o, h, l, c, p, ubah, v, n, f, m, e}] - hanya hari yang punya close */
+function ihBaris(kode) {
+  const s = IDXDATA && IDXDATA.seri[kode];
+  if (!s) return [];
+  const T = IDXDATA.tanggal, out = [];
+  for (let i = 0; i < T.length; i++) {
+    const c = s.c[i];
+    if (c === null || c === undefined) continue;
+    const p = s.p[i];
+    out.push({tgl: T[i], o: p, h: s.h[i], l: s.l[i], c: c, p: p,
+      ubah: p > 0 ? (c / p - 1) * 100 : null,
+      v: s.v ? s.v[i] : null, n: s.n ? s.n[i] : null, f: s.f ? s.f[i] : null,
+      m: s.m ? s.m[i] : null, e: s.e ? s.e[i] : null});
+  }
+  return out;
+}
+
+/* net asing (Rp, reguler) dan naik/turun/tetap seluruh pasar per tanggal, dari daftarHari */
+function ihPasar() {
+  const kunci = daftarHari.length + "|" + (daftarHari[0] ? daftarHari[0].tgl : "");
+  if (ihPasarCache && ihPasarKunci === kunci) return ihPasarCache;
+  const hasil = {};
+  daftarHari.forEach(r => {
+    if (!r || !r.tgl || !r.baris) return;
+    let nf = 0, adaF = false, naik = 0, turun = 0, tetap = 0;
+    for (const k in r.baris) {
+      const b = r.baris[k];
+      if (!b) continue;
+      if (b.v > 0 && (b.fb !== null && b.fb !== undefined || b.fs !== null && b.fs !== undefined)) {
+        nf += ((b.fb || 0) - (b.fs || 0)) * (b.n / b.v); adaF = true;
+      }
+      if (b.c > 0 && b.p > 0) { if (b.c > b.p) naik++; else if (b.c < b.p) turun++; else tetap++; }
+    }
+    hasil[r.tgl] = {nf: adaF ? nf : null, naik, turun, tetap};
+  });
+  ihPasarCache = hasil; ihPasarKunci = kunci;
+  return hasil;
+}
+
+function ihGrafik(D, kode, pasar) {
+  const NS = "http://www.w3.org/2000/svg";
+  const komposit = kode === "COMPOSITE";
+  /* layar sempit: kanvas lebih kecil supaya huruf sumbu tetap terbaca di HP */
+  const sempit = window.innerWidth < 700;
+  const W = sempit ? 480 : 1000, H1 = sempit ? 250 : 300, H2 = komposit ? (sempit ? 56 : 70) : 0, H3 = komposit ? (sempit ? 64 : 80) : 0, G = 14, L = 4, R = sempit ? 46 : 64;
+  const TOT = H1 + (H2 ? H2 + G : 0) + (H3 ? H3 + G : 0) + 20;
+  const lo = Math.min(...D.map(x => x.l || x.c)), hi = Math.max(...D.map(x => x.h || x.c));
+  const bw = (W - L - R) / D.length, rentang = (hi - lo) || 1;
+  const y = v => 8 + (hi - v) / rentang * (H1 - 16), x = i => L + i * bw + bw / 2;
+  const w = Math.max(1, bw * .62);
+  let s = "";
+  for (let k = 0; k <= 4; k++) {
+    const v = lo + rentang * k / 4, yy = y(v);
+    s += "<line x1='" + L + "' x2='" + (W - R) + "' y1='" + yy + "' y2='" + yy + "' stroke='var(--garis)'/>" +
+      "<text x='" + (W - R + 6) + "' y='" + (yy + 4) + "' fill='var(--ink-3)' font-size='11'>" + ihAng(v, 0) + "</text>";
+  }
+  D.forEach((r, i) => {
+    const o = r.o > 0 ? r.o : r.c, naik = r.c >= o, col = naik ? "var(--naik)" : "var(--turun)";
+    const hh = r.h > 0 ? r.h : Math.max(o, r.c), ll = r.l > 0 ? r.l : Math.min(o, r.c);
+    s += "<line x1='" + x(i) + "' x2='" + x(i) + "' y1='" + y(hh) + "' y2='" + y(ll) + "' stroke='" + col + "'/>" +
+      "<rect x='" + (x(i) - w / 2) + "' y='" + y(Math.max(o, r.c)) + "' width='" + w + "' height='" +
+      Math.max(1, Math.abs(y(o) - y(r.c))) + "' fill='" + col + "'/>";
+  });
+  /* rata-rata 20 hari (memakai hari sebelum jendela kalau ada) */
+  const semua = ihBaris(kode), awal = semua.length - D.length;
+  const ma = D.map((r, i) => { const a = semua.slice(Math.max(0, awal + i - 19), awal + i + 1); return a.reduce((t, z) => t + z.c, 0) / a.length; });
+  s += "<polyline fill='none' stroke='var(--oranye)' stroke-width='1.6' points='" + ma.map((v, i) => x(i).toFixed(1) + "," + y(v).toFixed(1)).join(" ") + "'/>";
+  let y0 = H1;
+  if (H2) {
+    y0 += G; const mv = Math.max(1, ...D.map(r => r.n || 0));
+    s += "<text x='" + L + "' y='" + (y0 + 10) + "' fill='var(--ink-3)' font-size='11'>Nilai transaksi</text>";
+    D.forEach((r, i) => { if (!r.n) return; const hh = r.n / mv * (H2 - 14);
+      s += "<rect x='" + (x(i) - w / 2) + "' y='" + (y0 + H2 - hh) + "' width='" + w + "' height='" + hh + "' fill='var(--merek)' opacity='.75'/>"; });
+    y0 += H2;
+  }
+  if (H3) {
+    y0 += G; const nfs = D.map(r => pasar[r.tgl] ? pasar[r.tgl].nf : null);
+    const mf = Math.max(1, ...nfs.map(v => Math.abs(v || 0))), mid = y0 + 12 + (H3 - 12) / 2;
+    s += "<text x='" + L + "' y='" + (y0 + 10) + "' fill='var(--ink-3)' font-size='11'>Net asing (reguler)</text>" +
+      "<line x1='" + L + "' x2='" + (W - R) + "' y1='" + mid + "' y2='" + mid + "' stroke='var(--garis)'/>";
+    nfs.forEach((v, i) => { if (v === null) return; const hh = Math.abs(v) / mf * ((H3 - 12) / 2);
+      s += "<rect x='" + (x(i) - w / 2) + "' y='" + (v >= 0 ? mid - hh : mid) + "' width='" + w + "' height='" + Math.max(.5, hh) + "' fill='" + (v >= 0 ? "var(--naik)" : "var(--turun)") + "'/>"; });
+    y0 += H3;
+  }
+  [0, Math.floor(D.length / 2), D.length - 1].forEach((i, j) => {
+    s += "<text x='" + x(i) + "' y='" + (TOT - 3) + "' fill='var(--ink-3)' font-size='11' text-anchor='" + (j === 0 ? "start" : j === 2 ? "end" : "middle") + "'>" + ihTgl(D[i].tgl) + "</text>";
+  });
+  /* garis penanda hari yang diketuk + lapisan sentuh */
+  if (ihInfo >= 0 && ihInfo < D.length)
+    s += "<line x1='" + x(ihInfo) + "' x2='" + x(ihInfo) + "' y1='0' y2='" + (TOT - 16) + "' stroke='var(--ink-2)' stroke-dasharray='3 3'/>";
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("viewBox", "0 0 " + W + " " + TOT);
+  svg.setAttribute("class", "ih-grafik");
+  svg.innerHTML = s;
+  const pilih = ev => {
+    const kot = svg.getBoundingClientRect();
+    const gx = (ev.clientX - kot.left) / kot.width * W;
+    const i = Math.round((gx - L - bw / 2) / bw);
+    if (i >= 0 && i < D.length && i !== ihInfo) { ihInfo = i; halIhsg(); }
+  };
+  svg.addEventListener("click", pilih);
+  return svg;
+}
+
+function halIhsg() {
+  const w = $("#hal-ihsg"); if (!w) return;
+  const gulir = (w.querySelector(".tbl-kunci") || {}).scrollTop || 0;
+  w.innerHTML = "";
+  muatIndeks();
+  const tab = el("div", "sub-tab");
+  [["harian", "HARIAN"], ["sektor", "SEKTORAL"]].forEach(([k, j]) => {
+    const b = el("button", ihSub === k ? "aktif" : null, j);
+    b.onclick = () => { ihSub = k; halIhsg(); };
+    tab.appendChild(b);
+  });
+  w.appendChild(tab);
+  if (!IDXDATA) {
+    const p = el("div", "panel");
+    p.appendChild(el("h2", null, "IHSG"));
+    p.appendChild(el("div", "bantu", ihMemuat || !ihGagal ? "Memuat data indeks…"
+      : "data/indeks.json belum ada di server. Jalankan di laptop: python unduh_indeks.py"));
+    w.appendChild(p); return;
+  }
+  if (ihSub === "sektor") { ihPanelSektor(w); return; }
+  ihPanelHarian(w);
+  const tk = w.querySelector(".tbl-kunci"); if (tk && gulir) tk.scrollTop = gulir;
+}
+
+function ihPanelHarian(w) {
+  if (!IDXDATA.seri[ihKode]) ihKode = "COMPOSITE";
+  const B = ihBaris(ihKode), pasar = ihKode === "COMPOSITE" ? ihPasar() : {};
+  const komposit = ihKode === "COMPOSITE";
+  if (!B.length) { w.appendChild(el("div", "bantu", "Belum ada data untuk " + ihKode + ".")); return; }
+  const A = B[B.length - 1];
+  const tAwal = A.tgl.slice(0, 4) + "-01-01", ytd = B.find(r => r.tgl >= tAwal);
+  const pAwalTahun = ytd ? (ytd.p > 0 ? ytd.p : ytd.c) : null;
+
+  /* ---- ringkasan ---- */
+  const p = el("div", "panel");
+  p.appendChild(el("h2", null, komposit ? "IHSG · Indeks Harga Saham Gabungan" : ihNama(ihKode)));
+  const atas = el("div", "ih-atas");
+  atas.appendChild(el("span", "ih-besar", ihAng(A.c, 2)));
+  const ub = el("span", "ih-ubah", (A.c - A.p >= 0 ? "+" : "−") + ihAng(Math.abs(A.c - A.p), 2) + " (" + ihPct(A.ubah) + ")");
+  ub.style.color = ihWarna(A.ubah); atas.appendChild(ub);
+  atas.appendChild(el("span", "bantu", "penutupan " + ihTgl(A.tgl)));
+  p.appendChild(atas);
+  const kot = el("div", "ih-kotak");
+  const kotak = (judul, isi, warna) => { const k = el("div", "ih-k"); k.appendChild(el("span", null, judul));
+    const b = el("b", null, isi); if (warna !== undefined) b.style.color = ihWarna(warna); k.appendChild(b); kot.appendChild(k); };
+  kotak("Penutupan kemarin", ihAng(A.p, 2));
+  kotak("Tertinggi", ihAng(A.h, 2));
+  kotak("Terendah", ihAng(A.l, 2));
+  if (komposit) {
+    kotak("Nilai transaksi", "Rp " + rpSingkat(A.n));
+    kotak("Volume", A.v ? ihAng(A.v / 1e9, 1) + " M lembar" : "–");
+    kotak("Frekuensi", A.f ? ihAng(A.f / 1e3, 0) + " rb kali" : "–");
+    const ps = pasar[A.tgl];
+    kotak("Net asing (reguler)", ps && ps.nf !== null ? rpSingkat(ps.nf) : "–", ps ? ps.nf : undefined);
+    if (ps) {
+      const k = el("div", "ih-k"); k.appendChild(el("span", null, "Naik · Turun · Tetap"));
+      const b = el("b"); b.innerHTML = "<i style='font-style:normal;color:var(--naik)'>" + ps.naik + "</i> · <i style='font-style:normal;color:var(--turun)'>" + ps.turun + "</i> · " + ps.tetap;
+      k.appendChild(b); kot.appendChild(k);
+    } else kotak("Naik · Turun · Tetap", "–");
+    kotak("Kapitalisasi pasar", A.m ? "Rp " + rpSingkat(A.m) : "–");
+  }
+  if (pAwalTahun) { const v = (A.c / pAwalTahun - 1) * 100; kotak("Sejak awal tahun", ihPct(v), v); }
+  p.appendChild(kot);
+  w.appendChild(p);
+
+  /* ---- grafik ---- */
+  const g = el("div", "panel");
+  const alat = el("div", "ih-alat");
+  IH_PERIODE.forEach(([n, j]) => {
+    const b = el("button", ihPer === j ? "aktif" : null, n);
+    b.onclick = () => { ihPer = j; ihInfo = -1; halIhsg(); };
+    alat.appendChild(b);
+  });
+  const lab = el("label", "bantu", "Indeks: "), sel = el("select");
+  const urutan = IH_UTAMA.concat(IH_SEKTOR).filter(k => IDXDATA.seri[k])
+    .concat(Object.keys(IDXDATA.seri).filter(k => IH_UTAMA.indexOf(k) < 0 && IH_SEKTOR.indexOf(k) < 0));
+  urutan.forEach(k => { const o = el("option", null, ihNama(k)); o.value = k; if (k === ihKode) o.selected = true; sel.appendChild(o); });
+  sel.onchange = () => { ihKode = sel.value; ihInfo = -1; halIhsg(); };
+  lab.appendChild(sel); alat.appendChild(lab);
+  g.appendChild(alat);
+  const D = ihPer ? B.slice(-ihPer) : B;
+  if (ihInfo >= D.length) ihInfo = -1;
+  const r = D[ihInfo >= 0 ? ihInfo : D.length - 1];
+  const info = el("div", "ih-info");
+  const ps = pasar[r.tgl];
+  info.innerHTML = "<b>" + ihTgl(r.tgl) + "</b> &nbsp;Kemarin " + ihAng(r.p, 2) + " · H " + ihAng(r.h, 2) + " · L " + ihAng(r.l, 2) +
+    " · C <b>" + ihAng(r.c, 2) + "</b> <span style='color:" + ihWarna(r.ubah) + "'>" + ihPct(r.ubah) + "</span>" +
+    (komposit && r.n ? " · Nilai Rp " + rpSingkat(r.n) : "") +
+    (ps && ps.nf !== null ? " · Net asing <span style='color:" + ihWarna(ps.nf) + "'>" + rpSingkat(ps.nf) + "</span>" : "");
+  g.appendChild(info);
+  g.appendChild(ihGrafik(D, ihKode, pasar));
+  g.appendChild(el("div", "bantu", "Ketuk grafik untuk melihat angka hari itu. Candle: \"open\" = penutupan hari sebelumnya " +
+    "(IDX tidak menerbitkan harga pembukaan indeks); High, Low, Close asli. Garis oranye = rata-rata 20 hari." +
+    (komposit ? " Net asing dihitung dari harga harian seluruh emiten (papan reguler), jadi hanya ada untuk tanggal yang tersimpan di HP." : "")));
+  w.appendChild(g);
+
+  /* ---- tabel harian ---- */
+  const t = el("div", "panel");
+  t.appendChild(el("h2", null, "Tabel harian · " + ihNama(ihKode)));
+  const kol = [["tgl", "Tanggal"], ["p", "Kemarin"], ["h", "High"], ["l", "Low"], ["c", "Close"], ["ubah", "% ubah"]];
+  if (komposit) kol.push(["v", "Volume (M lbr)"], ["n", "Nilai"], ["f", "Frek. (rb)"], ["nf", "Net asing"], ["naik", "Naik"], ["turun", "Turun"], ["tetap", "Tetap"]);
+  const data = B.map(r => { const ps = pasar[r.tgl] || {};
+    return Object.assign({}, r, {nf: ps.nf === undefined ? null : ps.nf, naik: ps.naik === undefined ? null : ps.naik,
+      turun: ps.turun === undefined ? null : ps.turun, tetap: ps.tetap === undefined ? null : ps.tetap}); });
+  if (!kol.some(k => k[0] === ihUrut.k)) ihUrut = {k: "tgl", a: -1};
+  data.sort((a, b) => { const x = a[ihUrut.k], y = b[ihUrut.k];
+    if (x === null || x === undefined) return 1; if (y === null || y === undefined) return -1;
+    return (x > y ? 1 : x < y ? -1 : 0) * ihUrut.a; });
+  const bung = el("div", "tbl-bungkus tbl-kunci"), tb = el("table", "ih-tbl"), th = el("thead"), trh = el("tr");
+  kol.forEach(([k, j]) => {
+    const h = el("th", null, j + (ihUrut.k === k ? (ihUrut.a < 0 ? " ▼" : " ▲") : ""));
+    h.style.cursor = "pointer";
+    h.onclick = () => { ihUrut = {k, a: ihUrut.k === k ? -ihUrut.a : (k === "tgl" ? -1 : -1)}; halIhsg(); };
+    trh.appendChild(h);
+  });
+  th.appendChild(trh); tb.appendChild(th);
+  const body = el("tbody");
+  data.forEach(r => {
+    const tr = el("tr");
+    kol.forEach(([k]) => {
+      let isi, warna;
+      if (k === "tgl") isi = ihTgl(r.tgl);
+      else if (k === "ubah") { isi = ihPct(r.ubah); warna = r.ubah; }
+      else if (k === "v") isi = r.v ? ihAng(r.v / 1e9, 1) : "–";
+      else if (k === "n") isi = r.n ? rpSingkat(r.n) : "–";
+      else if (k === "f") isi = r.f ? ihAng(r.f / 1e3, 0) : "–";
+      else if (k === "nf") { isi = r.nf === null ? "–" : rpSingkat(r.nf); warna = r.nf; }
+      else if (k === "naik" || k === "turun" || k === "tetap") isi = r[k] === null ? "–" : ihAng(r[k], 0);
+      else isi = ihAng(r[k], 2);
+      const td = el("td", k === "tgl" ? null : "num", isi);
+      if (k === "c") td.style.fontWeight = "700";
+      if (warna !== undefined && warna !== null) td.style.color = ihWarna(warna);
+      if (k === "naik" && r.naik !== null) td.style.color = "var(--naik)";
+      if (k === "turun" && r.turun !== null) td.style.color = "var(--turun)";
+      tr.appendChild(td);
+    });
+    body.appendChild(tr);
+  });
+  tb.appendChild(body); bung.appendChild(tb); t.appendChild(bung);
+  t.appendChild(el("div", "bantu", "Ketuk judul kolom untuk mengurutkan. Sumber: Ringkasan Indeks IDX" +
+    (komposit ? "; Net asing dan Naik/Turun/Tetap dari harga harian seluruh emiten." : ".")));
+  w.appendChild(t);
+}
+
+function ihPanelSektor(w) {
+  const T = IDXDATA.tanggal;
+  const ubahSejak = (s, n) => { /* n hari bursa ke belakang */
+    let i = s.c.length - 1; while (i >= 0 && (s.c[i] === null || s.c[i] === undefined)) i--;
+    if (i < 0) return {c: null};
+    const c = s.c[i], j = i - n;
+    const dasar = n === 1 ? s.p[i] : (j >= 0 ? s.c[j] : null);
+    const tAwal = T[i].slice(0, 4) + "-01-01";
+    let k = T.findIndex(t => t >= tAwal), ytdDasar = null;
+    if (k >= 0) { while (k <= i && (s.c[k] === null || s.c[k] === undefined)) k++; ytdDasar = k <= i ? (s.p[k] || s.c[k]) : null; }
+    return {c, tgl: T[i], ubah: dasar > 0 ? (c / dasar - 1) * 100 : null, ytd: ytdDasar > 0 ? (c / ytdDasar - 1) * 100 : null};
+  };
+  const baris = Object.keys(IDXDATA.seri).map(k => {
+    const s = IDXDATA.seri[k], a = ubahSejak(s, 1);
+    return {k, nama: ihNama(k), c: a.c, tgl: a.tgl, d1: a.ubah, d5: ubahSejak(s, 5).ubah, d20: ubahSejak(s, 21).ubah,
+      d60: ubahSejak(s, 63).ubah, ytd: a.ytd,
+      grup: IH_UTAMA.indexOf(k) >= 0 ? 0 : IH_SEKTOR.indexOf(k) >= 0 ? 1 : 2};
+  }).filter(r => r.c !== null);
+  const ih = baris.find(r => r.k === "COMPOSITE") || {};
+  const p = el("div", "panel");
+  p.appendChild(el("h2", null, "Indeks sektoral & indeks utama" + (ih.tgl ? " · " + ihTgl(ih.tgl) : "")));
+  const kol = [["nama", "Indeks"], ["c", "Close"], ["d1", "1 hari"], ["d5", "1 minggu"], ["d20", "1 bulan"], ["d60", "3 bulan"], ["ytd", "Sejak awal tahun"]];
+  const susun = (judul, rows) => {
+    if (!rows.length) return;
+    p.appendChild(el("div", "ih-sub", judul));
+    rows.sort((a, b) => { const x = a[ihUrutS.k], y = b[ihUrutS.k];
+      if (x === null || x === undefined) return 1; if (y === null || y === undefined) return -1;
+      return (typeof x === "string" ? x.localeCompare(y) : (x - y)) * ihUrutS.a; });
+    const bung = el("div", "tbl-bungkus"), tb = el("table", "ih-tbl"), th = el("thead"), trh = el("tr");
+    kol.forEach(([k, j]) => {
+      const h = el("th", null, j + (ihUrutS.k === k ? (ihUrutS.a < 0 ? " ▼" : " ▲") : ""));
+      h.style.cursor = "pointer";
+      h.onclick = () => { ihUrutS = {k, a: ihUrutS.k === k ? -ihUrutS.a : (k === "nama" ? 1 : -1)}; halIhsg(); };
+      trh.appendChild(h);
+    });
+    th.appendChild(trh); tb.appendChild(th);
+    const body = el("tbody");
+    rows.forEach(r => {
+      const tr = el("tr"); tr.style.cursor = "pointer";
+      tr.title = "Buka grafik " + r.nama;
+      tr.onclick = () => { ihKode = r.k; ihSub = "harian"; ihInfo = -1; halIhsg(); window.scrollTo(0, 0); };
+      kol.forEach(([k]) => {
+        const v = r[k];
+        const td = el("td", k === "nama" ? null : "num",
+          k === "nama" ? v : k === "c" ? ihAng(v, 2) : ihPct(v));
+        if (k === "nama") td.style.fontWeight = "700";
+        if (k !== "nama" && k !== "c" && typeof v === "number") {
+          td.style.color = ihWarna(v);
+          if (r.k !== "COMPOSITE" && typeof ih[k] === "number" && v > ih[k]) td.style.background = "var(--naik-bg)";
+        }
+        tr.appendChild(td);
+      });
+      body.appendChild(tr);
+    });
+    tb.appendChild(body); bung.appendChild(tb); p.appendChild(bung);
+  };
+  susun("Indeks utama", baris.filter(r => r.grup === 0));
+  susun("Indeks sektor (IDX-IC)", baris.filter(r => r.grup === 1));
+  susun("Indeks lain", baris.filter(r => r.grup === 2));
+  p.appendChild(el("div", "bantu", "Latar hijau = lebih kuat dari IHSG pada periode itu. Ketuk baris untuk membuka grafiknya di tab HARIAN. " +
+    "1 minggu = 5 hari bursa, 1 bulan = 21, 3 bulan = 63. Sumber: Ringkasan Indeks IDX."));
+  w.appendChild(p);
+}
+
 /* ================= navigasi & tema ================= */
 document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
   document.querySelectorAll("nav button").forEach(x => x.classList.toggle("aktif", x === b));
-  ["watchlist", "screener", "volume", "broker", "cari", "news", "jarvis", "data"].forEach(h =>
+  ["ihsg", "watchlist", "screener", "volume", "broker", "cari", "news", "jarvis", "data"].forEach(h =>
     $("#hal-" + h).hidden = (h !== b.dataset.hal));
   window.scrollTo(0, 0);
   if (b.dataset.hal === "news") halNews();
+  if (b.dataset.hal === "ihsg") halIhsg();
   if (b.dataset.hal === "jarvis") { jvHitungCache = null; halJarvis(); jvLencana(); }
 });
 $("#tombolTema").onclick = () => {
@@ -9972,7 +10335,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-11-13-1";
+const VERSI_APP = "2026-11-13-2";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
