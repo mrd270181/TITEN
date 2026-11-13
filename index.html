@@ -4444,7 +4444,7 @@ function jvJawab(q) {
   if (/volume|vol\b|transaksi/.test(s)) return {kode, t: "Volume " + kode + " " + (e.rasio === null ? "belum bisa dibandingkan" : jvBil(e.rasio, 1) + " kali rata-rata 20 hari") +
     ", value " + jvMiliar(e.val) + " rupiah. Harga " + (e.pct >= 0 ? "naik " : "turun ") + jvPersen(e.pct) + " ke " + jvBil(e.c) + "."};
   if (/broker|bandar|siapa|akumulasi|kumpul/.test(s)) {
-    let akhir = ""; const trx = semuaTrx() || {};
+    let akhir = ""; const trx = trxEmiten(kode);
     (trx.REG || []).forEach(r => { if (r.em === kode && r.tgl > akhir) akhir = r.tgl; });
     if (!akhir) return {kode, t: "Data broker " + kode + " belum ada. Emiten ini belum masuk pantau.txt."};
     const A = kumpulkan(kode, "REGULER", akhir, akhir);
@@ -5880,7 +5880,7 @@ function rekATH(emiten, sampai) {
 
 function rekBroker(emiten, dari, sampai) {
   const perTgl = {}, total = {}, avgTgl = {}, avgTot = {};
-  const trx = semuaTrx() || {};
+  const trx = trxEmiten(emiten);
   /* lot & nilai per sisi dikumpulkan terpisah supaya harga rata-rata bisa
      dihitung: net beli -> avg sisi beli, net jual -> avg sisi jual */
   const tambah = (o, k, r) => {
@@ -5972,7 +5972,7 @@ function rekPosisi(emiten) {
      broker baru 18/09), dan label yang memakai tanggal harga akan mengaku
      lebih baru daripada angkanya sendiri. */
   let akhir = "";
-  const trx = semuaTrx() || {};
+  const trx = trxEmiten(emiten);
   rekPapan().forEach(p => (trx[p] || []).forEach(r => {
     if (r.em === emiten && r.tgl > akhir) akhir = r.tgl;
   }));
@@ -6860,7 +6860,7 @@ function bkNilaiRata(dari, sampai) {
 
 function hitungBK(broker, pasar, dari, sampai, minMiliar, urut) {
   const papanDipakai = [pasar === "REGULER" ? "REG" : pasar];
-  const trx = semuaTrx();
+  const trx = trxBroker(broker);
   const semuaHari = new Set(), emHari = {}, per = {};
   papanDipakai.forEach(p => (trx[p] || []).forEach(r => {
     if (r.tgl < dari || r.tgl > sampai) return;
@@ -9972,7 +9972,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-11-02-1";
+const VERSI_APP = "2026-11-13-1";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -11773,23 +11773,53 @@ function semuaTrx() {
   }
   return cacheTrx;
 }
-function segarkanTrx() { cacheTrx = null; }
+/* Indeks per emiten dan daftar tanggal disimpan sekali, bukan dihitung ulang.
+   Dulu kumpulkan() menyisir SELURUH transaksi (2+ juta baris) setiap kali
+   dipanggil hanya untuk satu emiten, dan tanggalTersedia() juga menyisir
+   semuanya - menu seperti POTENSI 3 HARI memanggilnya puluhan kali, sehingga
+   pindah menu terasa berat. Sekarang cukup sekali sesudah data dimuat. */
+let cacheEm = null, cacheTgl = null;
+const TRX_KOSONG = {REG: [], NEGO: [], TUNAI: []};
+function trxEmiten(em) {
+  if (!cacheEm) {
+    cacheEm = Object.create(null);
+    PAPAN.forEach(p => (trxImpor[p] || []).forEach(r => {
+      const o = cacheEm[r.em] || (cacheEm[r.em] = {REG: [], NEGO: [], TUNAI: []});
+      o[p].push(r);
+    }));
+  }
+  return cacheEm[em] || TRX_KOSONG;
+}
+let cacheBr = null;
+function trxBroker(br) {
+  if (!cacheBr) {
+    cacheBr = Object.create(null);
+    PAPAN.forEach(p => (trxImpor[p] || []).forEach(r => {
+      const o = cacheBr[r.br] || (cacheBr[r.br] = {REG: [], NEGO: [], TUNAI: []});
+      o[p].push(r);
+    }));
+  }
+  return cacheBr[br] || TRX_KOSONG;
+}
+function segarkanTrx() { cacheTrx = null; cacheEm = null; cacheBr = null; cacheTgl = null; }
 
 const semuaSaldo = () => BRK.saldo;
 
 function tanggalTersedia() {
-  const s = new Set();
-  PAPAN.forEach(p => (trxImpor[p] || []).forEach(r => s.add(r.tgl)));
-  return [...s].sort();
+  if (!cacheTgl) {
+    const s = new Set();
+    PAPAN.forEach(p => (trxImpor[p] || []).forEach(r => s.add(r.tgl)));
+    cacheTgl = [...s].sort();
+  }
+  return cacheTgl.slice();
 }
 
 /* menjumlahkan transaksi sesuai saringan */
 function kumpulkan(emiten, pasar, dari, sampai) {
   const hasil = {};
   const papanDipakai = pasar === "ALL MARKET" ? PAPAN : [pasar === "REGULER" ? "REG" : pasar];
-  const trx = semuaTrx();
+  const trx = trxEmiten(emiten);
   papanDipakai.forEach(p => (trx[p] || []).forEach(r => {
-    if (r.em !== emiten) return;
     if (dari && r.tgl < dari) return;
     if (sampai && r.tgl > sampai) return;
     const a = hasil[r.br] || (hasil[r.br] = {beli: 0, jual: 0, nilaiB: 0, nilaiJ: 0,
@@ -12130,7 +12160,7 @@ function ringkasBroker(agg, punyaGross, pakaiNilai) {
     if (a.beli || a.jual) aktif++;
   });
   const hari = new Set();
-  const trx = semuaTrx();
+  const trx = trxEmiten(pilih.emiten);
   const papan = pilih.pasar === "ALL MARKET" ? PAPAN
               : [pilih.pasar === "REGULER" ? "REG" : pilih.pasar];
   papan.forEach(pp => (trx[pp] || []).forEach(r => {
@@ -12284,7 +12314,7 @@ const MIN_BROKER_NILAI = 6;
 
 function periksaGross(emiten, pasar, dari, sampai) {
   const papanDipakai = pasar === "ALL MARKET" ? PAPAN : [pasar === "REGULER" ? "REG" : pasar];
-  const trx = semuaTrx();
+  const trx = trxEmiten(emiten);
   const blok = {};
   papanDipakai.forEach(p => (trx[p] || []).forEach(r => {
     if (r.em !== emiten) return;
@@ -12428,7 +12458,7 @@ function panelBrokerHarian(w) {
     pilih.hrBulan = bulanAda[bulanAda.length - 1] || "";
 
   /* broker yang benar-benar bertransaksi di emiten & bulan itu saja */
-  const trx = semuaTrx();
+  const trx = trxEmiten(pilih.emiten);
   const adaBr = new Set();
   PAPAN.forEach(pp => (trx[pp] || []).forEach(r => {
     if (r.em === pilih.emiten && r.tgl.slice(0, 7) === pilih.hrBulan) adaBr.add(r.br);
@@ -12617,7 +12647,7 @@ function lotBesar(v) {
 function ringkasHarian(emiten, broker, pasar) {
   const hasil = {};
   const papanDipakai = pasar === "ALL MARKET" ? PAPAN : [pasar === "REGULER" ? "REG" : pasar];
-  const trx = semuaTrx();
+  const trx = trxEmiten(emiten);
   papanDipakai.forEach(p => (trx[p] || []).forEach(r => {
     if (r.em !== emiten || (broker && r.br !== broker)) return;
     const a = hasil[r.tgl] || (hasil[r.tgl] = {lot: 0, nilai: 0, lotKotor: 0, nilaiKotor: 0});
@@ -12649,7 +12679,7 @@ function ringkasHarian(emiten, broker, pasar) {
    satu sisi, sehingga net selalu sama dengan gross dan rasionya selalu 100%. */
 function grossNetHarian(emiten, pasar) {
   const papanDipakai = pasar === "ALL MARKET" ? PAPAN : [pasar === "REGULER" ? "REG" : pasar];
-  const trx = semuaTrx();
+  const trx = trxEmiten(emiten);
   const per = {};
   papanDipakai.forEach(p => (trx[p] || []).forEach(r => {
     if (r.em !== emiten) return;
@@ -12674,7 +12704,7 @@ function grossNetHarian(emiten, pasar) {
 function netHarian(emiten, broker, pasar) {
   const hasil = {};
   const papanDipakai = pasar === "ALL MARKET" ? PAPAN : [pasar === "REGULER" ? "REG" : pasar];
-  const trx = semuaTrx();
+  const trx = trxEmiten(emiten);
   papanDipakai.forEach(p => (trx[p] || []).forEach(r => {
     if (r.em !== emiten || (broker && r.br !== broker)) return;
     hasil[r.tgl] = (hasil[r.tgl] || 0) + r.beli - r.jual;
@@ -13410,7 +13440,7 @@ function panelDashboard(w) {
 
   const papanDipakai = pilih.pasar === "ALL MARKET"
     ? PAPAN : [pilih.pasar === "REGULER" ? "REG" : pilih.pasar];
-  const trx = semuaTrx();
+  const trx = trxEmiten(pilih.emiten);
   const perTgl = {};
   papanDipakai.forEach(pp => (trx[pp] || []).forEach(r => {
     if (r.em !== pilih.emiten || r.br !== pilih.pnetBroker) return;
@@ -13718,7 +13748,7 @@ function panelBrokerSummary(w) {
 function kumpulBroker(broker, pasar, dari, sampai) {
   const hasil = {};
   const papanDipakai = pasar === "ALL MARKET" ? PAPAN : [pasar === "REGULER" ? "REG" : pasar];
-  const trx = semuaTrx();
+  const trx = trxBroker(broker);
   papanDipakai.forEach(p => (trx[p] || []).forEach(r => {
     if (r.br !== broker) return;
     if (dari && r.tgl < dari) return;
@@ -13762,7 +13792,7 @@ function baDeret(broker, pasar, emiten, hari, ukur) {
   const iHari = {}; hari.forEach((t, i) => iHari[t] = i);
   const harian = {};
   emiten.forEach(e => harian[e] = new Array(hari.length).fill(0));
-  const trx = semuaTrx();
+  const trx = trxBroker(broker);
   papanDipakai.forEach(p => (trx[p] || []).forEach(r => {
     if (r.br !== broker || !set.has(r.em)) return;
     const i = iHari[r.tgl];
@@ -14267,7 +14297,7 @@ async function muatBroker() {
       pakai.forEach(t => sudah.add(t));
     });
     segarkanTrx();
-  } catch (e) { trxImpor = {REG: [], NEGO: [], TUNAI: []}; }
+  } catch (e) { trxImpor = {REG: [], NEGO: [], TUNAI: []}; segarkanTrx(); }
 }
 
 
