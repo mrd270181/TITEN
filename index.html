@@ -2780,7 +2780,8 @@ function panelTopGainer() {
         else if (ch <= -(bA - 0.01) && (!o.kmL || x.c <= o.kmL)) o.kmT = "arb"; } }
     /* 17 Nov 2026: Harga Gap = Open hari ini vs tutup kemarin; gap "sejati" = Open di luar rentang High-Low kemarin.
        Vol & Value Sesi 1 = baris Top Gainer/Trending 12.00 (lot, Rp); Vol & Value Kmrn = penutupan IDX hari sebelumnya. */
-    o.gO = O1[k] || null;
+    /* Open: dari Stockbit sesi 1 (siang); kalau tidak terbaca, dari Ringkasan Saham IDX tanggal ini (sesudah ±18.00) */
+    o.gO = O1[k] || (hrBeli && hrBeli[k] && hrBeli[k].o > 0 ? hrBeli[k].o : null);
     o.gP = o.gO && o.km ? (o.gO / o.km - 1) * 100 : null;
     o.gS = !!(o.gO && ((o.kmH && o.gO > o.kmH) || (o.kmL && o.gO < o.kmL)));
     o.v1 = r1 && r1.vol > 0 ? r1.vol : null; o.n1 = r1 && r1.n > 0 ? r1.n : null;
@@ -2888,7 +2889,7 @@ function panelTopGainer() {
       if (r.gO) { const a = arah(r.gP).k; td.className = "num " + a + (r.gS && a !== "datar" ? " gap-kot" : "");
         td.appendChild(el("b", null, nf(r.gO)));
         if (r.gP !== null) td.appendChild(el("span", "sc-gp", (r.gP > 0 ? "+" : r.gP < 0 ? "\u2212" : "") + nf(Math.abs(r.gP), 1) + "%")); }
-      else { td.className = "num rd-kosong"; td.textContent = lalu ? "\u2013" : "menunggu sesi 1"; }
+      else { td.className = "num rd-kosong"; td.textContent = lalu ? "menunggu 18.00" : "menunggu sesi 1"; }
       tr.appendChild(td); }
     const hp = (c, pc) => { const td = el("td", "num"); if (pc === null) { td.textContent = "–"; return td; }
       td.appendChild(document.createTextNode(c ? nf(c) + " " : ""));
@@ -10428,7 +10429,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-11-18-1";
+const VERSI_APP = "2026-11-18-2";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
