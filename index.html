@@ -600,7 +600,9 @@ tr.pt-dicoret td{opacity:.6} tr.pt-dicoret .kode{text-decoration:line-through}
 .tg-ok{font-size:12px;color:var(--naik);margin-right:6px}.tg-alat{flex-wrap:wrap;gap:8px}
 .sc-hl{display:block;font-size:10px;opacity:.7;font-weight:400;white-space:nowrap}
 /* 17 Nov 2026: Harga Gap & Vol/Value (SCALPING) */
-.sc-val{display:block;color:var(--merek-tua);white-space:nowrap}.sc-gp{display:block;font-size:11px;font-weight:700}td.gap-kot.naik{background:var(--naik-bg)!important;box-shadow:inset 0 0 0 1.5px var(--naik)}td.gap-kot.turun{background:var(--turun-bg)!important;box-shadow:inset 0 0 0 1.5px var(--turun)}
+.sc-val{display:block;color:var(--merek-tua);white-space:nowrap}
+/* 18 Nov 2026: tabel SCALPING lebih ramping + kolom Emiten beku saat digeser */
+.sc-tbl td,.sc-tbl th{padding:5px 6px}.sc-tbl td:first-child,.sc-tbl th:first-child{position:sticky;left:0;z-index:2}.sc-tbl td:first-child{background:var(--surface-1);box-shadow:inset -1px 0 0 var(--garis)}.sc-tbl tbody tr:nth-child(odd) td:first-child{background:var(--surface-2)}.sc-tbl thead th:first-child{z-index:5}.sc-tbl td .nm{max-width:96px}.sc-tbl .tg-src{display:block;width:max-content;margin:1px 0;padding:0 5px;font-size:10px}.sc-tbl td.sc-kecil{font-size:11.5px}.sc-tbl td.sc-kecil .sc-hl,.sc-tbl td.sc-kecil .rek-avg{font-size:9.5px}.sc-fd{display:block;font-weight:800;font-size:11.5px}.sc-fs{display:block;font-size:9.5px;color:var(--ink-3);max-width:110px;overflow:hidden;text-overflow:ellipsis}.sc-gp{display:block;font-size:11px;font-weight:700}td.gap-kot.naik{background:var(--naik-bg)!important;box-shadow:inset 0 0 0 1.5px var(--naik)}td.gap-kot.turun{background:var(--turun-bg)!important;box-shadow:inset 0 0 0 1.5px var(--turun)}
 td.sc-hb{background:rgba(88,166,255,.07)}th.sc-hb{background:#3a5a8c!important}.sc-ok{display:inline-block;border-radius:4px;padding:1px 6px;font-size:11px;font-weight:700}.sc-ok.y{background:#1f4d2b;color:#9be9a8}.sc-ok.n{background:#4a1d1d;color:#ffb4ae}
 .dv-tglh{display:block;font-size:10px;opacity:.65;font-weight:400}
 .dv-tg.lewat{background:var(--surface-2);color:var(--ink-3)}.dv-tg.cek{background:var(--turun-bg);color:var(--turun)}
@@ -2653,6 +2655,7 @@ function panelTopGainer() {
   tgSinkronServer().then(ub => { if (ub && subScr === "scalping") halScreener(); });
   tgS1Sinkron().then(ub => { if (ub && subScr === "scalping") halScreener(); });
   mfSinkronServer().then(ub => { if (ub && subScr === "scalping") halScreener(); });   /* 13 Nov 2026: kolom MF1 & Vol. NF */
+  muatProfilRinci(); muatOpini();   /* 18 Nov 2026: kolom Valuasi & Opini */
   const hIni = tgHariIni(), S = tgMuat();
   const dTgl = [...new Set(Object.keys(S).filter(t => S[t] && (S[t].s1 || S[t].s2 || S[t].t1 || S[t].t2)).concat([hIni]))].sort();
   if (!tgTgl || dTgl.indexOf(tgTgl) < 0) tgTgl = hIni;
@@ -2781,6 +2784,12 @@ function panelTopGainer() {
     o.gP = o.gO && o.km ? (o.gO / o.km - 1) * 100 : null;
     o.gS = !!(o.gO && ((o.kmH && o.gO > o.kmH) || (o.kmL && o.gO < o.kmL)));
     o.v1 = r1 && r1.vol > 0 ? r1.vol : null; o.n1 = r1 && r1.n > 0 ? r1.n : null;
+    o.v2 = r2 && r2.vol > 0 ? r2.vol : null; o.n2 = r2 && r2.n > 0 ? r2.n : null;
+    /* 18 Nov 2026: fundamental ringkas (sama dengan kartu REKOMENDASI / PERBANDINGAN) */
+    { const q = lkSkor(k); o.lk = q ? q.skor : null; o.lkL = q ? q.label : ""; }
+    o.fVal = pbnKartu(rekKartuValuasi, k); o.fOp = pbnKartu(rekKartuOpini, k); o.fNw = pbnKartu(rekKartuNews, k);
+    o.val = o.fVal ? o.fVal.t : null; o.op = o.fOp ? o.fOp.t : null;
+    o.nws = o.fNw && /^\d+/.test(o.fNw.t) ? parseInt(o.fNw.t, 10) : null;
     { const x = hrKm && hrKm[k]; o.vk = x && x.v > 0 ? x.v / LOT : null; o.nk = x && x.n > 0 ? x.n : null; }
     if (adaHasil) { const z = S1[k], b = o.tutup;
       if (z && b && z.c > 0) { const zo = z.o > 0 ? z.o : z.c, zh = Math.max(z.h || 0, zo, z.c), zl = Math.min(z.l > 0 ? z.l : z.c, zo, z.c);
@@ -2788,16 +2797,18 @@ function panelTopGainer() {
       else { o.bo = o.bh = o.bl = o.bc = o.ok = null; } }
     return o;
   });
-  const bung = el("div", "tbl-bungkus tbl-kunci rd-tabel"), t = el("table"), th = el("thead"), trh = el("tr");
-  const KOL = [["em", "Emiten", ""]].concat(nR ? [["srcU", "Sumber", "Top Gainer / Trending"]] : [])
-    .concat([["mfLot", "MF1", "net asing sesi I · lot / value"], ["nfP", "Vol. NF", "penutupan IDX · lot (% vol.) / value"]]).concat([["skor", "Skor akhir sesi", "momentum·kuat·likuid·tick·freq"],
+  const bung = el("div", "tbl-bungkus tbl-kunci rd-tabel sc-tbl"), t = el("table"), th = el("thead"), trh = el("tr");
+  const KOL = [["em", "Emiten", ""]].concat(nR ? [["srcU", "Sumber", "TG / Trending"]] : [])
+    .concat([["lk", "LK", "skor"], ["val", "Valuasi", "vs industri"], ["op", "Opini", "auditor"], ["nws", "News", REK_NEWS_HARI + " hari"]])
+    .concat([["mfLot", "MF1", "sesi I · lot/value"], ["nfP", "Vol. NF", "tutup · lot (%)/value"]]).concat([["skor", "Skor akhir sesi", "momentum·kuat·likuid·tick·freq"],
     ["km", "Tutup kmrn", (tglKm ? tglID(tglKm) : "\u2013") + " \u00b7 H/L"],
     ["v1", "Vol & Value Sesi 1", tglID(tgl) + " \u00b7 s/d 12.00"],
+    ["v2", "Vol & Value 15.00", tglID(tgl) + " \u00b7 s/d 15.00"],
     ["vk", "Vol & Value Kmrn", (tglKm ? tglID(tglKm) : "\u2013") + " \u00b7 penutupan"], ["gP", "Harga Gap", "Open \u00b7 % vs tutup kmrn"],
     ["p1", "12.00", "harga · % naik" + (H.s1 ? " (" + H.s1.waktu + ")" : "")], ["p2", "15.00", "harga · % naik" + (H.s2 ? " (" + H.s2.waktu + ")" : "")],
     ["d", "12.00 → 15.00", "selisih % naik"], ["tutup", "Tutup hari ini", tglID(tgl) + " \u00b7 H/L"], ["n", "Value", "terakhir"], ["f", "Freq", "terakhir"],
     ["keAra", "Ke ARA", "jarak dari harga terakhir"], ["tk", "Tick", "1 tick ÷ harga"], ["", "Tanda", ""]]);
-  if (adaHasil) KOL.splice(nR ? 13 : 12, 0, ["bo", "Open", "besok " + tglID(s1d.hari), 1], ["bh", "High sesi 1", "peluang jual", 1],
+  if (adaHasil) KOL.splice(nR ? 18 : 17, 0, ["bo", "Open", "besok " + tglID(s1d.hari), 1], ["bh", "High sesi 1", "peluang jual", 1],
     ["bl", "Low sesi 1", "risiko", 1], ["bc", "Tutup sesi 1", "harga " + (s1d.waktu || "12.00"), 1], ["ok", "Hasil", "high s1 \u2265 +3%", 1]);
   if (adaHasil) {   /* ringkasan backtes */
     const rb = el("div", "nw-ring rd-ring");
@@ -2830,19 +2841,28 @@ function panelTopGainer() {
       if (r.g) td.appendChild(el("span", "tg-src g", "TG"));
       if (r.r) td.appendChild(el("span", "tg-src r", "Trending"));
       tr.appendChild(td); }
+    /* 18 Nov 2026: LK, Valuasi, Opini auditor, News - ringkas */
+    { const td = el("td", "rd-kiri");
+      if (r.lk !== null) { const b = el("span", "lk-lencana sc-fd " + (r.lk >= 75 ? "naik" : r.lk >= 55 ? "" : "turun"), String(r.lk)); td.appendChild(b);
+        td.appendChild(el("span", "sc-fs", r.lkL)); } else { td.className = "rd-kiri rd-kosong"; td.textContent = "\u2013"; }
+      tr.appendChild(td); }
+    [r.fVal, r.fOp, r.fNw].forEach(f => { const td = el("td", "rd-kiri");
+      if (f && f.t && f.t !== "\u2013") { td.appendChild(el("span", "sc-fd " + (f.k || ""), f.t)); if (f.s) { const z = el("span", "sc-fs", f.s); z.title = f.s; td.appendChild(z); } }
+      else { td.className = "rd-kiri rd-kosong"; td.textContent = "\u2013"; }
+      tr.appendChild(td); });
     /* 13 Nov 2026: MF1 dan Vol. NF (gaya kolom Net Foreign: lot + (persen)) */
-    { const td = el("td", "num");
+    { const td = el("td", "num sc-kecil");
       /* 13 Nov 2026: atas = lot, bawah = value - sejajar dengan kolom Vol. NF supaya sesi I vs penutupan mudah dibandingkan */
-      if (r.mf !== null) { td.className = "num " + arah(r.mf).k;
+      if (r.mf !== null) { td.className = "num sc-kecil " + arah(r.mf).k;
         td.textContent = r.mfLot !== null ? rekLot(r.mfLot) : (r.mf > 0 ? "+" : "") + rpSingkat(r.mf);
         if (r.mfLot !== null) td.appendChild(el("span", "sc-hl", (r.mf > 0 ? "+" : "") + rpSingkat(r.mf))); }
-      else { td.className = "num rd-kosong"; td.textContent = adaMF1 ? "tidak di MF1" : "\u2013"; }
+      else { td.className = "num sc-kecil rd-kosong"; td.textContent = adaMF1 ? "tidak di MF1" : "\u2013"; }
       tr.appendChild(td); }
     { const td = el("td", "num");
-      if (r.nfLot !== null) { td.className = "num " + arah(r.nfLot).k; td.textContent = rekLot(r.nfLot);
+      if (r.nfLot !== null) { td.className = "num sc-kecil " + arah(r.nfLot).k; td.textContent = rekLot(r.nfLot);
         if (r.nfP !== null) td.appendChild(el("span", "rek-avg", "(" + rekPersen(r.nfP) + ")"));
         if (r.nfRp !== null) td.appendChild(el("span", "sc-hl", (r.nfRp > 0 ? "+" : "") + rpSingkat(r.nfRp))); }
-      else { td.className = "num rd-kosong"; td.textContent = hrBeli ? "\u2013" : (lalu ? "\u2013" : "menunggu 18.00"); }
+      else { td.className = "num sc-kecil rd-kosong"; td.textContent = hrBeli ? "\u2013" : (lalu ? "\u2013" : "menunggu 18.00"); }
       tr.appendChild(td); }
     { const td = el("td", "num");
       td.appendChild(el("span", "sc-skor " + (r.skor >= 70 ? "s1" : r.skor >= 60 ? "s2" : r.skor >= 50 ? "s3" : "s4"), String(r.skor)));
@@ -2855,6 +2875,10 @@ function panelTopGainer() {
     { const td = el("td", "num");
       if (r.v1) { td.appendChild(document.createTextNode(rekLot(r.v1).replace(/^\+/, ""))); if (r.n1) td.appendChild(el("span", "sc-val", rpSingkat(r.n1))); }
       else { td.className = "num rd-kosong"; td.textContent = "\u2013"; }
+      tr.appendChild(td); }
+    { const td = el("td", "num");   /* 18 Nov 2026: Vol & Value 15.00 */
+      if (r.v2) { td.appendChild(document.createTextNode(rekLot(r.v2).replace(/^\+/, ""))); if (r.n2) td.appendChild(el("span", "sc-val", rpSingkat(r.n2))); }
+      else { td.className = "num rd-kosong"; td.textContent = H.s2 || H.t2 ? "\u2013" : (lalu ? "\u2013" : "menunggu 15.00"); }
       tr.appendChild(td); }
     { const td = el("td", "num");
       if (r.vk) { td.appendChild(document.createTextNode(rekLot(r.vk).replace(/^\+/, ""))); if (r.nk) td.appendChild(el("span", "sc-val", rpSingkat(r.nk))); }
@@ -10404,7 +10428,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-11-17-1";
+const VERSI_APP = "2026-11-18-1";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
