@@ -602,7 +602,7 @@ tr.pt-dicoret td{opacity:.6} tr.pt-dicoret .kode{text-decoration:line-through}
 /* 17 Nov 2026: Harga Gap & Vol/Value (SCALPING) */
 .sc-val{display:block;color:var(--merek-tua);white-space:nowrap}
 /* 18 Nov 2026: tabel SCALPING lebih ramping + kolom Emiten beku saat digeser */
-.sc-tbl td,.sc-tbl th{padding:5px 6px}.sc-tbl td:first-child,.sc-tbl th:first-child{position:sticky;left:0;z-index:2}.sc-tbl td:first-child{background:var(--surface-1);box-shadow:inset -1px 0 0 var(--garis)}.sc-tbl tbody tr:nth-child(odd) td:first-child{background:var(--surface-2)}.sc-tbl thead th:first-child{z-index:5}.sc-tbl td .nm{max-width:96px}.sc-tbl .tg-src{display:block;width:max-content;margin:1px 0;padding:0 5px;font-size:10px}.sc-tbl td.sc-kecil{font-size:11.5px}.sc-tbl td.sc-kecil .sc-hl,.sc-tbl td.sc-kecil .rek-avg{font-size:9.5px}.sc-fd{display:block;font-weight:800;font-size:11.5px}.sc-fs{display:block;font-size:9.5px;color:var(--ink-3);max-width:110px;overflow:hidden;text-overflow:ellipsis}.sc-gp{display:block;font-size:11px;font-weight:700}td.gap-kot.naik{background:var(--naik-bg)!important;box-shadow:inset 0 0 0 1.5px var(--naik)}td.gap-kot.turun{background:var(--turun-bg)!important;box-shadow:inset 0 0 0 1.5px var(--turun)}
+.sc-tbl td,.sc-tbl th{padding:5px 6px}.sc-tbl td:first-child,.sc-tbl th:first-child{position:sticky;left:0;z-index:2}.sc-tbl td:first-child{background:var(--surface-1);box-shadow:inset -1px 0 0 var(--garis)}.sc-tbl tbody tr:nth-child(odd) td:first-child{background:var(--surface-2)}.sc-tbl thead th:first-child{z-index:5}.sc-beku2 td:nth-child(2),.sc-beku2 th:nth-child(2){position:sticky;left:var(--sc-l2,80px);z-index:2}.sc-beku2 td:nth-child(2){background:var(--surface-1);box-shadow:inset -1px 0 0 var(--garis)}.sc-beku2 tbody tr:nth-child(odd) td:nth-child(2){background:var(--surface-2)}.sc-beku2 thead th:nth-child(2){z-index:5}.sc-tbl td .nm{max-width:96px}.sc-tbl .tg-src{display:block;width:max-content;margin:1px 0;padding:0 5px;font-size:10px}.sc-tbl td.sc-kecil{font-size:11.5px}.sc-tbl td.sc-kecil .sc-hl,.sc-tbl td.sc-kecil .rek-avg{font-size:9.5px}.sc-fd{display:block;font-weight:800;font-size:11.5px}.sc-fs{display:block;font-size:9.5px;color:var(--ink-3);max-width:110px;overflow:hidden;text-overflow:ellipsis}.sc-gp{display:block;font-size:11px;font-weight:700}td.gap-kot.naik{background:var(--naik-bg)!important;box-shadow:inset 0 0 0 1.5px var(--naik)}td.gap-kot.turun{background:var(--turun-bg)!important;box-shadow:inset 0 0 0 1.5px var(--turun)}
 td.sc-hb{background:rgba(88,166,255,.07)}th.sc-hb{background:#3a5a8c!important}.sc-ok{display:inline-block;border-radius:4px;padding:1px 6px;font-size:11px;font-weight:700}.sc-ok.y{background:#1f4d2b;color:#9be9a8}.sc-ok.n{background:#4a1d1d;color:#ffb4ae}
 .dv-tglh{display:block;font-size:10px;opacity:.65;font-weight:400}
 .dv-tg.lewat{background:var(--surface-2);color:var(--ink-3)}.dv-tg.cek{background:var(--turun-bg);color:var(--turun)}
@@ -2928,6 +2928,10 @@ function panelTopGainer() {
     tb.appendChild(tr);
   });
   t.appendChild(tb); bung.appendChild(t); p.appendChild(bung);
+  /* 19 Nov 2026: kolom Sumber ikut beku (di sebelah Emiten) */
+  if (nR) { bung.classList.add("sc-beku2");
+    const atur = () => { const c = t.querySelector("thead th:first-child"); if (c && c.offsetWidth) bung.style.setProperty("--sc-l2", c.offsetWidth + "px"); };
+    atur(); requestAnimationFrame(atur); setTimeout(atur, 300); }
   p.appendChild(el("div", "bantu",
     "Skor akhir sesi (0–100) = M momentum 12.00→15.00 (naik ≥ 3 poin = 30, tetap = 18, turun ≥ 5 poin = 0; kalau baru satu tangkapan = 15) + " +
     "K kekuatan (% naik 8% s/d sebelum ARA = 20, ARA terkunci = 10, 5–8% = 12, < 5% = 5) + L likuiditas (Value Rp2 M = 0, Rp50 M ke atas = 25) + " +
@@ -10431,7 +10435,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-11-18-3";
+const VERSI_APP = "2026-11-19-1";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
