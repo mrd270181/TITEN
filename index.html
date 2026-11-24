@@ -2831,8 +2831,7 @@ function panelTopGainer() {
     ["v2", "Vol & Value 15.00", tglID(tgl) + " \u00b7 s/d 15.00"],
     ["vk", "Vol & Value Kmrn", (tglKm ? tglID(tglKm) : "\u2013") + " \u00b7 penutupan"], ["gP", "Harga Gap", "Open \u00b7 % vs tutup kmrn"], ["bq", "Bid / Offer", "total lot" + (obW ? " \u00b7 " + obW : "")], ["vA", "vs Avg", "harga vs rata-rata" + (obW ? " \u00b7 " + obW : "")],
     ["p1", "12.00", "harga · % naik" + (H.s1 ? " (" + H.s1.waktu + ")" : "")], ["p2", "15.00", "harga · % naik" + (H.s2 ? " (" + H.s2.waktu + ")" : "")],
-    ["d", "12.00 → 15.00", "selisih % naik"], ["tutup", "Tutup hari ini", tglID(tgl) + " \u00b7 H/L"], ["n", "Value", "terakhir"], ["f", "Freq", "terakhir"],
-    ["keAra", "Ke ARA", "jarak dari harga terakhir"], ["tk", "Tick", "1 tick ÷ harga"], ["", "Tanda", ""]]);
+    ["d", "12.00 → 15.00", "selisih % naik"], ["tutup", "Tutup hari ini", tglID(tgl) + " \u00b7 H/L"], ["f", "Freq", "terakhir"]]);   /* 24 Nov 2026: Value terakhir, Ke ARA, Tick, Tanda dihapus */
   if (adaHasil) KOL.splice(nR ? 20 : 19, 0, ["bo", "Open", "besok " + tglID(s1d.hari), 1], ["bh", "High sesi 1", "peluang jual", 1],
     ["bl", "Low sesi 1", "risiko", 1], ["bc", "Tutup sesi 1", "harga " + (s1d.waktu || "12.00"), 1], ["ok", "Hasil", "high s1 \u2265 +3%", 1]);
   if (adaHasil) {   /* ringkasan backtes */
@@ -2952,18 +2951,7 @@ function panelTopGainer() {
       else td.appendChild(el("span", "sc-ok " + (r.ok ? "y" : "n"), r.ok ? "\u2713 berhasil" : "\u2717 gagal"));
       tr.appendChild(td);
     }
-    tr.appendChild(el("td", "num", r.n ? rpSingkat(r.n) : "–"));
     tr.appendChild(el("td", "num", r.f ? nf(r.f) : "–"));
-    tr.appendChild(el("td", "num", r.keAra === null ? "–" : r.kunci ? "terkunci" : "+" + nf(r.keAra, 1) + "%"));
-    tr.appendChild(el("td", "num" + (r.tk > 1 ? " sc-mahal" : ""), r.tk === null ? "–" : nf(r.tk, 2) + "%"));
-    const cT = el("td", "rd-kiri");
-    if (r.kunci) cT.appendChild(el("span", "sc-tg ara", "ARA terkunci"));
-    else if (r.keAra !== null && r.keAra <= 3) cT.appendChild(el("span", "sc-tg ara", "dekat ARA"));
-    if (r.lemah) cT.appendChild(el("span", "sc-tg turun", "melemah"));
-    if (r.n && r.n < 5e9) cT.appendChild(el("span", "sc-tg", "value kecil"));
-    if (FCA && FCA[r.em]) cT.appendChild(el("span", "sc-tg turun", "FCA"));
-    else if (r.l10) cT.appendChild(el("span", "sc-tg turun", "batas 10%"));
-    tr.appendChild(cT);
     tb.appendChild(tr);
   });
   t.appendChild(tb); bung.appendChild(t); p.appendChild(bung);
@@ -10513,7 +10501,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-11-24-4";
+const VERSI_APP = "2026-11-24-5";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
