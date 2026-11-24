@@ -2592,21 +2592,23 @@ function tgSkor(r) {
   const araP = prev ? (l10 ? scBatas10(Math.round(prev)) : scBatas(Math.round(prev))).ara : null;
   const araPct = l10 ? 10 : prev ? scAra(prev) * 100 : 25;
   const kunci = r.pct >= araPct - 0.6 || (araP && r.c >= araP);
-  let M = 15;
-  if (r.d !== null && r.d !== undefined) M = r.d >= 3 ? 30 : r.d >= 0 ? Math.round(18 + r.d * 4) : Math.max(0, Math.round(18 + r.d * 3.6));
-  const K = kunci ? 10 : r.pct >= 8 ? 20 : r.pct >= 5 ? 12 : r.pct > 0 ? 5 : 0;
-  const L = r.n > 0 ? Math.round(Math.min(1, Math.max(0, (Math.log10(r.n) - Math.log10(2e9)) / (Math.log10(5e10) - Math.log10(2e9)))) * 25) : 0;
+  /* 24 Nov 2026: bobot direvisi dari backtes 15 hari bursa (22 Okt - 24 Nov, 1.034 emiten TG/Trending 15.00 vs sesi 1 besok):
+     % naik paling menentukan (ARA terkunci & >=15% terbaik), value Rp2-50 M lebih baik dari >=50 M, tick besar tidak lebih buruk,
+     momentum 12->15 lemah, freq tidak berpola. K 0-50, M 0-20, L 0-20, T 0-10. Uji ulang sesudah data lebih banyak. */
+  const K = kunci ? 50 : r.pct >= 15 ? 47 : r.pct >= 8 ? Math.round(35 + (r.pct - 8) / 7 * 12) : r.pct >= 5 ? 22 : r.pct > 0 ? Math.round(r.pct * 2.5) : 0;
+  let M = 10;
+  if (r.d !== null && r.d !== undefined) M = r.d >= 1 ? 20 : r.d >= 0 ? 16 : r.d >= -3 ? 8 : 5;
+  const L = !(r.n > 0) ? 0 : r.n < 2e9 ? 0 : r.n < 5e10 ? 20 : 12;
   const tk = r.c ? scTick(r.c) / r.c * 100 : null;
-  const T = tk === null ? 7 : Math.round(Math.min(1, Math.max(0, (1 - tk) / 0.6)) * 15);
-  const F = r.f ? Math.round(Math.min(1, r.f / 5000) * 10) : 0;
+  const T = tk === null ? 5 : tk > 1 ? 10 : tk > 0.7 ? 7 : tk > 0.4 ? 4 : 2;
   const pot = [];
   /* 26 Okt 2026: baris Trending bisa turun/datar - skor ini untuk saham yang NAIK (baris Top Gainer selalu naik, tidak terpengaruh) */
   if (r.pct < 0) pot.push([-20, "turun"]); else if (r.pct === 0) pot.push([-10, "datar"]);
   if (FCA && FCA[r.em]) pot.push([-20, "FCA"]);   /* batas 10% non-FCA (mis. papan akselerasi) tidak dipotong - hanya batas ARA-nya yang 10% */
   if (r.c && r.c < 50) pot.push([-10, "<50"]);
   if (typeof SN_OJK !== "undefined" && SN_OJK[r.em]) pot.push([-5, "OJK"]);
-  const n = Math.max(0, Math.min(100, M + K + L + T + F + pot.reduce((a, b) => a + b[0], 0)));
-  return {skor: n, skr: "M" + M + " K" + K + " L" + L + " T" + T + " F" + F + pot.map(x => " " + x[0] + " " + x[1]).join(""),
+  const n = Math.max(0, Math.min(100, K + M + L + T + pot.reduce((a, b) => a + b[0], 0)));
+  return {skor: n, skr: "K" + K + " M" + M + " L" + L + " T" + T + pot.map(x => " " + x[0] + " " + x[1]).join(""),
     kunci, tk, keAra: araP && r.c ? (araP / r.c - 1) * 100 : null, araP, l10};
 }
 /* 22 Okt 2026: data/tg.json dari laptop (unggah_tg.py, dijalankan jadwal "TITEN siang" 12:15 & 15:15
@@ -2825,7 +2827,7 @@ function panelTopGainer() {
   const bung = el("div", "tbl-bungkus tbl-kunci rd-tabel sc-tbl"), t = el("table"), th = el("thead"), trh = el("tr");
   const KOL = [["em", "Emiten", ""]].concat(nR ? [["srcU", "Sumber", "TG / Trending"]] : [])
     .concat([["lk", "LK", "skor"], ["val", "Valuasi", "vs industri"], ["op", "Opini", "auditor"], ["nws", "News", REK_NEWS_HARI + " hari"]])
-    .concat([["mfLot", "MF1", "sesi I · lot/value"], ["nfP", "Vol. NF", "tutup · lot (%)/value"]]).concat([["skor", "Skor akhir sesi", "momentum·kuat·likuid·tick·freq"],
+    .concat([["mfLot", "MF1", "sesi I · lot/value"], ["nfP", "Vol. NF", "tutup · lot (%)/value"]]).concat([["skor", "Skor akhir sesi", "naik·momentum·likuid·tick"],
     ["km", "Tutup kmrn", (tglKm ? tglID(tglKm) : "\u2013") + " \u00b7 H/L"],
     ["v1", "Vol & Value Sesi 1", tglID(tgl) + " \u00b7 s/d 12.00"],
     ["v2", "Vol & Value 15.00", tglID(tgl) + " \u00b7 s/d 15.00"],
@@ -2960,9 +2962,9 @@ function panelTopGainer() {
     const atur = () => { const c = t.querySelector("thead th:first-child"); if (c && c.offsetWidth) bung.style.setProperty("--sc-l2", c.offsetWidth + "px"); };
     atur(); requestAnimationFrame(atur); setTimeout(atur, 300); }
   p.appendChild(el("div", "bantu",
-    "Skor akhir sesi (0–100) = M momentum 12.00→15.00 (naik ≥ 3 poin = 30, tetap = 18, turun ≥ 5 poin = 0; kalau baru satu tangkapan = 15) + " +
-    "K kekuatan (% naik 8% s/d sebelum ARA = 20, ARA terkunci = 10, 5–8% = 12, < 5% = 5) + L likuiditas (Value Rp2 M = 0, Rp50 M ke atas = 25) + " +
-    "T tick (≤ 0,4% = 15, ≥ 1% = 0) + F frekuensi (5 ribu ke atas = 10) − potongan (FCA −20, harga < Rp50 −10, sanksi OJK −5, turun −20, datar −10). " +
+    "Skor akhir sesi (0–100, direvisi 24 Nov 2026 dari backtes 15 hari bursa) = K % naik hari ini (ARA terkunci = 50, ≥ 15% = 47, 8–15% = 35–47, 5–8% = 22, < 5% = 0–12) + " +
+    "M momentum 12.00→15.00 (naik ≥ 1 poin = 20, tetap = 16, turun ≤ 3 poin = 8, turun lebih = 5; satu tangkapan = 10) + L likuiditas (Value < Rp2 M = 0, Rp2–50 M = 20, ≥ Rp50 M = 12) + " +
+    "T tick (> 1% = 10, 0,7–1% = 7, 0,4–0,7% = 4, ≤ 0,4% = 2) − potongan (FCA −20, harga < Rp50 −10, sanksi OJK −5, turun −20, datar −10). ARA terkunci bernilai tinggi tapi biasanya sulit dibeli (antre). " +
     "Kandidat beli menjelang penutupan untuk dijual menit-menit awal besok (uji 416 hari: naik kuat & tutup di high → 81% sempat +5% besok pagi, open→close rata-rata turun). " +
     "Sumber: TG = Top Gainer Stockbit, Trending = tab Trending Stockbit (25 emiten paling ramai, termasuk yang turun) \u2014 dihitung dengan skor yang sama; K = 0 dan potongan \u221220 kalau sedang turun, \u221210 kalau datar (skor ini untuk saham yang NAIK). " +
     "Data hanya emiten di tangkapan layar & tersimpan di perangkat ini. Pola historis, bukan nasihat keuangan."));
@@ -10501,7 +10503,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-11-24-5";
+const VERSI_APP = "2026-11-24-6";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
