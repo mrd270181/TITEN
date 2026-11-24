@@ -602,7 +602,7 @@ tr.pt-dicoret td{opacity:.6} tr.pt-dicoret .kode{text-decoration:line-through}
 /* 17 Nov 2026: Harga Gap & Vol/Value (SCALPING) */
 .sc-val{display:block;color:var(--merek-tua);white-space:nowrap}
 /* 18 Nov 2026: tabel SCALPING lebih ramping + kolom Emiten beku saat digeser */
-.sc-tbl td,.sc-tbl th{padding:5px 6px}.sc-tbl td:first-child,.sc-tbl th:first-child{position:sticky;left:0;z-index:2}.sc-tbl td:first-child{background:var(--surface-1);box-shadow:inset -1px 0 0 var(--garis)}.sc-tbl tbody tr:nth-child(odd) td:first-child{background:var(--surface-2)}.sc-tbl thead th:first-child{z-index:5}.sc-grp{color:#f0b35a;font-size:11px;font-weight:600;margin-left:3px}.sc-bq{display:flex;align-items:center;justify-content:flex-end;gap:4px}.sc-bar{display:inline-block;width:44px;height:5px;border-radius:3px;background:rgba(239,68,68,.35);overflow:hidden}.sc-bar i{display:block;height:100%;background:#22c55e}.sc-kng{color:#eab308}.sc-pasar{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin:6px 0 8px;padding:6px 10px;border:1px solid var(--garis);border-radius:8px}.sc-beku2 td:nth-child(2),.sc-beku2 th:nth-child(2){position:sticky;left:var(--sc-l2,80px);z-index:2}.sc-beku2 td:nth-child(2){background:var(--surface-1);box-shadow:inset -1px 0 0 var(--garis)}.sc-beku2 tbody tr:nth-child(odd) td:nth-child(2){background:var(--surface-2)}.sc-beku2 thead th:nth-child(2){z-index:5}.sc-tbl td .nm{max-width:96px}.sc-tbl .tg-src{display:block;width:max-content;margin:1px 0;padding:0 5px;font-size:10px}.sc-tbl td.sc-kecil{font-size:11.5px}.sc-tbl td.sc-kecil .sc-hl,.sc-tbl td.sc-kecil .rek-avg{font-size:9.5px}.sc-fd{display:block;font-weight:800;font-size:11.5px}.sc-fs{display:block;font-size:9.5px;color:var(--ink-3);max-width:110px;overflow:hidden;text-overflow:ellipsis}.sc-gp{display:block;font-size:11px;font-weight:700}td.gap-kot.naik{background:var(--naik-bg)!important;box-shadow:inset 0 0 0 1.5px var(--naik)}td.gap-kot.turun{background:var(--turun-bg)!important;box-shadow:inset 0 0 0 1.5px var(--turun)}
+.sc-tbl td,.sc-tbl th{padding:5px 6px}.sc-tbl td:first-child,.sc-tbl th:first-child{position:sticky;left:0;z-index:2}.sc-tbl td:first-child{background:var(--surface-1);box-shadow:inset -1px 0 0 var(--garis)}.sc-tbl tbody tr:nth-child(odd) td:first-child{background:var(--surface-2)}.sc-tbl thead th:first-child{z-index:5}.sc-grp{color:#f0b35a;font-size:11px;font-weight:600;margin-left:3px}.sc-grp-k{color:#f0b35a}.sc-bq{display:flex;align-items:center;justify-content:flex-end;gap:4px}.sc-bar{display:inline-block;width:44px;height:5px;border-radius:3px;background:rgba(239,68,68,.35);overflow:hidden}.sc-bar i{display:block;height:100%;background:#22c55e}.sc-kng{color:#eab308}.sc-pasar{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin:6px 0 8px;padding:6px 10px;border:1px solid var(--garis);border-radius:8px}.sc-beku2 td:nth-child(2),.sc-beku2 th:nth-child(2){position:sticky;left:var(--sc-l2,80px);z-index:2}.sc-beku2 td:nth-child(2){background:var(--surface-1);box-shadow:inset -1px 0 0 var(--garis)}.sc-beku2 tbody tr:nth-child(odd) td:nth-child(2){background:var(--surface-2)}.sc-beku2 thead th:nth-child(2){z-index:5}.sc-tbl td .nm{max-width:96px}.sc-tbl .tg-src{display:block;width:max-content;margin:1px 0;padding:0 5px;font-size:10px}.sc-tbl td.sc-kecil{font-size:11.5px}.sc-tbl td.sc-kecil .sc-hl,.sc-tbl td.sc-kecil .rek-avg{font-size:9.5px}.sc-fd{display:block;font-weight:800;font-size:11.5px}.sc-fs{display:block;font-size:9.5px;color:var(--ink-3);max-width:110px;overflow:hidden;text-overflow:ellipsis}.sc-gp{display:block;font-size:11px;font-weight:700}td.gap-kot.naik{background:var(--naik-bg)!important;box-shadow:inset 0 0 0 1.5px var(--naik)}td.gap-kot.turun{background:var(--turun-bg)!important;box-shadow:inset 0 0 0 1.5px var(--turun)}
 td.sc-hb{background:rgba(88,166,255,.07)}th.sc-hb{background:#3a5a8c!important}.sc-ok{display:inline-block;border-radius:4px;padding:1px 6px;font-size:11px;font-weight:700}.sc-ok.y{background:#1f4d2b;color:#9be9a8}.sc-ok.n{background:#4a1d1d;color:#ffb4ae}
 .dv-tglh{display:block;font-size:10px;opacity:.65;font-weight:400}
 .dv-tg.lewat{background:var(--surface-2);color:var(--ink-3)}.dv-tg.cek{background:var(--turun-bg);color:var(--turun)}
@@ -2810,9 +2810,7 @@ function panelTopGainer() {
     return o;
   });
   /* 24 Nov 2026: singkatan grup pemilik (data sama dengan menu Klasifikasi Pemilik) di sebelah kode emiten */
-  const GRP_EM = {};
-  if (MILIK) { try { Object.values(semuaGrup()).forEach(x => Object.keys(x.info).forEach(k => {
-    const sg = SINGKAT_GRUP[x.g.n] || singkatGrup(x.g.n); (GRP_EM[k] = GRP_EM[k] || []).includes(sg) || GRP_EM[k].push(sg); })); } catch (e) {} }
+  const GRP_EM = {}; baris.forEach(x => { const g = grupSingkatEm(x.em); if (g.length) GRP_EM[x.em] = g; });
   /* 23 Nov 2026: kotak kondisi pasar (IHSG dari Stockbit saat order book dibaca, net asing sesi 1 dari MF1, median Bid/Offer daftar) */
   { const ih = obJ && obJ.ihsg, nfP = mfIsi && mfIsi.pasar && mfIsi.pasar.nf;
     const bqs = baris.map(x => x.bq).filter(x => x !== null && x < 99).sort((a, b) => a - b);
@@ -6304,6 +6302,10 @@ function rekKotakLevel(ath, res, sup, kini, tglAkhir) {
 function rekPita(em, akhir) {
   const d = el("div", "rek-pita");
   d.appendChild(el("span", "rek-pita-kd", em));
+  /* 24 Nov 2026: singkatan grup pemilik di kanan kode (sama dengan SCALPING) */
+  const gp = el("span", "sc-grp"); d.appendChild(gp);
+  const isiGp = () => { const g = grupSingkatEm(em); gp.textContent = g.length ? "(" + g.join("/") + ")" : ""; };
+  if (MILIK) isiGp(); else muatKlas().then(isiGp);
   d.appendChild(el("span", "rek-pita-nm", (DATA.nama && DATA.nama[em]) || ""));
   const h = el("span", "rek-pita-hg", akhir && akhir.c !== null ? "Rp " + rp(akhir.c) + " " : "— ");
   const pct = akhir && akhir.c && akhir.p ? (akhir.c / akhir.p - 1) * 100 : null;
@@ -6443,6 +6445,7 @@ function panelRekomendasi(w) {
   kartu.appendChild(rekKartuBuyback(rek.em));
   kartu.appendChild(rekKartuAksi(rek.em));
   kartu.appendChild(rekKartuValuasi(rek.em));
+  kartu.appendChild(rekKartuGrup(rek.em));
   kartu.appendChild(rekKartuSentimen(rek.em));
   kartu.appendChild(rekKartuNews(rek.em));
   p.appendChild(kartu);
@@ -8548,6 +8551,33 @@ const SINGKAT_GRUP = {"Prajogo Pangestu (Barito)": "PP", "Bakrie": "Bakrie", "Ha
   "Saratoga (Edwin Soeryadjaya)": "Saratoga", "MNC (Hary Tanoesoedibjo)": "MNC", "Emtek (Sariaatmadja)": "Emtek", "CT Corp (Chairul Tanjung)": "CT",
   "Lippo (Riady)": "Lippo", "Agung Sedayu (Aguan)": "Aguan", "Triputra (TP Rachmat)": "Triputra", "Low Tuck Kwong": "LTK", "Happy Hapsoro": "Hapsoro",
   "Indika": "Indika", "Kalla": "Kalla", "BUMN / Danantara": "BUMN", "Sitaan Kejaksaan Agung": "Sitaan"};
+/* 24 Nov 2026: emiten -> daftar singkatan grup pemilik (SCALPING, pita REKOMENDASI) */
+let grupEmCache = null;
+function grupSingkatEm(em) {
+  if (!MILIK) return [];
+  if (!grupEmCache || grupEmCache.m !== MILIK || grupEmCache.p !== PROFIL) {
+    const peta = {};
+    try { Object.values(semuaGrup()).forEach(x => Object.keys(x.info).forEach(k => {
+      const sg = SINGKAT_GRUP[x.g.n] || singkatGrup(x.g.n); (peta[k] = peta[k] || []).includes(sg) || peta[k].push(sg); })); } catch (e) {}
+    grupEmCache = {m: MILIK, p: PROFIL, peta};
+  }
+  return grupEmCache.peta[em] || [];
+}
+/* 24 Nov 2026: kartu GRUP PEMILIK di REKOMENDASI - grup + pemegang terbesar grup itu (KSEI >=1%) */
+function rekKartuGrup(em) {
+  if (!MILIK) { muatKlas().then(() => { if (MILIK && subScr === "rekomendasi") halScreener(); });
+    return rekKartu("GRUP PEMILIK", "\u2013", "", "memuat data pemilik\u2026"); }
+  const SG = semuaGrup(), ada = [];
+  Object.values(SG).forEach(x => { const i = x.info[em]; if (i) ada.push({sg: SINGKAT_GRUP[x.g.n] || singkatGrup(x.g.n), nama: x.g.n, i}); });
+  const tgl = MILIK.tanggal ? " \u00b7 per " + tglID(MILIK.tanggal) : "";
+  if (!ada.length) return rekKartu("GRUP PEMILIK", "\u2013", "", "bukan anggota grup yang dipantau" + tgl);
+  let top = null;
+  ada.forEach(a => (a.i.bukti || []).forEach(b => { if (!top || (+b[1] || 0) > (+top[1] || 0)) top = b; }));
+  const sub = top ? top[0] + " " + nf(+top[1] || 0, 1) + "%" + tgl : (ada[0].i.anak ? "lewat anak usaha" : "daftar manual") + tgl;
+  const k = rekKartu("GRUP PEMILIK", ada.map(a => a.sg).join("/"), "sc-grp-k", sub);
+  k.title = ada.map(a => a.nama + ": " + ((a.i.bukti || []).map(b => b[0] + " " + nf(+b[1] || 0, 2) + "%").join(", ") || (a.i.anak ? "anak usaha anggota grup" : "daftar manual"))).join("\n");
+  return k;
+}
 function singkatGrup(n) { return n.replace(/\s*\(.*\)\s*$/, ""); }
 function panelPemilikEmiten(p) {
   const kotak = el("div", "alat ph-alat");
@@ -10483,7 +10513,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-11-24-2";
+const VERSI_APP = "2026-11-24-4";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
