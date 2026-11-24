@@ -602,7 +602,7 @@ tr.pt-dicoret td{opacity:.6} tr.pt-dicoret .kode{text-decoration:line-through}
 /* 17 Nov 2026: Harga Gap & Vol/Value (SCALPING) */
 .sc-val{display:block;color:var(--merek-tua);white-space:nowrap}
 /* 18 Nov 2026: tabel SCALPING lebih ramping + kolom Emiten beku saat digeser */
-.sc-tbl td,.sc-tbl th{padding:5px 6px}.sc-tbl td:first-child,.sc-tbl th:first-child{position:sticky;left:0;z-index:2}.sc-tbl td:first-child{background:var(--surface-1);box-shadow:inset -1px 0 0 var(--garis)}.sc-tbl tbody tr:nth-child(odd) td:first-child{background:var(--surface-2)}.sc-tbl thead th:first-child{z-index:5}.sc-bq{display:flex;align-items:center;justify-content:flex-end;gap:4px}.sc-bar{display:inline-block;width:44px;height:5px;border-radius:3px;background:rgba(239,68,68,.35);overflow:hidden}.sc-bar i{display:block;height:100%;background:#22c55e}.sc-kng{color:#eab308}.sc-pasar{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin:6px 0 8px;padding:6px 10px;border:1px solid var(--garis);border-radius:8px}.sc-beku2 td:nth-child(2),.sc-beku2 th:nth-child(2){position:sticky;left:var(--sc-l2,80px);z-index:2}.sc-beku2 td:nth-child(2){background:var(--surface-1);box-shadow:inset -1px 0 0 var(--garis)}.sc-beku2 tbody tr:nth-child(odd) td:nth-child(2){background:var(--surface-2)}.sc-beku2 thead th:nth-child(2){z-index:5}.sc-tbl td .nm{max-width:96px}.sc-tbl .tg-src{display:block;width:max-content;margin:1px 0;padding:0 5px;font-size:10px}.sc-tbl td.sc-kecil{font-size:11.5px}.sc-tbl td.sc-kecil .sc-hl,.sc-tbl td.sc-kecil .rek-avg{font-size:9.5px}.sc-fd{display:block;font-weight:800;font-size:11.5px}.sc-fs{display:block;font-size:9.5px;color:var(--ink-3);max-width:110px;overflow:hidden;text-overflow:ellipsis}.sc-gp{display:block;font-size:11px;font-weight:700}td.gap-kot.naik{background:var(--naik-bg)!important;box-shadow:inset 0 0 0 1.5px var(--naik)}td.gap-kot.turun{background:var(--turun-bg)!important;box-shadow:inset 0 0 0 1.5px var(--turun)}
+.sc-tbl td,.sc-tbl th{padding:5px 6px}.sc-tbl td:first-child,.sc-tbl th:first-child{position:sticky;left:0;z-index:2}.sc-tbl td:first-child{background:var(--surface-1);box-shadow:inset -1px 0 0 var(--garis)}.sc-tbl tbody tr:nth-child(odd) td:first-child{background:var(--surface-2)}.sc-tbl thead th:first-child{z-index:5}.sc-grp{color:#f0b35a;font-size:11px;font-weight:600;margin-left:3px}.sc-bq{display:flex;align-items:center;justify-content:flex-end;gap:4px}.sc-bar{display:inline-block;width:44px;height:5px;border-radius:3px;background:rgba(239,68,68,.35);overflow:hidden}.sc-bar i{display:block;height:100%;background:#22c55e}.sc-kng{color:#eab308}.sc-pasar{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin:6px 0 8px;padding:6px 10px;border:1px solid var(--garis);border-radius:8px}.sc-beku2 td:nth-child(2),.sc-beku2 th:nth-child(2){position:sticky;left:var(--sc-l2,80px);z-index:2}.sc-beku2 td:nth-child(2){background:var(--surface-1);box-shadow:inset -1px 0 0 var(--garis)}.sc-beku2 tbody tr:nth-child(odd) td:nth-child(2){background:var(--surface-2)}.sc-beku2 thead th:nth-child(2){z-index:5}.sc-tbl td .nm{max-width:96px}.sc-tbl .tg-src{display:block;width:max-content;margin:1px 0;padding:0 5px;font-size:10px}.sc-tbl td.sc-kecil{font-size:11.5px}.sc-tbl td.sc-kecil .sc-hl,.sc-tbl td.sc-kecil .rek-avg{font-size:9.5px}.sc-fd{display:block;font-weight:800;font-size:11.5px}.sc-fs{display:block;font-size:9.5px;color:var(--ink-3);max-width:110px;overflow:hidden;text-overflow:ellipsis}.sc-gp{display:block;font-size:11px;font-weight:700}td.gap-kot.naik{background:var(--naik-bg)!important;box-shadow:inset 0 0 0 1.5px var(--naik)}td.gap-kot.turun{background:var(--turun-bg)!important;box-shadow:inset 0 0 0 1.5px var(--turun)}
 td.sc-hb{background:rgba(88,166,255,.07)}th.sc-hb{background:#3a5a8c!important}.sc-ok{display:inline-block;border-radius:4px;padding:1px 6px;font-size:11px;font-weight:700}.sc-ok.y{background:#1f4d2b;color:#9be9a8}.sc-ok.n{background:#4a1d1d;color:#ffb4ae}
 .dv-tglh{display:block;font-size:10px;opacity:.65;font-weight:400}
 .dv-tg.lewat{background:var(--surface-2);color:var(--ink-3)}.dv-tg.cek{background:var(--turun-bg);color:var(--turun)}
@@ -2656,6 +2656,7 @@ function panelTopGainer() {
   tgS1Sinkron().then(ub => { if (ub && subScr === "scalping") halScreener(); });
   mfSinkronServer().then(ub => { if (ub && subScr === "scalping") halScreener(); });   /* 13 Nov 2026: kolom MF1 & Vol. NF */
   muatProfilRinci(); muatOpini();   /* 18 Nov 2026: kolom Valuasi & Opini */
+  if (!(MILIK && PROFIL)) muatKlas().then(() => { if (MILIK && subScr === "scalping") halScreener(); });   /* 24 Nov 2026: grup pemilik di kolom Emiten */
   const hIni = tgHariIni(), S = tgMuat();
   const dTgl = [...new Set(Object.keys(S).filter(t => S[t] && (S[t].s1 || S[t].s2 || S[t].t1 || S[t].t2)).concat([hIni]))].sort();
   if (!tgTgl || dTgl.indexOf(tgTgl) < 0) tgTgl = hIni;
@@ -2808,6 +2809,10 @@ function panelTopGainer() {
       else { o.bo = o.bh = o.bl = o.bc = o.ok = null; } }
     return o;
   });
+  /* 24 Nov 2026: singkatan grup pemilik (data sama dengan menu Klasifikasi Pemilik) di sebelah kode emiten */
+  const GRP_EM = {};
+  if (MILIK) { try { Object.values(semuaGrup()).forEach(x => Object.keys(x.info).forEach(k => {
+    const sg = SINGKAT_GRUP[x.g.n] || singkatGrup(x.g.n); (GRP_EM[k] = GRP_EM[k] || []).includes(sg) || GRP_EM[k].push(sg); })); } catch (e) {} }
   /* 23 Nov 2026: kotak kondisi pasar (IHSG dari Stockbit saat order book dibaca, net asing sesi 1 dari MF1, median Bid/Offer daftar) */
   { const ih = obJ && obJ.ihsg, nfP = mfIsi && mfIsi.pasar && mfIsi.pasar.nf;
     const bqs = baris.map(x => x.bq).filter(x => x !== null && x < 99).sort((a, b) => a - b);
@@ -2858,7 +2863,9 @@ function panelTopGainer() {
     if (u === null || u === undefined) return 1; if (v === null || v === undefined) return -1;
     return (typeof u === "string" ? u.localeCompare(v) : u - v) * tgUrut.a; }).forEach(r => {
     const tr = el("tr", "klik"); tr.title = "Buka REKOMENDASI " + r.em; tr.onclick = () => rekBukaDari(r.em);
-    const cE = el("td", "rd-kiri"); cE.appendChild(el("span", "kode", r.em)); cE.appendChild(el("span", "nm", (DATA.nama && DATA.nama[r.em]) || "")); tr.appendChild(cE);
+    const cE = el("td", "rd-kiri"); cE.appendChild(el("span", "kode", r.em));
+    if (GRP_EM[r.em]) cE.appendChild(el("span", "sc-grp", "(" + GRP_EM[r.em].join("/") + ")"));
+    cE.appendChild(el("span", "nm", (DATA.nama && DATA.nama[r.em]) || "")); tr.appendChild(cE);
     if (nR) { const td = el("td", "rd-kiri");
       if (r.g) td.appendChild(el("span", "tg-src g", "TG"));
       if (r.r) td.appendChild(el("span", "tg-src r", "Trending"));
@@ -8536,6 +8543,11 @@ function semuaGrup() {
   semuaGrupCache = {m: MILIK, p: PROFIL, isi};
   return isi;
 }
+const SINGKAT_GRUP = {"Prajogo Pangestu (Barito)": "PP", "Bakrie": "Bakrie", "Haji Isam (Jhonlin)": "Isam", "Hashim Djojohadikusumo (Arsari)": "Hashim",
+  "Salim": "Salim", "Sinar Mas (Widjaja)": "SinarMas", "Djarum (Hartono)": "Djarum", "Astra (Jardine)": "Astra", "Adaro (Garibaldi Thohir)": "Boy Thohir",
+  "Saratoga (Edwin Soeryadjaya)": "Saratoga", "MNC (Hary Tanoesoedibjo)": "MNC", "Emtek (Sariaatmadja)": "Emtek", "CT Corp (Chairul Tanjung)": "CT",
+  "Lippo (Riady)": "Lippo", "Agung Sedayu (Aguan)": "Aguan", "Triputra (TP Rachmat)": "Triputra", "Low Tuck Kwong": "LTK", "Happy Hapsoro": "Hapsoro",
+  "Indika": "Indika", "Kalla": "Kalla", "BUMN / Danantara": "BUMN", "Sitaan Kejaksaan Agung": "Sitaan"};
 function singkatGrup(n) { return n.replace(/\s*\(.*\)\s*$/, ""); }
 function panelPemilikEmiten(p) {
   const kotak = el("div", "alat ph-alat");
@@ -10471,7 +10483,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-11-24-1";
+const VERSI_APP = "2026-11-24-2";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
