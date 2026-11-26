@@ -10554,7 +10554,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
    berkas versi.txt di server; kalau nomornya beda, muncul tawaran muat ulang.
    Yang dibersihkan hanya salinan tampilan — data di HP tidak disentuh. */
 
-const VERSI_APP = "2026-11-25-2";
+const VERSI_APP = "2026-11-26-1";
 let batangVersiTampil = false;
 const mulaiApp = Date.now();
 
@@ -14466,6 +14466,7 @@ function baGrafik(hari, seri, ukur) {
 
 const BA_PANJANG = {"1M": 22, "3M": 66, "6M": 132, "1T": 250};
 
+const BA_URUT = {b: {k: "val", a: -1}, s: {k: "val", a: -1}};   /* urutan tabel ACTIVITY, per sisi */
 function panelBrokerActivity(w) {
   const p = el("div", "panel");
   const semuaTgl = tanggalTersedia();
@@ -14577,12 +14578,26 @@ function panelBrokerActivity(w) {
       " tidak bertransaksi di papan " + pilih.pasar + " pada rentang ini."));
     w.appendChild(p); return;
   }
-  const bung = el("div", "tbl-bungkus");
+  /* 26 Nov 2026: judul kolom beku + bisa diurutkan. Sisi Buy dan Sell diurutkan
+     SENDIRI-SENDIRI (ketuk judul B.* mengurutkan sisi beli saja, S.* sisi jual). */
+  const bung = el("div", "tbl-bungkus tbl-kunci");
   const t = el("table");
   const thead = el("thead"), trh = el("tr");
-  [["Buy", ""], ["B.VAL", ""], ["B.LOT", ""], ["B.AVG", ""],
-   ["Sell", "sum-pisah"], ["S.VAL", ""], ["S.LOT", ""], ["S.AVG", ""]]
-    .forEach(([j, k]) => trh.appendChild(el("th", k, j)));
+  const urutSisi = (daf, u) => daf.slice().sort((x, y) => {
+    const p = x[u.k], q = y[u.k];
+    if (u.k === "em") return u.a * String(p).localeCompare(String(q));
+    return u.a * ((p == null ? -Infinity : p) - (q == null ? -Infinity : q));
+  });
+  sisi.beli = urutSisi(sisi.beli, BA_URUT.b); sisi.jual = urutSisi(sisi.jual, BA_URUT.s);
+  [["Buy", "", "b", "em"], ["B.VAL", "", "b", "val"], ["B.LOT", "", "b", "lot"], ["B.AVG", "", "b", "avg"],
+   ["Sell", "sum-pisah", "s", "em"], ["S.VAL", "", "s", "val"], ["S.LOT", "", "s", "lot"], ["S.AVG", "", "s", "avg"]]
+    .forEach(([j, kl, sd, k]) => {
+      const u = BA_URUT[sd];
+      const h = el("th", kl, j + (u.k === k ? (u.a < 0 ? " \u25bc" : " \u25b2") : ""));
+      h.style.cursor = "pointer"; h.title = "Urutkan sisi " + (sd === "b" ? "beli" : "jual") + " menurut " + j;
+      h.onclick = () => { if (u.k === k) u.a = -u.a; else { u.k = k; u.a = k === "em" ? 1 : -1; } halBroker(); };
+      trh.appendChild(h);
+    });
   thead.appendChild(trh); t.appendChild(thead);
   const tbody = el("tbody");
   const n = Math.max(sisi.beli.length, sisi.jual.length);
@@ -14605,7 +14620,7 @@ function panelBrokerActivity(w) {
     "Hanya emiten yang ada di data TITEN yang terbaca di sini — " +
     BRK.em.length + " emiten. Kalau " + pilih.baBroker + " bertransaksi besar di " +
     "emiten di luar daftar itu, transaksinya TIDAK muncul dan tidak ada tandanya. " +
-    "Diurutkan menurut nilai, bukan lot, karena lot antar emiten tidak sebanding."));
+    "Bawaannya diurutkan menurut nilai, bukan lot, karena lot antar emiten tidak sebanding. Ketuk judul kolom untuk mengurutkan; sisi Buy dan Sell diurutkan sendiri-sendiri."));
   w.appendChild(p);
 }
 
